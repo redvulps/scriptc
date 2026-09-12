@@ -5682,9 +5682,21 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2700-array-sort-complexity.ts": {
+   "order": [
+    "<repo>/tests/corpus/2700-array-sort-complexity.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/2700-wasi-core.ts": {
    "order": [
     "<repo>/tests/corpus/2700-wasi-core.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2701-array-sort-snapshot.ts": {
+   "order": [
+    "<repo>/tests/corpus/2701-array-sort-snapshot.ts"
    ],
    "diags": []
   },
@@ -5692,6 +5704,12 @@
    "order": [
     "<repo>/tests/corpus/2701-import-meta/module with space.mjs",
     "<repo>/tests/corpus/2701-import-meta/main.mjs"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2702-uint8array-to-sorted.ts": {
+   "order": [
+    "<repo>/tests/corpus/2702-uint8array-to-sorted.ts"
    ],
    "diags": []
   },

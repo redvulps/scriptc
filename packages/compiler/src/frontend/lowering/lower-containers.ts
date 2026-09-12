@@ -11,6 +11,7 @@ import { droppableStatic, isRequireMainFilename, lowerDynObjectLiteral, probeLow
 import { forOfVarTarget, lowerDestructuringAssign } from "./lower-stmts.js";
 import { isJsSourceFile, locOf } from "../program.js";
 import { islandPrimitiveExit, lowerDynDispatchMethodCall } from "./lower-calls.js";
+import { buildArraySortFn, buildBytesSortFn } from "./lower-array-sort.js";
 import { typeKey } from "../type-mapper.js";
 import { dynUndefinedExpr, own, WidthLift } from "./lowerer.js";
 import { boolLit, countedFor, numLit, varRef } from "../../ir/build.js";
@@ -1618,19 +1619,20 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
    * function like the other array HOFs. sort mutates and returns the receiver;
    * toSorted takes its shallow snapshot INSIDE the helper, after the receiver
    * and comparator expressions have both been evaluated, then sorts and
-   * returns that copy without touching the receiver. The loop is a
-   * binary-free INSERTION sort: stable (equal-comparing elements keep their
-   * source order, which is what Node's stable TimSort produces for any
-   * consistent comparator) and JS-faithful on the comparator contract — an
-   * element moves left only while cmp(left, v) > 0, so a NaN or 0 result holds
-   * position exactly like the spec's "treat as equal". The SEQUENCE of
-   * comparator calls differs from V8's TimSort (SEMANTICS.md); results are
-   * identical for consistent comparators. The comparator-less form lowers for
-   * STRING elements only — JS's default converts every element to string and
-   * compares UTF-16 units, so the interned synthesized comparator selects the
-   * runtime's code-unit ordering rather than scriptc's documented code-point
-   * relational operators. For numbers that default is the notorious string
-   * sort ([10, 9, 1] → [1, 10, 9]), deliberately fenced toward an explicit
+   * returns that copy without touching the receiver. The helper uses a stable
+   * bottom-up merge sort with an ordered-boundary check: ordered inputs use a
+   * linear number of comparator calls, but buffer movement remains O(n log n)
+   * even when every boundary is already ordered. During a merge, an element
+   * moves right only while cmp(left, right) > 0, so a NaN or 0 result keeps
+   * the left element first. Undefined values sink without reaching the user
+   * comparator. The callback sequence differs from V8's TimSort, so exact
+   * order and count parity are not claimed; results agree for consistent
+   * comparators. The comparator-less form lowers for STRING elements only —
+   * JS's default converts every element to string and compares UTF-16 units,
+   * so the interned synthesized comparator selects the runtime's code-unit
+   * ordering rather than scriptc's documented code-point relational
+   * operators. For numbers that default is the notorious string sort
+   * ([10, 9, 1] → [1, 10, 9]), deliberately fenced toward an explicit
    * comparator. */
   function lowerArraySortCall(lowerer: Lowerer, call: ts.CallExpression,
     access: ts.PropertyAccessExpression,
@@ -1745,183 +1747,11 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
     return name;
   }
 
-/** The insertion-sort loop, from existing IR nodes:
-   *
-   *   n = a.length;
-    *   for (i = 1; i < n; i++) {
-    *     v = a[i]; j = i - 1;
-    *     while (j >= 0) {
-    *       if (CompareArrayElements(a[j], v, f) > 0) {
-    *         a[j + 1] = a[j]; j = j - 1;
-    *       } else break;
-   *     }
-   *     a[j + 1] = v;
-   *   }
-   *   return a;
-   */
-  function buildArraySortFn(
-    name: string,
-    elem: IrType,
-    arity: number,
-    copyFirst: boolean,
-    undefinedTag: number | null,
-    loc: SrcLoc,
-  ): IrFunction {
-    const arrT = arrayOf(elem);
-    const fnT = funcOf([elem, elem].slice(0, arity), F64);
-
-    const j = varRef("j.0", F64, loc);
-    const at = (index: IrExpr): IrExpr => ({ kind: "arrayGet", arr: varRef("a.0", arrT, loc), index, type: elem, loc });
-    const jPlus1: IrExpr = { kind: "bin", op: "+", left: j, right: numLit(1, loc), type: F64, loc };
-    const isUndefined = (value: IrExpr): IrExpr | null => {
-      if (elem.kind === "union" && undefinedTag !== null) {
-        return {
-          kind: "unionIsTag",
-          unionId: elem.unionId,
-          tag: undefinedTag,
-          negated: false,
-          value,
-          type: BOOL,
-          loc,
-        };
-      }
-      if (elem.kind === "jsval") {
-        return {
-          kind: "jsOp",
-          op: "eq",
-          args: [
-            value,
-            { kind: "jsOp", op: "undefLit", args: [], type: JSVAL, loc },
-          ],
-          type: BOOL,
-          loc,
-        };
-      }
-      return null;
-    };
-    const compareGreater: IrExpr = {
-      kind: "bin",
-      op: ">",
-      left: {
-        kind: "callValue",
-        callee: varRef("f.0", fnT, loc),
-        args: [at(j), varRef("v.0", elem, loc)].slice(0, arity),
-        type: F64,
-        loc,
-      },
-      right: numLit(0, loc),
-      type: BOOL,
-      loc,
-    };
-    const leftUndefined = isUndefined(at(j));
-    const valueUndefined = isUndefined(varRef("v.0", elem, loc));
-    // CompareArrayElements: undefined always sinks and never reaches the
-    // user comparator. Ternaries preserve that callback suppression.
-    const shouldShift: IrExpr =
-      leftUndefined !== null && valueUndefined !== null
-        ? {
-            kind: "ternary",
-            cond: leftUndefined,
-            then: {
-              kind: "unary",
-              op: "!",
-              operand: valueUndefined,
-              type: BOOL,
-              loc,
-            },
-            else_: {
-              kind: "ternary",
-              cond: valueUndefined,
-              then: { kind: "boolLit", value: false, type: BOOL, loc },
-              else_: compareGreater,
-              type: BOOL,
-              loc,
-            },
-            type: BOOL,
-            loc,
-          }
-        : compareGreater;
-    const shiftLoop: IrStmt = {
-      kind: "while",
-      cond: { kind: "bin", op: ">=", left: j, right: numLit(0, loc), type: BOOL, loc },
-      body: [
-        {
-          kind: "if",
-          cond: shouldShift,
-          then: [
-            { kind: "arraySet", arr: varRef("a.0", arrT, loc), index: jPlus1, value: at(j), loc },
-            { kind: "assign", localId: "j.0", value: { kind: "bin", op: "-", left: j, right: numLit(1, loc), type: F64, loc }, loc },
-          ],
-          else_: [{ kind: "break", loc }],
-          loc,
-        },
-      ],
-      loc,
-    };
-    const body: IrStmt[] = [
-      ...(copyFirst
-        ? [{
-            kind: "assign" as const,
-            localId: "a.0",
-            value: {
-              kind: "arrIntrinsic" as const,
-              method: "slice" as const,
-              receiver: varRef("a.0", arrT, loc),
-              args: [],
-              type: arrT,
-              loc,
-            },
-            loc,
-          }]
-        : []),
-      readLenStmt(arrT, loc),
-      countedFor(
-        loc,
-        { kind: "bin", op: "-", left: varRef("n.0", F64, loc), right: numLit(1, loc), type: F64, loc },
-        (index) => [
-          {
-            kind: "varDecl",
-            localId: "v.0",
-            init: {
-              kind: "arrayGet",
-              arr: varRef("a.0", arrT, loc),
-              index: { kind: "bin", op: "+", left: index, right: numLit(1, loc), type: F64, loc },
-              type: elem,
-              loc,
-            },
-            loc,
-          },
-          { kind: "varDecl", localId: "j.0", init: index, loc },
-          shiftLoop,
-          { kind: "arraySet", arr: varRef("a.0", arrT, loc), index: jPlus1, value: varRef("v.0", elem, loc), loc },
-        ],
-      ),
-      { kind: "return", value: varRef("a.0", arrT, loc), loc },
-    ];
-    return {
-      name,
-      params: [
-        { localId: "a.0", name: "a", type: arrT },
-        { localId: "f.0", name: "f", type: fnT },
-      ],
-      returnType: arrT,
-      locals: [
-        { id: "a.0", name: "a", type: arrT, mutable: true },
-        { id: "f.0", name: "f", type: fnT, mutable: true },
-        { id: "n.0", name: "n", type: F64, mutable: false },
-        { id: "i.0", name: "i", type: F64, mutable: true },
-        { id: "v.0", name: "v", type: elem, mutable: false },
-        { id: "j.0", name: "j", type: F64, mutable: true },
-      ],
-      body,
-      loc,
-    };
-  }
 
 /** Uint8Array.prototype.toSorted. The receiver/comparator expressions are
  * evaluated before entering the helper; the helper snapshots with
  * TypedArray.prototype.slice before its first comparison, then performs
- * the same stable insertion walk as Array.toSorted. Uint8Array's default
+ * the same stable merge walk as Array.toSorted. Uint8Array's default
  * comparator is numeric ascending, so its comparator-less form needs no
  * string-conversion machinery. */
   function lowerBytesToSortedCall(
@@ -2003,211 +1833,6 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
     };
   }
 
-  function buildBytesSortFn(
-    name: string,
-    arity: number,
-    hasComparator: boolean,
-    loc: SrcLoc,
-  ): IrFunction {
-    const bytesT = BYTES_U8;
-    const fnT = funcOf([F64, F64].slice(0, arity), F64);
-
-    const j = varRef("j.0", F64, loc);
-    const at = (index: IrExpr): IrExpr => ({
-      kind: "bytesIntrinsic",
-      method: "get",
-      receiver: varRef("a.0", bytesT, loc),
-      args: [index],
-      type: F64,
-      loc,
-    });
-    const jPlus1: IrExpr = {
-      kind: "bin",
-      op: "+",
-      left: j,
-      right: numLit(1, loc),
-      type: F64,
-      loc,
-    };
-    const compare: IrExpr = hasComparator
-      ? {
-          kind: "callValue",
-          callee: varRef("f.0", fnT, loc),
-          args: [at(j), varRef("v.0", F64, loc)].slice(0, arity),
-          type: F64,
-          loc,
-        }
-      : {
-          kind: "bin",
-          op: "-",
-          left: at(j),
-          right: varRef("v.0", F64, loc),
-          type: F64,
-          loc,
-        };
-    const shiftLoop: IrStmt = {
-      kind: "while",
-      cond: {
-        kind: "bin",
-        op: ">=",
-        left: j,
-        right: numLit(0, loc),
-        type: BOOL,
-        loc,
-      },
-      body: [
-        {
-          kind: "if",
-          cond: {
-            kind: "bin",
-            op: ">",
-            left: compare,
-            right: numLit(0, loc),
-            type: BOOL,
-            loc,
-          },
-          then: [
-            {
-              kind: "bytesSet",
-              arr: varRef("a.0", bytesT, loc),
-              index: jPlus1,
-              value: at(j),
-              loc,
-            },
-            {
-              kind: "assign",
-              localId: "j.0",
-              value: {
-                kind: "bin",
-                op: "-",
-                left: j,
-                right: numLit(1, loc),
-                type: F64,
-                loc,
-              },
-              loc,
-            },
-          ],
-          else_: [{ kind: "break", loc }],
-          loc,
-        },
-      ],
-      loc,
-    };
-    const params: IrParam[] = [
-      { localId: "a.0", name: "a", type: bytesT },
-      ...(hasComparator
-        ? [{ localId: "f.0", name: "f", type: fnT }]
-        : []),
-    ];
-    const locals: IrLocal[] = [
-      { id: "a.0", name: "a", type: bytesT, mutable: true },
-      ...(hasComparator
-        ? [{ id: "f.0", name: "f", type: fnT, mutable: true }]
-        : []),
-      { id: "n.0", name: "n", type: F64, mutable: false },
-      { id: "i.0", name: "i", type: F64, mutable: true },
-      { id: "v.0", name: "v", type: F64, mutable: false },
-      { id: "j.0", name: "j", type: F64, mutable: true },
-    ];
-    const body: IrStmt[] = [
-      {
-        kind: "assign",
-        localId: "a.0",
-        value: {
-          kind: "bytesIntrinsic",
-          method: "slice",
-          receiver: varRef("a.0", bytesT, loc),
-          args: [],
-          type: bytesT,
-          loc,
-        },
-        loc,
-      },
-      {
-        kind: "varDecl",
-        localId: "n.0",
-        init: {
-          kind: "bytesIntrinsic",
-          method: "length",
-          receiver: varRef("a.0", bytesT, loc),
-          args: [],
-          type: F64,
-          loc,
-        },
-        loc,
-      },
-      {
-        kind: "for",
-        init: {
-          kind: "varDecl",
-          localId: "i.0",
-          init: numLit(1, loc),
-          loc,
-        },
-        cond: {
-          kind: "bin",
-          op: "<",
-          left: varRef("i.0", F64, loc),
-          right: varRef("n.0", F64, loc),
-          type: BOOL,
-          loc,
-        },
-        update: {
-          kind: "assign",
-          localId: "i.0",
-          value: {
-            kind: "bin",
-            op: "+",
-            left: varRef("i.0", F64, loc),
-            right: numLit(1, loc),
-            type: F64,
-            loc,
-          },
-          loc,
-        },
-        body: [
-          {
-            kind: "varDecl",
-            localId: "v.0",
-            init: at(varRef("i.0", F64, loc)),
-            loc,
-          },
-          {
-            kind: "varDecl",
-            localId: "j.0",
-            init: {
-              kind: "bin",
-              op: "-",
-              left: varRef("i.0", F64, loc),
-              right: numLit(1, loc),
-              type: F64,
-              loc,
-            },
-            loc,
-          },
-          shiftLoop,
-          {
-            kind: "bytesSet",
-            arr: varRef("a.0", bytesT, loc),
-            index: jPlus1,
-            value: varRef("v.0", F64, loc),
-            loc,
-          },
-        ],
-        loc,
-      },
-      { kind: "return", value: varRef("a.0", bytesT, loc), loc },
-    ];
-    return {
-      name,
-      params,
-      returnType: bytesT,
-      locals,
-      body,
-      loc,
-    };
-  }
 
 /** `n = a.length` — the once-up-front length read every array HOF loop
    * starts with (locals a.0/n.0 by convention). */
