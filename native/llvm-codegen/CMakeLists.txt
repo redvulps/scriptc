@@ -43,6 +43,15 @@ find_package(zstd CONFIG QUIET)
 if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET ZLIB::ZLIB)
   add_library(ZLIB::ZLIB INTERFACE IMPORTED)
 endif()
+# The same cross-target lookup issue affects LLVM's zstd interface targets.
+# The helper does not use LLVM's compression APIs, so keep both dependencies
+# link-neutral rather than importing host glibc or zstd libraries.
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET zstd::libzstd_static)
+  add_library(zstd::libzstd_static INTERFACE IMPORTED)
+endif()
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET zstd::libzstd_shared)
+  add_library(zstd::libzstd_shared INTERFACE IMPORTED)
+endif()
 
 find_package(LLVM 22.1.8 EXACT REQUIRED CONFIG)
 
