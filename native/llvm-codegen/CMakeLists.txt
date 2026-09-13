@@ -34,6 +34,16 @@ project(scriptc_llvm_codegen LANGUAGES C CXX)
 # leaves an unresolved `zstd::libzstd_static` edge on Linux or Windows.
 find_package(zstd CONFIG QUIET)
 
+# LLVM's Linux archives also retain a ZLIB::ZLIB edge in LLVMSupport. The
+# musl helper is cross-linked with Zig, whose sysroot intentionally has no
+# system zlib; the helper does not use LLVM's compression APIs, and scriptc's
+# runtime pack compiles its own vendored zlib separately. Provide the unused
+# interface target so LLVM's exported targets can load without importing a
+# host glibc zlib into a musl binary.
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET ZLIB::ZLIB)
+  add_library(ZLIB::ZLIB INTERFACE IMPORTED)
+endif()
+
 find_package(LLVM 22.1.8 EXACT REQUIRED CONFIG)
 
 # LLVM's exported Support target names zstd's shared target even when the
