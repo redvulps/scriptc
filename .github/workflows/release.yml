@@ -223,6 +223,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           cp -R native-artifacts/. packages/
+          # upload-artifact does not preserve executable bits. Restore the
+          # helper mode before pnpm runs its prepack checks.
+          find packages -type f -path '*/bin/scriptc-llvm-codegen' -exec chmod 755 {} +
           pnpm -r build
 
       - name: Check version sync
