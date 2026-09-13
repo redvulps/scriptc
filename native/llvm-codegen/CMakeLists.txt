@@ -13,6 +13,10 @@ set(SCRIPTC_ALLOWED_TARGETS "arm64-apple-macosx14.0.0" CACHE STRING
     "Comma-separated target triples accepted by this helper")
 set(SCRIPTC_HELPER_ARCH "arm64" CACHE STRING
     "macOS architecture of the helper executable")
+# LLVM's official Linux archives use the host libstdc++ and glibc ABIs. The
+# musl package therefore ships this process-isolated helper as a fully static
+# host executable; its configured output targets and runtime pack remain musl.
+option(SCRIPTC_MUSL_BUILD "Configure the Linux musl helper package" OFF)
 
 # These must be cache variables before project() enables the Apple toolchain.
 # A target property named OSX_DEPLOYMENT_TARGET is not recognized by CMake and
@@ -29,27 +33,26 @@ endif()
 
 project(scriptc_llvm_codegen LANGUAGES C CXX)
 
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
+  set(SCRIPTC_MUSL_BUILD ON)
+endif()
+
 # Official LLVM binary distributions retain zstd as an imported dependency in
 # LLVMSupport. Resolve it before loading LLVM's exported targets so CMake never
 # leaves an unresolved `zstd::libzstd_static` edge on Linux or Windows.
 find_package(zstd CONFIG QUIET)
 
-# LLVM's Linux archives also retain a ZLIB::ZLIB edge in LLVMSupport. The
-# musl helper is cross-linked with Zig, whose sysroot intentionally has no
-# system zlib; the helper does not use LLVM's compression APIs, and scriptc's
-# runtime pack compiles its own vendored zlib separately. Provide the unused
-# interface target so LLVM's exported targets can load without importing a
-# host glibc zlib into a musl binary.
-if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET ZLIB::ZLIB)
+# LLVM's Linux archives retain ZLIB and zstd target edges in LLVMSupport. The
+# musl package flattens that imported graph below and appends portable library
+# names explicitly, so use interface placeholders instead of embedding host
+# library paths in the flattened graph.
+if(SCRIPTC_MUSL_BUILD AND NOT TARGET ZLIB::ZLIB)
   add_library(ZLIB::ZLIB INTERFACE IMPORTED)
 endif()
-# The same cross-target lookup issue affects LLVM's zstd interface targets.
-# The helper does not use LLVM's compression APIs, so keep both dependencies
-# link-neutral rather than importing host glibc or zstd libraries.
-if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET zstd::libzstd_static)
+if(SCRIPTC_MUSL_BUILD AND NOT TARGET zstd::libzstd_static)
   add_library(zstd::libzstd_static INTERFACE IMPORTED)
 endif()
-if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl" AND NOT TARGET zstd::libzstd_shared)
+if(SCRIPTC_MUSL_BUILD AND NOT TARGET zstd::libzstd_shared)
   add_library(zstd::libzstd_shared INTERFACE IMPORTED)
 endif()
 
@@ -77,16 +80,6 @@ add_executable(scriptc-llvm-codegen
   src/main.cpp
   src/target.cpp
 )
-
-if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
-  # Zig 0.16 and LLD both crash on the static LLVM archive graph. Use GNU
-  # ld.bfd for this large cross-target link; Zig still supplies the musl
-  # sysroot, startup objects, and compiler runtime inputs.
-  find_program(SCRIPTC_MUSL_LD NAMES ld.bfd REQUIRED)
-  target_link_options(scriptc-llvm-codegen PRIVATE
-    "--ld-path=${SCRIPTC_MUSL_LD}"
-  )
-endif()
 
 target_compile_features(scriptc-llvm-codegen PRIVATE cxx_std_17)
 target_include_directories(scriptc-llvm-codegen PRIVATE ${LLVM_INCLUDE_DIRS})
@@ -133,11 +126,10 @@ target_compile_definitions(scriptc-llvm-codegen PRIVATE
   SCRIPTC_ALLOWED_TARGETS="${SCRIPTC_ALLOWED_TARGETS}"
 )
 
-if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
-  # CMake's imported LLVM targets carry transitive archive interfaces. GNU ld
-  # tolerates the repeated archives produced by composing those interfaces,
-  # but Zig's musl linker crashes while processing the repeated large set.
-  # Flatten the graph to one absolute archive path per target instead.
+if(SCRIPTC_MUSL_BUILD)
+  # CMake's imported LLVM targets carry transitive archive interfaces that
+  # duplicate most of this large static graph. Flatten it to one absolute
+  # archive path per target for the resource-constrained musl release link.
   function(scriptc_collect_llvm_target target)
     get_property(seen GLOBAL PROPERTY SCRIPTC_LLVM_LINK_SEEN)
     if(target IN_LIST seen)
@@ -183,6 +175,7 @@ if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
   list(REMOVE_DUPLICATES SCRIPTC_LLVM_LIBS)
   list(REVERSE SCRIPTC_LLVM_LIBS)
   list(REMOVE_DUPLICATES SCRIPTC_LLVM_SYSTEM_LIBS)
+  list(APPEND SCRIPTC_LLVM_SYSTEM_LIBS z zstd)
 else()
   llvm_map_components_to_libnames(SCRIPTC_LLVM_LIBS
     ${SCRIPTC_LLVM_TARGET_LIBS}
