@@ -123,17 +123,67 @@ target_compile_definitions(scriptc-llvm-codegen PRIVATE
   SCRIPTC_ALLOWED_TARGETS="${SCRIPTC_ALLOWED_TARGETS}"
 )
 
-llvm_map_components_to_libnames(SCRIPTC_LLVM_LIBS
-  ${SCRIPTC_LLVM_TARGET_LIBS}
-  CodeGen
-  Core
-  Coroutines
-  IRReader
-  Passes
-  Support
-  Target
-)
-target_link_libraries(scriptc-llvm-codegen PRIVATE ${SCRIPTC_LLVM_LIBS})
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
+  # CMake's imported LLVM targets carry transitive archive interfaces. GNU ld
+  # tolerates the repeated archives produced by composing those interfaces,
+  # but Zig's musl linker crashes while processing the repeated large set.
+  # Flatten the graph to one absolute archive path per target instead.
+  function(scriptc_collect_llvm_target target)
+    get_property(seen GLOBAL PROPERTY SCRIPTC_LLVM_LINK_SEEN)
+    if(target IN_LIST seen)
+      return()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY SCRIPTC_LLVM_LINK_SEEN "${target}")
+
+    get_target_property(location "${target}" IMPORTED_LOCATION_RELEASE)
+    if(NOT location OR location MATCHES "-NOTFOUND$")
+      get_target_property(location "${target}" IMPORTED_LOCATION)
+    endif()
+    if(location AND NOT location MATCHES "-NOTFOUND$")
+      set_property(GLOBAL APPEND PROPERTY SCRIPTC_LLVM_LINK_LIBS "${location}")
+    endif()
+
+    get_target_property(dependencies "${target}" INTERFACE_LINK_LIBRARIES)
+    if(NOT dependencies OR dependencies MATCHES "-NOTFOUND$")
+      return()
+    endif()
+    foreach(dependency IN LISTS dependencies)
+      if(dependency MATCHES "^\\$<")
+        continue()
+      elseif(TARGET "${dependency}")
+        scriptc_collect_llvm_target("${dependency}")
+      elseif(NOT dependency STREQUAL "optimized" AND NOT dependency STREQUAL "debug")
+        set_property(GLOBAL APPEND PROPERTY SCRIPTC_LLVM_LINK_SYSTEM_LIBS "${dependency}")
+      endif()
+    endforeach()
+  endfunction()
+
+  set(SCRIPTC_LLVM_LINK_ROOTS ${SCRIPTC_LLVM_TARGET_LIBS} IRReader Passes)
+  foreach(component IN LISTS SCRIPTC_LLVM_LINK_ROOTS)
+    if(TARGET "LLVM${component}")
+      scriptc_collect_llvm_target("LLVM${component}")
+    elseif(TARGET "${component}")
+      scriptc_collect_llvm_target("${component}")
+    endif()
+  endforeach()
+  get_property(SCRIPTC_LLVM_LIBS GLOBAL PROPERTY SCRIPTC_LLVM_LINK_LIBS)
+  get_property(SCRIPTC_LLVM_SYSTEM_LIBS GLOBAL PROPERTY SCRIPTC_LLVM_LINK_SYSTEM_LIBS)
+  list(REMOVE_DUPLICATES SCRIPTC_LLVM_LIBS)
+  list(REMOVE_DUPLICATES SCRIPTC_LLVM_SYSTEM_LIBS)
+else()
+  llvm_map_components_to_libnames(SCRIPTC_LLVM_LIBS
+    ${SCRIPTC_LLVM_TARGET_LIBS}
+    CodeGen
+    Core
+    Coroutines
+    IRReader
+    Passes
+    Support
+    Target
+  )
+  list(REMOVE_DUPLICATES SCRIPTC_LLVM_LIBS)
+endif()
+target_link_libraries(scriptc-llvm-codegen PRIVATE ${SCRIPTC_LLVM_LIBS} ${SCRIPTC_LLVM_SYSTEM_LIBS})
 
 if(APPLE)
   # Homebrew's static LLVM archives contain broad component object files.
