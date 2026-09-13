@@ -78,6 +78,15 @@ add_executable(scriptc-llvm-codegen
   src/target.cpp
 )
 
+if(CMAKE_C_COMPILER_TARGET MATCHES "linux-musl")
+  # Zig 0.16's in-process linker crashes on the static LLVM archive graph.
+  # Use the external LLD installed by the release toolchain instead.
+  find_program(SCRIPTC_MUSL_LLD NAMES ld.lld REQUIRED)
+  target_link_options(scriptc-llvm-codegen PRIVATE
+    "--ld-path=${SCRIPTC_MUSL_LLD}"
+  )
+endif()
+
 target_compile_features(scriptc-llvm-codegen PRIVATE cxx_std_17)
 target_include_directories(scriptc-llvm-codegen PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(scriptc-llvm-codegen PRIVATE
