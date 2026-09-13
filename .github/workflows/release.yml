@@ -120,7 +120,7 @@ jobs:
         if: startsWith(matrix.platform, 'linux') || matrix.platform == 'wasm32-wasi'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libzstd-dev lld
+          sudo apt-get install --yes libzstd-dev binutils
           curl -fL --retry 3 -o "$RUNNER_TEMP/llvm.tar.xz" "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/${{ matrix.llvm_asset }}.tar.xz"
           tar -xJf "$RUNNER_TEMP/llvm.tar.xz" -C "$RUNNER_TEMP"
           mv "$RUNNER_TEMP/${{ matrix.llvm_asset }}" "$RUNNER_TEMP/llvm-22.1.8"
