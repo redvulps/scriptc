@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { checkPreflight, loadProgram } from "../../src/frontend/program.js";
 import { tsgoPath } from "../../src/frontend/dts-paths.js";
@@ -62,6 +62,71 @@ console.log(required.value);
     expect(checkPreflight(load).map((diag) => diag.code)).toContain("SC1013");
     expect(calls.some(([arg]) => Array.isArray(arg) && arg.length > 24)).toBe(true);
     expect(calls.some(([arg]) => !Array.isArray(arg))).toBe(false);
+  } finally {
+    load.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("project paths resolve identically in the TS 7 program and scriptc module graph", () => {
+  const tempRoot = process.platform === "win32" ? tmpdir() : "/tmp";
+  const dir = mkdtempSync(join(tempRoot, "scriptc-project-paths-"));
+  const src = join(dir, "src");
+  mkdirSync(src);
+  writeFileSync(
+    join(dir, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        strictNullChecks: true,
+        baseUrl: ".",
+        paths: { "@app/*": ["src/*"] },
+      },
+    }),
+  );
+  writeFileSync(join(src, "message.ts"), 'export const message = "paths agree";\n');
+  const entry = join(dir, "main.ts");
+  writeFileSync(entry, 'import { message } from "@app/message";\nconsole.log(message);\n');
+
+  const load = loadProgram(entry);
+  try {
+    const diagnostics = checkPreflight(load);
+    expect(diagnostics, diagnostics.map((diag) => `${diag.code}: ${diag.message}`).join("\n"))
+      .toEqual([]);
+    expect(load.moduleOrder.map((file) => basename(file.fileName))).toEqual(["message.ts", "main.ts"]);
+  } finally {
+    load.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("inherited project paths stay relative to their declaring config", () => {
+  const tempRoot = process.platform === "win32" ? tmpdir() : "/tmp";
+  const dir = mkdtempSync(join(tempRoot, "scriptc-inherited-paths-"));
+  const base = join(dir, "base");
+  const app = join(dir, "app");
+  mkdirSync(join(base, "src"), { recursive: true });
+  mkdirSync(app);
+  writeFileSync(
+    join(base, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        strictNullChecks: true,
+        baseUrl: ".",
+        paths: { "@base/*": ["src/*"] },
+      },
+    }),
+  );
+  writeFileSync(join(base, "src/message.ts"), 'export const message = "inherited paths agree";\n');
+  writeFileSync(join(app, "tsconfig.json"), JSON.stringify({ extends: "../base/tsconfig.json" }));
+  const entry = join(app, "main.ts");
+  writeFileSync(entry, 'import { message } from "@base/message";\nconsole.log(message);\n');
+
+  const load = loadProgram(entry);
+  try {
+    const diagnostics = checkPreflight(load);
+    expect(diagnostics, diagnostics.map((diag) => `${diag.code}: ${diag.message}`).join("\n"))
+      .toEqual([]);
+    expect(load.moduleOrder.map((file) => basename(file.fileName))).toEqual(["message.ts", "main.ts"]);
   } finally {
     load.dispose();
     rmSync(dir, { recursive: true, force: true });

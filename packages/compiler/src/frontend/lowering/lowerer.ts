@@ -15,7 +15,6 @@ import { InternalCompilerError } from "../../errors.js";
  */
 import { resolve } from "node:path";
 import { tsgoPath } from "../dts-paths.js";
-import { isRelativeSpecifier } from "../workspace-registry.js";
 import * as ts from "../ts7/adapter.js";
 import type { ScrDiagnostic } from "../../diagnostics/diagnostic.js";
 import {
@@ -1893,12 +1892,10 @@ export class Lowerer {
         const recvDecl = recvDecls.find(ts.isImportClause) ?? recvDecls[0];
         if (recvDecl && ts.isVariableDeclaration(recvDecl) && recvDecl.initializer) {
           const spec = requireSpecOf(recvDecl.initializer);
-          const dep =
-            spec === null
-              ? null
-              : isRelativeSpecifier(spec)
-                ? resolveImport(this.program, recvDecl.getSourceFile(), spec)
-                : npmStaticDepSf7(this.program, recvDecl.getSourceFile(), spec);
+          const dep = spec === null
+            ? null
+            : resolveImport(this.program, recvDecl.getSourceFile(), spec) ??
+              npmStaticDepSf7(this.program, recvDecl.getSourceFile(), spec);
           if (dep) symbol = this.cjsModuleExportSymbol(dep, ident.text);
         } else if (recvDecl && ts.isImportClause(recvDecl)) {
           // The DEFAULT-import spelling of the same binding: the dep is
@@ -2028,14 +2025,14 @@ export class Lowerer {
   }
 
   /** The source file a checker-resolved module-specifier node names. The
-   * checker path covers package.json aliases as well as relative imports;
-   * resolveImport is the fallback for the latter. */
+   * checker path is preferred; resolveImport is the canonical fallback for
+   * every project-module spelling. */
   private moduleSourceFileOf(from: ts.SourceFile, spec: ts.StringLiteral): ts.SourceFile | null {
     const moduleSymbol = this.checker.getSymbolAtLocation(spec);
     for (const decl of moduleSymbol ? this.checker.declarationsOf(moduleSymbol) : []) {
       if (ts.isSourceFile(decl)) return decl;
     }
-    return isRelativeSpecifier(spec.text) ? resolveImport(this.program, from, spec.text) : null;
+    return resolveImport(this.program, from, spec.text);
   }
 
   /** Follow one project-module export through the checker's resolved export
@@ -2262,22 +2259,19 @@ export class Lowerer {
       return null;
     }
     const spec = importDecl.moduleSpecifier.text;
-    // Bare specifiers resolve only for opted-in --npm-static packages —
-    // their CJS entries take the same default-binding interop as a
-    // relative require; every other bare import answers null and keeps
-    // its own machinery.
-    const dep = isRelativeSpecifier(spec)
-      ? resolveImport(this.program, importDecl.getSourceFile(), spec)
-      : npmStaticDepSf7(this.program, importDecl.getSourceFile(), spec);
+    // Project aliases/self-references resolve through the same entry point as
+    // relative imports; an opted-in --npm-static package is the fallback.
+    const dep = resolveImport(this.program, importDecl.getSourceFile(), spec) ??
+      npmStaticDepSf7(this.program, importDecl.getSourceFile(), spec);
     if (!dep || !isJsSourceFile(dep) || isNodeEsmFile(dep)) return null;
     return dep;
   }
 
   /** True when `expr` is an identifier bound by a top-level
-   * `const x = require("./local")` of a RELATIVE module — the CommonJS
-   * namespace binding — or of a bare specifier naming an opted-in
-   * --npm-static package (its CJS entry is a program module, so the
-   * binding is the same namespace over the same export table), or by a
+   * `const x = require("./local")` of a project module — relative,
+   * tsconfig-aliased, or package.json-mediated — or of a bare specifier
+   * naming an opted-in --npm-static package (its CJS entry is a program
+   * module, so the binding is the same namespace over the same export table), or by a
    * DEFAULT import of a CommonJS JS module (`import d from "./lib.cjs"`:
    * Node binds d to module.exports, the same value require answers).
    * Member accesses on it resolve through the export table (property
@@ -2298,7 +2292,7 @@ export class Lowerer {
       const spec = requireSpecOf(decl.initializer);
       if (spec === null) return false;
       if (
-        !isRelativeSpecifier(spec) &&
+        resolveImport(this.program, decl.getSourceFile(), spec) === null &&
         npmStaticDepSf7(this.program, decl.getSourceFile(), spec) === null
       ) {
         return false;
@@ -2513,16 +2507,15 @@ export class Lowerer {
    * their external dependencies by name). Null for everything else
    * (builtins load nothing; the rest kept its preflight fence). */
   requireInitStmt(spec: string, node: ts.Node): IrStmt | null {
-    // Relative requires resolve within the program; a BARE require can be
-    // a program-module edge too when it names an opted-in --npm-static
-    // package (one package requiring another — the resolution answered
-    // its shipped JS, the file is in the module order, and the reads
-    // alias its globals). Without the guarded %init call at this position
+    // Project requires resolve within the program; another bare require can
+    // be a program-module edge when it names an opted-in --npm-static package
+    // (one package requiring another — the resolution answered its shipped
+    // JS, the file is in the module order, and the reads alias its globals).
+    // Without the guarded %init call at this position
     // those globals stay uninitialized: the dep's module body would never
     // run.
-    const dep = isRelativeSpecifier(spec)
-      ? resolveImport(this.program, node.getSourceFile(), spec)
-      : npmStaticDepSf7(this.program, node.getSourceFile(), spec);
+    const dep = resolveImport(this.program, node.getSourceFile(), spec) ??
+      npmStaticDepSf7(this.program, node.getSourceFile(), spec);
     if (!dep || dep.fileName.endsWith(".json")) return null;
     if (this.asyncInitFiles.has(dep)) {
       this.unsupported(

@@ -67,7 +67,7 @@ export interface FileParts {
     });
   }
 
-/** A source file dynamic `import("<relative>")` can host as a COMPILED
+/** A source file dynamic `import("<project specifier>")` can host as a COMPILED
    * module namespace (lowerOwnModuleImport): a non-declaration program file
    * that is not JSON and not CommonJS-flavored (a CJS namespace is built
    * from module.exports through Node's lexer — a different surface with no
@@ -77,7 +77,6 @@ export interface FileParts {
     sf: ts.SourceFile,
     spec: string,
   ): ts.SourceFile | null {
-    if (!isRelativeSpecifier(spec) && !spec.startsWith("/")) return null;
     const dep = resolveImport(program, sf, spec);
     if (!dep || dep.isDeclarationFile) return null;
     if (dep.fileName.endsWith(".json") || dep.fileName.endsWith(".cts")) return null;

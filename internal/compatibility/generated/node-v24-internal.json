@@ -73681,7 +73681,8 @@
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1598-cjs-builtin-require/main.js",
           "tests/corpus/1612-cjs-module-globals.cjs",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -73718,7 +73719,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -73781,7 +73783,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -73817,7 +73820,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -73853,7 +73857,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -73919,7 +73924,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -74067,7 +74073,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -74129,7 +74136,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -74188,7 +74196,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -74224,7 +74233,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -74260,7 +74270,8 @@
         "tests": [
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
-          "tests/corpus/1629-require-main-filename.cjs"
+          "tests/corpus/1629-require-main-filename.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -77671,13 +77682,15 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
+          "tests/corpus/2790-dynamic-import-self-name/main.ts",
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/scoped-nested/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts"
@@ -77819,7 +77832,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -77828,7 +77842,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78226,7 +78241,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78235,7 +78251,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78259,7 +78276,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78268,7 +78286,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78292,7 +78311,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78301,7 +78321,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78325,7 +78346,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78334,7 +78356,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78358,7 +78381,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78367,7 +78391,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"
@@ -78391,7 +78416,8 @@
           "tests/corpus/2092-package-imports/main.ts",
           "tests/corpus/2120-package-self-import/main.ts",
           "tests/corpus/2124-imports-field-wildcard/main.ts",
-          "tests/corpus/2390-dot-requires/main.cjs"
+          "tests/corpus/2390-dot-requires/main.cjs",
+          "tests/corpus/2830-cjs-require-self-name/main.cjs"
         ]
       },
       "dynamic": {
@@ -78400,7 +78426,8 @@
         "tests": [
           "tests/fixtures/npm/cases/dual-entry/main.ts",
           "tests/fixtures/npm/cases/self-name/main.ts",
-          "tests/fixtures/npm/cases/scoped-nested/main.ts"
+          "tests/fixtures/npm/cases/scoped-nested/main.ts",
+          "tests/corpus/2790-dynamic-import-self-name/main.ts"
         ]
       },
       "anchorSource": "exact"

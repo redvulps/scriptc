@@ -40,7 +40,7 @@
  *    that path (no snapshot pins it). */
 
 import { builtinModules } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import * as ts from "./ts7/adapter.js";
 import type { ScrDiagnostic } from "../diagnostics/diagnostic.js";
 import {
@@ -50,7 +50,7 @@ import {
   tscPassthroughDiag,
   unsupportedDiag,
 } from "../diagnostics/diagnostic.js";
-import { isNodeModulesPath, nearestInvalidPackageJsonPath, nearestPackageType, nearestPkgJsonPath, projectDtsRuntimeSibling, resolveBareModule, resolveProjectImport, resolveRelativeModule, resolveTypeDirective, setProjectRealm } from "./resolve.js";
+import { isNodeModulesPath, nearestInvalidPackageJsonPath, nearestPackageType, nearestPkgJsonPath, projectDtsRuntimeSibling, resolveBareModule, resolveProjectModule, resolveTypeDirective, setProjectPathMappings, setProjectRealm } from "./resolve.js";
 import { probeNodeImportRefusal, probeNodeRequireRefusal } from "./npm.js";
 import { isNpmStaticPackage, npmStaticActive, npmStaticFsShadow, npmStaticPackageOfPath, reportNpmStaticOffender, setNpmStaticPackages } from "./npm-static.js";
 import { provenanceEntryFor, provenancePaths } from "./provenance-registry.js";
@@ -173,6 +173,27 @@ function adoptProjectConfig7(
   for (const key of ADOPTED_OPTIONS) {
     const value = parsed.options[key];
     if (value !== undefined) adopted[key] = value;
+  }
+  // TS 7 accepts `paths`, but no longer accepts `baseUrl` as a compiler
+  // option. Translate the established baseUrl+paths spelling into absolute
+  // targets: the synthesized config lives beside the entry rather than the
+  // real config, so preserving relative targets would silently change their
+  // meaning. The absolute map is also the own resolver's configuration.
+  const rawPaths = parsed.options["paths"];
+  if (rawPaths !== undefined && typeof rawPaths === "object" && rawPaths !== null) {
+    const configDir = dirname(configFile);
+    const rawBaseUrl = parsed.options["baseUrl"];
+    const base = typeof rawBaseUrl === "string"
+      ? (isAbsolute(rawBaseUrl) ? rawBaseUrl : resolve(configDir, rawBaseUrl))
+      : configDir;
+    const paths: Record<string, string[]> = {};
+    for (const [key, targets] of Object.entries(rawPaths as Record<string, unknown>)) {
+      if (!Array.isArray(targets)) continue;
+      paths[key] = targets
+        .filter((target): target is string => typeof target === "string")
+        .map((target) => isAbsolute(target) ? target : resolve(base, target));
+    }
+    adopted["paths"] = paths;
   }
   const nullChecks = adopted["strictNullChecks"] ?? adopted["strict"] ?? false;
   if (nullChecks !== true) {
@@ -327,6 +348,12 @@ function loadProgram7(
   externalTypes: ReadonlyMap<string, string> = new Map(),
 ): LoadResult & { disposeAll: () => void } {
   const config = adoptProjectConfig7(host, entryPath);
+  const configuredPaths = config.options["paths"];
+  setProjectPathMappings(
+    configuredPaths !== undefined && typeof configuredPaths === "object" && configuredPaths !== null
+      ? configuredPaths as Record<string, string[]>
+      : null,
+  );
   const nodeTypes = config.configFile ? resolveNodeTypes7(entryPath) : null;
   // skipLibCheck is FORCED with @types/node in the program: checking a
   // third-party lib's internals against OUR lib choice (es2025, no dyn) is
@@ -345,7 +372,10 @@ function loadProgram7(
   // driver against the package's real TypeScript, not its shipped .d.ts.
   const provenance = provenancePaths();
   if (provenance !== null || externalTypes.size > 0) {
-    const paths: Record<string, string[]> = { ...(provenance ?? {}) };
+    const paths: Record<string, string[]> = {
+      ...(configuredPaths as Record<string, string[]> | undefined),
+      ...(provenance ?? {}),
+    };
     for (const [specifier, declarationPath] of externalTypes) {
       paths[specifier] = [declarationPath];
     }
@@ -1487,7 +1517,7 @@ export function makeCycleAdmission(
  * resolveImport) for the lowering: CommonJS require statements lower to
  * guarded %init calls of exactly the module preflight resolved here. */
 function resolveImport7(program: ts.Program, from: ts.SourceFile, specifier: string): ts.SourceFile | null {
-  const resolved = resolveRelativeModule(from.fileName, specifier);
+  const resolved = resolveProjectModule(from.fileName, specifier);
   if (resolved === null) return null;
   return program.getSourceFile(resolved) ?? null;
 }
@@ -1505,7 +1535,7 @@ function resolveNpmImport7(
     return null;
   }
   // --provenance-sources: a registered specifier is NOT an npm import —
-  // its attested source compiles as program modules (resolveProjectImport
+  // its attested source compiles as program modules (resolveProjectModule
   // answers the entry), so no island embed and no .d.ts type surface.
   if (provenanceEntryFor(specifier) !== null) return null;
   const resolved = resolveBareModule(fromFileName, specifier);
@@ -2078,9 +2108,15 @@ function preflight7(load: LoadResult): {
           pos: stmt.getStart(sf),
         });
       };
+      // Project modules win before npm fallback: this is the source graph
+      // tsgo type-checked for tsconfig paths, package imports/self-references,
+      // and provenance entries. Ordinary packages still answer null here.
+      const projDep = isBare ? resolveImport7(program, sf, spec) : null;
       // "#" specifiers can never name an npm package — they are the
-      // imports-field family, resolved below.
-      const npm = isBare && !spec.startsWith("#") ? resolveNpmImport7(sf.fileName, spec) : null;
+      // imports-field family, resolved by the project arm above.
+      const npm = isBare && projDep === null && !spec.startsWith("#")
+        ? resolveNpmImport7(sf.fileName, spec)
+        : null;
       if (npm && isNodeTypesPath(npm.typesFile)) {
         diags.push(unsupportedDiag("SC1010", locOf7(stmt), unsupportedModuleFeatureOf(spec)));
         continue;
@@ -2110,19 +2146,13 @@ function preflight7(load: LoadResult): {
           continue;
         }
       }
-      // PROJECT imports: package.json-mediated specifiers that resolve to
-      // the program's own sources — `#alias` (the imports field) and
-      // self-name references (the nearest package.json's name through its
-      // exports). A source answer is an ordinary user-module edge, exactly
-      // like a relative import (the checker resolved the bindings the same
-      // way); a refused resolution is Node's startup crash with Node's
-      // exact message; what keeps a compile fence: the unsupported
-      // builtin and the types-only resolution (Node-hostable or ambiguous
-      // — scriptc's own limitations, named as such).
-      let projDep: ts.SourceFile | null = null;
+      // PROJECT imports: tsconfig paths and package.json-mediated specifiers
+      // that resolve to the program's own sources. A source answer is an
+      // ordinary user-module edge, exactly like a relative import (the
+      // checker resolved the bindings the same way); a refused resolution is
+      // Node's startup crash with Node's exact message; what keeps a compile
+      // fence is unsupported builtin or types-only surface.
       if (isBare && npmStaticDep === null) {
-        const resolved = resolveProjectImport(sf.fileName, spec);
-        projDep = resolved !== null ? (program.getSourceFile(resolved) ?? null) : null;
         if (projDep !== null && projDep.isDeclarationFile) {
           diags.push(
             unsupportedDiag(
@@ -2296,8 +2326,8 @@ function preflight7(load: LoadResult): {
             }
           }
           const isRelative = isRelativeSpecifier(req.spec);
-          let dep: ts.SourceFile | null = null;
-          if (!isRelative) {
+          let dep = resolveImport7(program, sf, req.spec);
+          if (dep === null && !isRelative) {
             // --npm-static: a require() of an OPTED-IN package is a
             // program-module edge exactly like the import-declaration
             // form above (bundle dists require their workspace siblings —
@@ -2324,8 +2354,6 @@ function preflight7(load: LoadResult): {
               }
               continue;
             }
-          } else {
-            dep = resolveImport7(program, sf, req.spec);
           }
           if (dep && dep.fileName.endsWith(".json")) {
             diags.push(unsupportedDiag("SC1012", loc, "require() of JSON modules"));
@@ -2365,6 +2393,15 @@ function preflight7(load: LoadResult): {
         if (load.externalTypes.has(spec)) {
           continue;
         }
+        const projectDep = resolveImport7(program, sf, spec);
+        if (projectDep !== null) {
+          if (projectDep.fileName.endsWith(".json")) {
+            diags.push(unsupportedDiag("SC1012", loc, "require() of JSON modules"));
+            continue;
+          }
+          deps.push({ dep: projectDep });
+          continue;
+        }
         if (!isRelativeSpecifier(spec)) {
           // --npm-static: opted-in packages ride the program-module edge
           // (the statement-level require branch above).
@@ -2383,12 +2420,6 @@ function preflight7(load: LoadResult): {
           }
           continue;
         }
-        const dep = resolveImport7(program, sf, spec);
-        if (dep && dep.fileName.endsWith(".json")) {
-          diags.push(unsupportedDiag("SC1012", loc, "require() of JSON modules"));
-          continue;
-        }
-        if (dep) deps.push({ dep });
       }
     }
   }
@@ -2533,19 +2564,17 @@ function cjsNamedImportLinkCheck(
   diags: ScrDiagnostic[],
 ): StartupCrash | null {
   const lexMemo = new Map<ts.SourceFile, Set<string>>();
-  const isRelative = isRelativeSpecifier;
-  // Relative specifiers resolve as ever; PROJECT imports (#alias/self-name
-  // — the same package.json-mediated edges preflight admits) join them so
+  // Project specifiers resolve as ever; aliases and package.json-mediated
+  // edges (#alias/self-name) join relative imports so
   // a named import THROUGH one of a CommonJS module keeps Node's lexer
   // check. Builtin/npm targets contribute nothing here — except opted-in
   // --npm-static packages, whose CJS entries face Node's lexer exactly
   // like program CJS files (their JS IS the program now).
   const resolveEdge = (from: ts.SourceFile, spec: string): ts.SourceFile | null => {
-    if (isRelative(spec)) return resolveImport7(program, from, spec);
+    const project = resolveImport7(program, from, spec);
+    if (project !== null) return project;
     const npmStatic = npmStaticDepSf7(program, from, spec);
-    if (npmStatic !== null) return npmStatic;
-    const p = resolveProjectImport(from.fileName, spec);
-    return p !== null ? (program.getSourceFile(p) ?? null) : null;
+    return npmStatic;
   };
   // Reexport targets union in only when they resolve to CommonJS program
   // files (Node's cjsPreparseModuleExports rule).
@@ -2793,16 +2822,11 @@ export function orderedImportsOf(
     if (ts.isImportDeclaration(stmt) && erasedTypeOnlyImport(stmt)) continue;
     if (!stmt.moduleSpecifier || !ts.isStringLiteral(stmt.moduleSpecifier)) continue;
     const spec = stmt.moduleSpecifier.text;
-    const isRelative = isRelativeSpecifier(spec);
-    // Relative edges as ever; PROJECT imports (#alias/self-name — the
-    // package.json-mediated specifiers preflight admits as user-module
-    // edges) resolve to the same dep so the importer's %init header calls
-    // theirs. Builtin and npm bare specifiers stay null (resolveProjectImport
-    // answers only inside the project) — EXCEPT opted-in --npm-static
+    // Every project edge (relative, tsconfig alias, #alias, or self-name)
+    // resolves to the same dep so the importer's %init header calls theirs.
+    // Builtin and npm bare specifiers stay null — EXCEPT opted-in --npm-static
     // packages, whose entries are program modules the header must init.
-    const dep = isRelative
-      ? resolveImport7(program, sf, spec)
-      : (npmStaticDepSf7(program, sf, spec) ?? resolveProjectImportSf7(program, sf, spec));
+    const dep = resolveImport7(program, sf, spec) ?? npmStaticDepSf7(program, sf, spec);
     const isJson = dep !== null && dep.fileName.endsWith(".json");
     out.push({ stmt, dep: isJson ? null : dep });
   }
@@ -2821,22 +2845,6 @@ export function npmStaticDepSf7(program: ts.Program, sf: ts.SourceFile, spec: st
   if (npm === null || !isNpmStaticPackage(npm.packageName)) return null;
   if (!isJsSourceFileName(npm.typesFile)) return null;
   return program.getSourceFile(npm.typesFile) ?? null;
-}
-
-/** resolveProjectImport lifted to SourceFile answers: the program's file
- * for a `#alias`/self-name resolution, or null (unresolved, or resolved
- * outside the program — declaration files included; callers that admit
- * d.ts answers probe resolveProjectImport directly). */
-function resolveProjectImportSf7(
-  program: ts.Program,
-  sf: ts.SourceFile,
-  spec: string,
-): ts.SourceFile | null {
-  if (spec.startsWith("node:")) return null;
-  const p = resolveProjectImport(sf.fileName, spec);
-  if (p === null) return null;
-  const dep = program.getSourceFile(p) ?? null;
-  return dep !== null && !dep.isDeclarationFile ? dep : null;
 }
 
 /** True when `expr` is the `module.exports` property access. */

@@ -5857,6 +5857,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2790-dynamic-import-self-name/main.ts": {
+   "order": [
+    "<repo>/tests/corpus/2790-dynamic-import-self-name/main.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/2791-record-optional-keys.ts": {
    "order": [
     "<repo>/tests/corpus/2791-record-optional-keys.ts"
@@ -5914,6 +5920,13 @@
   "<repo>/tests/corpus/2821-array-optional-numeric-comparisons.ts": {
    "order": [
     "<repo>/tests/corpus/2821-array-optional-numeric-comparisons.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2830-cjs-require-self-name/main.cjs": {
+   "order": [
+    "<repo>/tests/corpus/2830-cjs-require-self-name/lib.cjs",
+    "<repo>/tests/corpus/2830-cjs-require-self-name/main.cjs"
    ],
    "diags": []
   },
@@ -8603,6 +8616,14 @@
      "hint": "set \"strictNullChecks\": true (or \"strict\": true) in the project tsconfig"
     }
    ]
+  },
+  "<repo>/tests/fixtures/strictness/project-paths/main.ts": {
+   "order": [
+    "<repo>/tests/fixtures/strictness/project-paths/src/exact.ts",
+    "<repo>/tests/fixtures/strictness/project-paths/src/message.ts",
+    "<repo>/tests/fixtures/strictness/project-paths/main.ts"
+   ],
+   "diags": []
   },
   "<repo>/tests/fixtures/node-types/argv-env.ts": {
    "order": [

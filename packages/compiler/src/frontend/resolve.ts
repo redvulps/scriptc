@@ -5,10 +5,11 @@
  * TypeScript world cross this module, so both lanes may share it.
  *
  * The contract is PARITY with typescript@5.9.3's answers under scriptc's
- * fixed resolution options (moduleResolution bundler, allowJs, checkJs,
- * resolveJsonModule, allowImportingTsExtensions — program.ts's
- * COMPILER_OPTIONS): candidate lists below are transcribed from probed
- * failedLookupLocations of ts.resolveModuleName / the resolved answers on
+ * fixed resolution options plus the active project's normalized `paths`
+ * mappings (moduleResolution bundler, allowJs, checkJs, resolveJsonModule,
+ * allowImportingTsExtensions — program.ts's COMPILER_OPTIONS): candidate
+ * lists below are transcribed from probed failedLookupLocations of
+ * ts.resolveModuleName / the resolved answers on
  * the fixture tree, and the resolver parity suite (test/ts7/resolver-
  * parity.test.ts) sweeps every specifier of the whole corpus through BOTH
  * implementations and requires identical answers. Change 5.9.3's options
@@ -18,7 +19,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isNpmStaticPackage, npmStaticPackageOfPath, npmStaticTransformPkgJson } from "./npm-static.js";
 import { provenanceEntryFor } from "./provenance-registry.js";
 import { trackedAccessibleEntries, trackedDirectoryExists, trackedExists, trackedFileExists, trackedReadFile, trackedRealpath } from "./input-tracker.js";
-import { packageNameOfSpecifier } from "./workspace-registry.js";
+import { isRelativeSpecifier, packageNameOfSpecifier } from "./workspace-registry.js";
 
 function isFile(path: string): boolean {
   return trackedFileExists(path);
@@ -268,6 +269,55 @@ export function projectDtsRuntimeSibling(path: string): string | null {
   return isFile(sibling) ? sibling : null;
 }
 
+/** Active tsconfig `paths` mappings for the program being compiled. The
+ * targets are absolute: program.ts resolves them against the real config's
+ * baseUrl/config directory before handing the same map to tsgo's synthesized
+ * config and this resolver. Keeping the normalized map here prevents the
+ * checker and lowering from resolving the same bare project specifier in
+ * different coordinate systems. */
+let projectPathMappings: Readonly<Record<string, readonly string[]>> | null = null;
+
+export function setProjectPathMappings(
+  paths: Readonly<Record<string, readonly string[]>> | null,
+): void {
+  projectPathMappings = paths;
+}
+
+function resolveViaProjectPaths(specifier: string): string | null {
+  if (projectPathMappings === null) return null;
+  let match: { key: string; targets: readonly string[]; prefix: string; suffix: string } | null = null;
+  for (const [key, targets] of Object.entries(projectPathMappings)) {
+    const star = key.indexOf("*");
+    if (star < 0) {
+      if (key === specifier) {
+        match = { key, targets, prefix: key, suffix: "" };
+        break;
+      }
+      continue;
+    }
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    if (
+      specifier.startsWith(prefix) &&
+      specifier.length >= prefix.length + suffix.length &&
+      specifier.endsWith(suffix) &&
+      (match === null || (match.key.includes("*") && prefix.length > match.prefix.length))
+    ) {
+      match = { key, targets, prefix, suffix };
+    }
+  }
+  if (match === null) return null;
+  const wildcard = match.key.includes("*")
+    ? specifier.slice(match.prefix.length, specifier.length - match.suffix.length)
+    : "";
+  for (const target of match.targets) {
+    const candidate = target.includes("*") ? target.split("*").join(wildcard) : target;
+    const answer = loadAsFile(candidate) ?? loadAsDirectory(candidate) ?? (isFile(candidate) ? candidate : null);
+    if (answer !== null) return projectDtsRuntimeSibling(answer) ?? answer;
+  }
+  return null;
+}
+
 /** Resolves a RELATIVE import specifier from `fromFile` the way 5.9.3's
  * ts.resolveModuleName does under scriptc's options. Returns the resolved
  * absolute path (not realpath'd — matching 5.9.3, which keeps in-project
@@ -511,6 +561,8 @@ export function resolveProjectImport(fromFile: string, specifier: string): strin
   // program modules instead of island-embedding its published dist.
   const provenance = provenanceEntryFor(specifier);
   if (provenance !== null) return provenance;
+  const viaPaths = resolveViaProjectPaths(specifier);
+  if (viaPaths !== null) return viaPaths;
   const pkgDir = nearestPkgDir(dirname(resolve(fromFile)));
   if (pkgDir === null) return null;
   const pkg = pkgJsonOf(pkgDir) as (PkgJson & { imports?: unknown; exports?: unknown; type?: string }) | null;
@@ -543,6 +595,18 @@ export function resolveProjectImport(fromFile: string, specifier: string): strin
   if (target === null) return null;
   const path = join(pkgDir, target);
   return loadAsFile(path) ?? (isFile(path) ? path : null);
+}
+
+/** The one resolver entry point for source modules that compile into the
+ * current program. Relative paths, tsconfig aliases, package imports, package
+ * self-references, and provenance entries all meet here; builtins and ordinary
+ * npm packages deliberately answer null for their dedicated callers. */
+export function resolveProjectModule(fromFile: string, specifier: string): string | null {
+  if (isRelativeSpecifier(specifier) || isAbsolute(specifier)) {
+    return resolveRelativeModule(fromFile, specifier);
+  }
+  if (specifier.startsWith("node:")) return null;
+  return resolveProjectImport(fromFile, specifier);
 }
 
 /* 5.9.3 with allowJs resolves node_modules in TWO FULL PASSES (probed): the
@@ -825,6 +889,7 @@ export function clearResolveCaches(): void {
   pkgJsonCache.clear();
   workspaceMembersCache.clear();
   projectRealmPkgJson = null;
+  projectPathMappings = null;
 }
 
 /** True when `path` is under a node_modules directory (the

@@ -25,9 +25,9 @@
     { "chapter": "modules", "symbols": ["require.resolve", "require.resolve.paths", "extensions", "main", "module.require", "children", "isPreloading", "paths", "Module"], "status": "not-implemented" },
     { "chapter": "modules", "symbols": ["node:", "node_modules"], "status": "partial", "evidence": ["tests/fixtures/npm/cases/builtin-shims/main.ts", "tests/fixtures/npm/cases/create-require/main.ts"] },
     { "chapter": "esm", "symbols": ["import", "file:", "node:", "await", "url"], "status": "partial", "evidence": ["tests/fixtures/npm/cases/dynamic-import/main.ts", "tests/corpus/2646-top-level-await.ts"] },
-    { "chapter": "esm", "signatures": ["`import()` expressions"], "status": "partial", "evidence": ["tests/fixtures/npm/cases/dynamic-import/main.ts", "tests/corpus/2050-dynamic-import-own-module/main.ts"] },
+    { "chapter": "esm", "signatures": ["`import()` expressions"], "status": "partial", "evidence": ["tests/fixtures/npm/cases/dynamic-import/main.ts", "tests/corpus/2050-dynamic-import-own-module/main.ts", "tests/corpus/2790-dynamic-import-self-name/main.ts"] },
     { "chapter": "esm", "symbols": ["meta", "import.meta.resolve", "dirname", "filename", "main", "data:", "require", "__filename", "require.main", "require.resolve", "NODE_PATH", "require.extensions", "require.cache"], "status": "not-implemented" },
-    { "chapter": "packages", "symbols": ["package.json", "\"name\"", "\"main\"", "\"type\"", "\"exports\"", "\"imports\""], "status": "partial", "evidence": ["tests/fixtures/npm/cases/dual-entry/main.ts", "tests/fixtures/npm/cases/self-name/main.ts", "tests/fixtures/npm/cases/scoped-nested/main.ts"] },
+    { "chapter": "packages", "symbols": ["package.json", "\"name\"", "\"main\"", "\"type\"", "\"exports\"", "\"imports\""], "status": "partial", "evidence": ["tests/fixtures/npm/cases/dual-entry/main.ts", "tests/fixtures/npm/cases/self-name/main.ts", "tests/fixtures/npm/cases/scoped-nested/main.ts", "tests/corpus/2790-dynamic-import-self-name/main.ts"] },
     { "chapter": "packages", "symbols": ["--input-type"], "status": "not-applicable" },
     { "chapter": "typescript", "symbols": ["type"], "status": "not-implemented" }
   ],
