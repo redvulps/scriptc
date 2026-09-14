@@ -7897,6 +7897,43 @@ function seqExprSafeStmt(s: IrStmt): boolean {
   }
 }
 
+/** Run one supported `any` binary operation in the island. Checked-dynamic
+ * operands marshal in only after lowerBinary's identity-preserving native
+ * cases have had their chance (notably dyn strict equality). */
+function lowerAnyBinaryInIsland(
+  lowerer: Lowerer,
+  expr: ts.BinaryExpression,
+  left: IrExpr,
+  right: IrExpr,
+  loc: SrcLoc,
+): IrExpr {
+  const op = expr.operatorToken.kind;
+  const JS_BIN: Partial<Record<ts.SyntaxKind, IrJsOp>> = {
+    [ts.SyntaxKind.PlusToken]: "add",
+    [ts.SyntaxKind.MinusToken]: "sub",
+    [ts.SyntaxKind.AsteriskToken]: "mul",
+    [ts.SyntaxKind.SlashToken]: "div",
+    [ts.SyntaxKind.PercentToken]: "mod",
+    [ts.SyntaxKind.AsteriskAsteriskToken]: "pow",
+    [ts.SyntaxKind.LessThanToken]: "lt",
+    [ts.SyntaxKind.LessThanEqualsToken]: "le",
+    [ts.SyntaxKind.GreaterThanToken]: "gt",
+    [ts.SyntaxKind.GreaterThanEqualsToken]: "ge",
+    [ts.SyntaxKind.EqualsEqualsEqualsToken]: "eq",
+    [ts.SyntaxKind.ExclamationEqualsEqualsToken]: "neq",
+  };
+  const jop = JS_BIN[op];
+  if (jop === undefined) {
+    lowerer.unsupported("SC1090", expr, `operator '${ts.tokenToString(op) ?? ts.SyntaxKind[op]}' on 'any' values`);
+  }
+  const type = jsOpResultKind(jop) === "bool" ? BOOL : JSVAL;
+  return {
+    kind: "jsOp", op: jop,
+    args: [lowerer.jsvalIn(left, expr.left), lowerer.jsvalIn(right, expr.right)],
+    type, loc,
+  };
+}
+
 export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr {
     const loc = locOf(expr);
     const op = expr.operatorToken.kind;
@@ -8394,6 +8431,13 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
         (left.type.kind === "dyn" && lowerer.anyOrigin(expr.left)) ||
         (right.type.kind === "dyn" && lowerer.anyOrigin(expr.right))
       ) {
+        // `JSON.parse` and other checked-dynamic producers deliberately
+        // remain dyn when assigned to an `any` local: eagerly converting
+        // the binding would deep-copy its data and sever aliases. At an
+        // operator the dynamic build can cross only the operands and let
+        // the engine apply JS's exact coercion semantics. Static builds
+        // retain the SC2011 promise that --dynamic lifts this site.
+        if (lowerer.dynamic) return lowerAnyBinaryInIsland(lowerer, expr, left, right, loc);
         lowerer.anyOpFence(`the '${ts.tokenToString(op) ?? ts.SyntaxKind[op]}' operator`, expr);
       }
       // tsc allows ===/!== on unknown (arithmetic/comparisons it rejects
@@ -8405,30 +8449,7 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
     // computes. Comparisons come back as static bools; arithmetic stays
     // an island value ('1 as any + "x"' is a string over there).
     if (left.type.kind === "jsval" || right.type.kind === "jsval") {
-      const JS_BIN: Partial<Record<ts.SyntaxKind, IrJsOp>> = {
-        [ts.SyntaxKind.PlusToken]: "add",
-        [ts.SyntaxKind.MinusToken]: "sub",
-        [ts.SyntaxKind.AsteriskToken]: "mul",
-        [ts.SyntaxKind.SlashToken]: "div",
-        [ts.SyntaxKind.PercentToken]: "mod",
-        [ts.SyntaxKind.AsteriskAsteriskToken]: "pow",
-        [ts.SyntaxKind.LessThanToken]: "lt",
-        [ts.SyntaxKind.LessThanEqualsToken]: "le",
-        [ts.SyntaxKind.GreaterThanToken]: "gt",
-        [ts.SyntaxKind.GreaterThanEqualsToken]: "ge",
-        [ts.SyntaxKind.EqualsEqualsEqualsToken]: "eq",
-        [ts.SyntaxKind.ExclamationEqualsEqualsToken]: "neq",
-      };
-      const jop = JS_BIN[op];
-      if (jop === undefined) {
-        lowerer.unsupported("SC1090", expr, `operator '${ts.tokenToString(op) ?? ts.SyntaxKind[op]}' on 'any' values`);
-      }
-      const type = jsOpResultKind(jop) === "bool" ? BOOL : JSVAL;
-      return {
-        kind: "jsOp", op: jop,
-        args: [lowerer.jsvalIn(left, expr.left), lowerer.jsvalIn(right, expr.right)],
-        type, loc,
-      };
+      return lowerAnyBinaryInIsland(lowerer, expr, left, right, loc);
     }
     // An unchecked array read keeps its undefined arm in the IR even when
     // the checker typed the binding as `string`. An optional string is not
