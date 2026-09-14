@@ -327,6 +327,7 @@ class LlEmitter {
     labels?: string[];
     frameDepth: number;
     scopeDepth: number;
+    finallyDepth: number;
   }[] = [];
   private currentLocals = new Map<string, IrLocal>();
   private captureIds = new Set<string>();
@@ -339,8 +340,8 @@ class LlEmitter {
    * `tryDepth` snapshots tryStack.length at region entry: a throw inside
    * a pending-return finally copy propagates OUT of the completing try
    * (past its own catch), so the copies emit under the truncated stack.
-   * break/continue never cross a finally (frontend fence + validator
-   * backstop), so return and the two tryCatch paths are the only copies. */
+   * break/continue use the same region snapshots through
+   * emitFinallysForJump. */
   private finallyStack: { frameDepth: number; scopeDepth: number; tryDepth: number; body: IrStmt[] }[] = [];
   /** Enclosing try contexts, innermost last — the compile-time unwind
    * targets (CEmitter.tryStack): a pending check or `throw` inside a try
@@ -2269,6 +2270,34 @@ class LlEmitter {
     for (let i = this.scopes.length - 1; i >= scopeDepth; i--) this.releaseScope(this.scopes[i]!);
   }
 
+  /** Run the finally regions an abrupt loop/block jump crosses, then
+   * release to the already-resolved target. This is the return path's
+   * completion walk without a parked result value. */
+  private emitFinallysForJump(finallyDepth: number, frameDepth: number, scopeDepth: number): void {
+    if (this.finallyStack.length <= finallyDepth) {
+      this.releaseForJump(frameDepth, scopeDepth);
+      return;
+    }
+    const savedFrames = this.frames;
+    const savedScopes = this.scopes;
+    const savedFinally = this.finallyStack;
+    const savedTry = this.tryStack;
+    for (let i = savedFinally.length - 1; i >= finallyDepth && !this.B.isTerminated(); i--) {
+      const fin = savedFinally[i]!;
+      this.releaseForJump(fin.frameDepth, fin.scopeDepth);
+      this.frames = this.frames.slice(0, fin.frameDepth);
+      this.scopes = this.scopes.slice(0, fin.scopeDepth);
+      this.finallyStack = savedFinally.slice(0, i);
+      this.tryStack = savedTry.slice(0, fin.tryDepth);
+      this.emitBlock(fin.body);
+    }
+    if (!this.B.isTerminated()) this.releaseForJump(frameDepth, scopeDepth);
+    this.frames = savedFrames;
+    this.scopes = savedScopes;
+    this.finallyStack = savedFinally;
+    this.tryStack = savedTry;
+  }
+
   /** THE unwind path at a point where an exception is pending: release
    * everything between here and the innermost try handler — or the whole
    * function — and branch to the handler / return a dummy value (never
@@ -3348,6 +3377,7 @@ class LlEmitter {
           labels: s.labels,
           frameDepth: this.frames.length,
           scopeDepth: this.scopes.length,
+          finallyDepth: this.finallyStack.length,
         });
         this.emitBlock(s.body);
         this.jumpTargets.pop();
@@ -3387,6 +3417,7 @@ class LlEmitter {
           ...(s.labels !== undefined && { labels: s.labels }),
           frameDepth: this.frames.length,
           scopeDepth: this.scopes.length,
+          finallyDepth: this.finallyStack.length,
         });
         this.emitBlock(s.body);
         this.jumpTargets.pop();
@@ -3408,6 +3439,7 @@ class LlEmitter {
           ...(s.labels !== undefined && { labels: s.labels }),
           frameDepth: this.frames.length,
           scopeDepth: this.scopes.length,
+          finallyDepth: this.finallyStack.length,
         });
         this.emitBlock(s.body);
         this.jumpTargets.pop();
@@ -3465,6 +3497,7 @@ class LlEmitter {
           ...(s.labels !== undefined && { labels: s.labels }),
           frameDepth: this.frames.length,
           scopeDepth: this.scopes.length,
+          finallyDepth: this.finallyStack.length,
         });
         this.emitBlock(s.body);
         this.jumpTargets.pop();
@@ -3532,6 +3565,7 @@ class LlEmitter {
           ...(s.labels !== undefined && { labels: s.labels }),
           frameDepth: this.frames.length,
           scopeDepth: this.scopes.length,
+          finallyDepth: this.finallyStack.length,
         });
         // The loop variable is a fresh const per iteration: its scope opens
         // here, holds the (for ref elements: owned +1) current element, and
@@ -3590,8 +3624,8 @@ class LlEmitter {
           }
         }
         if (!target) throw new InternalCompilerError("llvm emitter bug: break target not found");
-        this.releaseForJump(target.frameDepth, target.scopeDepth);
-        B.terminate(`br label %${target.brkLabel}`);
+        this.emitFinallysForJump(target.finallyDepth, target.frameDepth, target.scopeDepth);
+        if (!B.isTerminated()) B.terminate(`br label %${target.brkLabel}`);
         break;
       }
       case "continue": {
@@ -3606,8 +3640,8 @@ class LlEmitter {
           }
         }
         if (!target || target.contLabel === null) throw new InternalCompilerError("llvm emitter bug: continue target not found");
-        this.releaseForJump(target.frameDepth, target.scopeDepth);
-        B.terminate(`br label %${target.contLabel}`);
+        this.emitFinallysForJump(target.finallyDepth, target.frameDepth, target.scopeDepth);
+        if (!B.isTerminated()) B.terminate(`br label %${target.contLabel}`);
         break;
       }
       case "return": {
@@ -3737,10 +3771,9 @@ class LlEmitter {
    *     <unwind>                   stash (it unwinds through the synthetic
    *   try.e:                       scope entry) — JS's semantics exactly
    *
-   * Returns inside tryBody/catchBody ride the finallyStack (inline copies
-   * at the return site — see `return`); break/continue never cross a
-   * finally and no jump leaves a finally body (frontend fence + validator
-   * backstop). */
+   * Abrupt completions inside tryBody/catchBody ride the finallyStack:
+   * returns inline copies at the return site, while break/continue use the
+   * shared region walk before branching to their resolved target. */
   private emitTryCatch(s: IrStmt & { kind: "tryCatch" }): void {
     const B = this.B;
     const hasCatch = s.catchBody !== null;
@@ -3839,11 +3872,27 @@ class LlEmitter {
         B.line(`${stash} = call ptr @scr_exc_take() ; stash across finally`);
         B.line(`store ptr ${stash}, ptr ${stashSlot}`);
         this.scopes.push([{ slot: stashSlot, type: CAUGHT }]);
+        const suppressHandler = s.suppressFinallyErrors
+          ? {
+              label: B.newLabel("try.fs"),
+              used: false,
+              frameDepth: this.frames.length,
+              scopeDepth: this.scopes.length,
+            }
+          : null;
+        if (suppressHandler) this.tryStack.push(suppressHandler);
         this.emitBlock(s.finallyBody!);
+        if (suppressHandler) this.tryStack.pop();
         this.scopes.pop(); // normal completion keeps the stash for the re-raise
         B.line(`call void @scr_rethrow(ptr ${stash})`);
         B.line(`call void @scr_caught_release(ptr ${stash})`);
         this.emitUnwind();
+        if (suppressHandler?.used) {
+          B.startBlock(suppressHandler.label);
+          this.declare(`declare void @scr_exc_suppress(ptr)`);
+          B.line(`call void @scr_exc_suppress(ptr ${stash}) ; consumes stash`);
+          this.emitUnwind();
+        }
       }
       B.startBlock(endLabel);
     } else {
@@ -3912,6 +3961,7 @@ class LlEmitter {
       ...(s.labels !== undefined && { labels: s.labels }),
       frameDepth: this.frames.length,
       scopeDepth: this.scopes.length,
+      finallyDepth: this.finallyStack.length,
     });
     const scope: LlScopeEntry[] = [];
     this.scopes.push(scope);

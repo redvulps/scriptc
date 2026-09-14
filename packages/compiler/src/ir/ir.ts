@@ -1492,23 +1492,19 @@ export type IrStmt =
    * completion AND on the exception path (after catch, or with the
    * exception still pending when there is no catch — it keeps propagating
    * after the finally completes; a throw inside the finally replaces it).
-   * A `return` inside tryBody/catchBody additionally runs the finally on
-   * its way out (the backend's PENDING-RETURN path: the value is computed
-   * and snapshotted FIRST, every crossed finally runs inner-to-outer, then
-   * the function returns — finally mutations of returned locals are
-   * invisible, Node-exact; a throw inside such a finally replaces the
-   * pending return, releasing the snapshot). The frontend still rejects
-   * break/continue crossing a try-with-finally and ANY jump out of a
-   * finally body, so normal, exception, and pending-return are the only
-   * completions a finally sees; plain try/catch has no such restriction
-   * (jumps out release the try scopes like any other jump). Each body is
-   * its own lexical scope. */
+   * Every abrupt completion crossing the region runs the finally
+   * inner-to-outer. Return values are snapshotted first; break/continue
+   * retain their resolved targets; and a completion raised inside the
+   * finally replaces the pending one. Each body is its own lexical scope. */
   | {
       kind: "tryCatch";
       tryBody: IrStmt[];
       catchBody: IrStmt[] | null;
       catchLocalId: string | null;
       finallyBody: IrStmt[] | null;
+      /** Resource-management cleanup: if the guarded body and cleanup both
+       * throw, raise a SuppressedError instead of replacing the first error. */
+      suppressFinallyErrors?: true;
       loc: SrcLoc;
     };
 

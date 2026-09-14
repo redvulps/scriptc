@@ -28,6 +28,10 @@
     "webstreams": "unreviewed"
   },
   "evidenceByManifestPrefix": {
+    "syntax.using-declarations": ["tests/corpus/2841-using-sync.ts"],
+    "syntax.await-using-declarations": ["tests/corpus/2842-await-using.ts"],
+    "syntax.for-using-of": ["tests/corpus/2845-for-using-of.ts"],
+    "syntax.finally-abrupt-completions": ["tests/corpus/2840-finally-completions.ts"],
     "node-builtin.assert": ["tests/corpus/1600-assert-passing.ts", "tests/corpus/1609-assert-async.ts"],
     "node-builtin.async_hooks": ["tests/corpus/2213-async-local-storage.cjs"],
     "node-builtin.buffer": ["tests/corpus/1402-buffer-encodings.ts", "tests/corpus/1660-buffer-read-write-num.ts"],
@@ -78,6 +82,10 @@
     { "chapter": "esm", "symbols": ["meta", "import.meta.resolve", "data:", "require", "__filename", "require.main", "require.resolve", "NODE_PATH", "require.extensions", "require.cache"], "status": "not-implemented" },
     { "chapter": "packages", "symbols": ["package.json", "\"name\"", "\"main\"", "\"type\"", "\"exports\"", "\"imports\""], "status": "partial", "evidence": ["tests/corpus/2092-package-imports/main.ts", "tests/corpus/2120-package-self-import/main.ts", "tests/corpus/2124-imports-field-wildcard/main.ts", "tests/corpus/2390-dot-requires/main.cjs", "tests/corpus/2830-cjs-require-self-name/main.cjs"] },
     { "chapter": "packages", "symbols": ["--input-type"], "status": "not-applicable" },
+    { "chapter": "child_process", "signatures": ["`subprocess[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
+    { "chapter": "fs", "signatures": ["`filehandle[Symbol.asyncDispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
+    { "chapter": "readline", "signatures": ["`rl[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
+    { "chapter": "timers", "signatures": ["`immediate[Symbol.dispose]()`", "`timeout[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "typescript", "symbols": ["type"], "status": "not-implemented" }
   ],
   "dedicated": [

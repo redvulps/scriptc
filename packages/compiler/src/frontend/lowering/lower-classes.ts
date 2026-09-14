@@ -3825,10 +3825,10 @@ export function lowerClassMembers(lowerer: Lowerer, info: ClassInfo): IrFunction
    * COMPUTED name that folds to one compile-time string
    * (foldedStringKeyOf — the object-literal computed-key machinery
    * applied to method positions; tsc late-bound the member under exactly
-   * that name), or the reserved slot "sym:iterator" for
-   * `[Symbol.iterator]` (a name no user identifier can spell — the
-   * accessor "get:x" convention; for-of, spreads, and array destructuring
-   * dispatch to it through the iterator protocol). Null for genuinely
+   * that name), or a reserved `sym:*` slot for the well-known symbols the
+   * compiler consumes as language protocols (iterator and explicit
+   * resource management). These names are unspellable as user identifiers,
+   * like the accessor `get:x` convention. Null for genuinely
    * runtime-keyed names — the computed-member fences stay. */
   export function classMemberNameOf(lowerer: Lowerer, name: ts.PropertyName): string | null {
     if (ts.isIdentifier(name)) return name.text;
@@ -3838,8 +3838,11 @@ export function lowerClassMembers(lowerer: Lowerer, info: ClassInfo): IrFunction
     if (!ts.isComputedPropertyName(name)) return null;
     let e = name.expression;
     while (ts.isParenthesizedExpression(e)) e = e.expression;
-    if (ts.isPropertyAccessExpression(e) && lowerer.stdlibGlobalMember(e, "Symbol") === "iterator") {
-      return "sym:iterator";
+    if (ts.isPropertyAccessExpression(e)) {
+      const member = lowerer.stdlibGlobalMember(e, "Symbol");
+      if (member === "iterator" || member === "dispose" || member === "asyncDispose") {
+        return `sym:${member}`;
+      }
     }
     return lowerer.foldedStringKeyOf(name.expression);
   }

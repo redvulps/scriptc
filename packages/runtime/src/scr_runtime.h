@@ -2121,6 +2121,9 @@ typedef struct ScrCaught {
 ScrCaught *scr_exc_take(void); /* moves the pending cell into a fresh box (+1) */
 ScrCaught *scr_caught_retain(ScrCaught *c);
 void scr_caught_release(ScrCaught *c); /* NULL-tolerant */
+/* Replace the pending disposal error with a SuppressedError and consume the
+ * original body-error snapshot. The current exception cell must be pending. */
+void scr_exc_suppress(ScrCaught *suppressed);
 /* Borrows the box; re-raises the saved exception exactly (payload RETAINED
  * — the binding stays live until its scope exits). */
 void scr_rethrow(const ScrCaught *c);

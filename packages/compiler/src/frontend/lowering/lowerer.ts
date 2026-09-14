@@ -106,7 +106,7 @@ import { lowerNodeTestModuleCall, lowerTestDirectCall, lowerTestMethodCall, lowe
 import { lowerAssertModuleCall, lowerAssertDirectCall } from "./lower-assert.js";
 import { lowerUtilModuleCall } from "./lower-inspect.js";
 import { lowerComptime, comptimeBakeable, rejectComptimeCaptures, comptimeValueToIr } from "./lower-comptime.js";
-import { lowerStmts, noteBlockedBindings, isBlockedBinding, lowerScopedBlock, predeclareForwardCapture, predeclareForwardFnDecl, predeclareForwardVar, rejectJumpCrossingFinally, lowerStmt, lowerVarStatement, lowerDestructuringDecl, lowerDestructuringAssignParts, lowerBindingPattern, lowerJsvalBindingPattern, checkBindingElement, bindPatternTarget, isParseArgsDynCheckerType, lowerVarDeclList, lowerVarDecl, lowerSwitch, lowerTry, lowerExprStatement, lowerForOf, lowerForStatement } from "./lower-stmts.js";
+import { lowerStmts, noteBlockedBindings, isBlockedBinding, lowerScopedBlock, predeclareForwardCapture, predeclareForwardFnDecl, predeclareForwardVar, lowerStmt, lowerVarStatement, lowerDestructuringDecl, lowerDestructuringAssignParts, lowerBindingPattern, lowerJsvalBindingPattern, checkBindingElement, bindPatternTarget, isParseArgsDynCheckerType, lowerVarDeclList, lowerVarDecl, lowerSwitch, lowerTry, lowerExprStatement, lowerForOf, lowerForStatement } from "./lower-stmts.js";
 import { FieldTarget, lowerDynObjectLiteral, lowerExpr, maybeNarrow, lowerUnitComparison, lowerNullishCoalesce, lowerOptionalChain, finishOptionalChain, lowerCondition, ensureBool, requireTruthyUnion, eqComparableUnion, lowerIntrinsicProperty, lowerArrayLiteral, lowerObjectLiteral, lowerShorthandValue, rejectThisInObjectMethod, lowerElementAccess, lowerElementWrite, lowerRecordKeyRead, ensureString, lowerTemplate, lowerAsExpression, lowerPrefixUnary, lowerBinary, lowerCaughtTypeofTest, caughtRead, caughtLocalOf, caughtToString, lowerInstanceOf, lowerRegexLiteral, lowerFieldRead, lowerUnionProperty, fieldTarget, fieldGetExpr, fieldSetStmt, lowerFieldCompound, uniqueSymbolKeyOf, foldedStringKeyOf } from "./lower-exprs.js";
 import type { ExpandoMember } from "./lower-expando.js";
 import { lowerRecordFieldCall, lowerObjectMethodCall } from "./lower-calls.js";
@@ -201,16 +201,12 @@ export interface FnCtx {
    * and record themselves here; the post-pass unifies the types and wraps
    * each return onto the settled one. `returnType` holds the DYN pin. */
   inferReturn?: { entries: { stmt: IrStmt; node: ts.Expression | null }[] } | null;
-  /** Enclosing control constructs, innermost last: loops/switches/labeled
-   * blocks (jump targets — `labels` carries their JS label names so labeled
-   * break/continue resolve), try-with-finally regions ("tryFinally" — a
-   * try/catch body guarded by a finally: `return` crosses them now via the
-   * backend's pending-return path; break/continue still reject), and
-   * finally BLOCKS themselves ("finallyBlock" — jumps out stay rejected: a
-   * return there would REPLACE a pending completion, a model the emitter
-   * doesn't implement; see rejectJumpCrossingFinally). Per function: a
-   * nested function's jumps never bind to enclosing constructs. */
-  ctl: { kind: "loop" | "switch" | "block" | "tryFinally" | "finallyBlock"; labels?: string[] }[];
+  /** Enclosing jump targets, innermost last. `labels` carries the source
+   * statement's JS label names so labeled break/continue resolve. Finally
+   * regions do not appear here: the backends route every abrupt completion
+   * through the cleanup regions it crosses. Per function, so a nested
+   * function's jumps never bind to enclosing constructs. */
+  ctl: { kind: "loop" | "switch" | "block"; labels?: string[] }[];
 }
 
 export function newFnCtx(
@@ -8755,12 +8751,9 @@ export class Lowerer {
     return lowerScopedBlock(this, stmt);
   }
 
-  /** Lowers inside a control-construct marker (loop/switch/labeled block/
-   * try-with-finally/finally block) so the jump fences below know what a
-   * break/continue/return crosses. `labels` carries the construct's JS
-   * label names when the source statement was labeled — labeled jumps
-   * resolve against them. */
-  inCtl<T>(kind: "loop" | "switch" | "block" | "tryFinally" | "finallyBlock", fn: () => T, labels?: string[]): T {
+  /** Lowers inside a jump-target marker. `labels` carries the construct's
+   * source label names so labeled jumps resolve against them. */
+  inCtl<T>(kind: "loop" | "switch" | "block", fn: () => T, labels?: string[]): T {
     this.ctx.ctl.push(labels !== undefined && labels.length > 0 ? { kind, labels } : { kind });
     try {
       return fn();
@@ -8780,10 +8773,6 @@ export class Lowerer {
     const labels = this.pendingLabels;
     this.pendingLabels = null;
     return labels ?? undefined;
-  }
-
-  rejectJumpCrossingFinally(kw: "break" | "continue" | "return", stmt: ts.Statement, label?: string): void {
-    return rejectJumpCrossingFinally(this, kw, stmt, label);
   }
 
   lowerStmt(stmt: ts.Statement): IrStmt | IrStmt[] | null {

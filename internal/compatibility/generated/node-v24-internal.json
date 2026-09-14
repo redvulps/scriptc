@@ -195,9 +195,9 @@
       "apiEntries": 39,
       "static": {
         "supported": 0,
-        "partial": 5,
+        "partial": 6,
         "refused": 1,
-        "not-implemented": 33,
+        "not-implemented": 32,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -507,9 +507,9 @@
       "apiEntries": 276,
       "static": {
         "supported": 0,
-        "partial": 38,
+        "partial": 39,
         "refused": 0,
-        "not-implemented": 238,
+        "not-implemented": 237,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -987,9 +987,9 @@
       "apiEntries": 43,
       "static": {
         "supported": 0,
-        "partial": 3,
+        "partial": 4,
         "refused": 0,
-        "not-implemented": 40,
+        "not-implemented": 39,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -1179,9 +1179,9 @@
       "apiEntries": 25,
       "static": {
         "supported": 0,
-        "partial": 18,
+        "partial": 19,
         "refused": 0,
-        "not-implemented": 7,
+        "not-implemented": 6,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -13987,7 +13987,8 @@
         "evidence": "derived:descendants",
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
-          "tests/corpus/1565-spawn-pipe-streams.ts"
+          "tests/corpus/1565-spawn-pipe-streams.ts",
+          "tests/corpus/2844-node-disposable-resources.ts"
         ]
       },
       "dynamic": {
@@ -14543,8 +14544,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:child_process"
+        "status": "partial",
+        "evidence": "compiler-feature:child_process.subprocess",
+        "tests": [
+          "tests/corpus/2844-node-disposable-resources.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -50379,7 +50383,8 @@
         "evidence": "derived:descendants",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2844-node-disposable-resources.ts"
         ]
       },
       "dynamic": {
@@ -51165,8 +51170,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:fs"
+        "status": "partial",
+        "evidence": "compiler-feature:fs.filehandle",
+        "tests": [
+          "tests/corpus/2844-node-disposable-resources.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -89369,7 +89377,8 @@
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
-          "tests/corpus/1475-readline-closed-stdin.ts"
+          "tests/corpus/1475-readline-closed-stdin.ts",
+          "tests/corpus/2844-node-disposable-resources.ts"
         ]
       },
       "dynamic": {
@@ -90080,8 +90089,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:readline"
+        "status": "partial",
+        "evidence": "compiler-feature:readline.rl",
+        "tests": [
+          "tests/corpus/2844-node-disposable-resources.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -102322,7 +102334,8 @@
           "tests/corpus/1805-timer-callback-args.ts",
           "tests/corpus/2093-timers-promises.ts",
           "tests/corpus/2672-http-request-response-callback.ts",
-          "tests/corpus/2689-http-server-timeout-properties.ts"
+          "tests/corpus/2689-http-server-timeout-properties.ts",
+          "tests/corpus/2844-node-disposable-resources.ts"
         ]
       },
       "dynamic": {
@@ -102920,8 +102933,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:timers"
+        "status": "partial",
+        "evidence": "compiler-feature:timers.immediate",
+        "tests": [
+          "tests/corpus/2844-node-disposable-resources.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -103162,11 +103178,9 @@
       },
       "static": {
         "status": "partial",
-        "evidence": "compiler-dedicated:timeout",
+        "evidence": "compiler-feature:timers.timeout",
         "tests": [
-          "tests/corpus/1780-http-res-surface.ts",
-          "tests/corpus/2672-http-request-response-callback.ts",
-          "tests/corpus/2689-http-server-timeout-properties.ts"
+          "tests/corpus/2844-node-disposable-resources.ts"
         ]
       },
       "dynamic": {

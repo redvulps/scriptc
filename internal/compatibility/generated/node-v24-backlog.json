@@ -8,8 +8,8 @@
     "tiers": {
       "static": {
         "replace-refusal": 73,
-        "verify-gap": 2764,
-        "audit-partial": 371,
+        "verify-gap": 2760,
+        "audit-partial": 375,
         "classify": 3,
         "implement": 93
       },
@@ -6115,12 +6115,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:child_process",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:child_process.subprocess",
+          "tests": [
+            "tests/corpus/2844-node-disposable-resources.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -34619,12 +34621,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:fs",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:fs.filehandle",
+          "tests": [
+            "tests/corpus/2844-node-disposable-resources.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -74499,12 +74503,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:readline",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:readline.rl",
+          "tests": [
+            "tests/corpus/2844-node-disposable-resources.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -86027,12 +86033,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:timers",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:timers.immediate",
+          "tests": [
+            "tests/corpus/2844-node-disposable-resources.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -86315,11 +86323,9 @@
           "action": "audit-partial",
           "verification": "test-backed",
           "confidence": "high",
-          "source": "compiler-dedicated:timeout",
+          "source": "compiler-feature:timers.timeout",
           "tests": [
-            "tests/corpus/1780-http-res-surface.ts",
-            "tests/corpus/2672-http-request-response-callback.ts",
-            "tests/corpus/2689-http-server-timeout-properties.ts"
+            "tests/corpus/2844-node-disposable-resources.ts"
           ]
         },
         "dynamic": {

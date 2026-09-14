@@ -3539,6 +3539,13 @@
       "note": "the lowered call form takes no arguments"
     },
     {
+      "id": "syntax.await-using-declarations",
+      "kind": "syntax",
+      "name": "block- and function-scoped await using declarations",
+      "status": "static",
+      "note": "LIFO asynchronous disposal through [Symbol.asyncDispose], with synchronous fallback"
+    },
+    {
       "id": "syntax.class-declarations-inside-functions",
       "kind": "syntax",
       "name": "class declarations inside functions",
@@ -3651,6 +3658,20 @@
       "code": "SC1090"
     },
     {
+      "id": "syntax.finally-abrupt-completions",
+      "kind": "syntax",
+      "name": "abrupt completions through finally",
+      "status": "static",
+      "note": "return, throw, break, continue, and labeled jumps run crossed finally blocks; a finally completion replaces the pending one"
+    },
+    {
+      "id": "syntax.for-using-of",
+      "kind": "syntax",
+      "name": "for (using ... of ...) over arrays",
+      "status": "static",
+      "note": "each array element is disposed at the end of its iteration, including break and continue paths"
+    },
+    {
       "id": "syntax.namespaces",
       "kind": "syntax",
       "name": "namespaces",
@@ -3670,6 +3691,13 @@
       "name": "typeof expressions",
       "status": "unsupported",
       "code": "SC1090"
+    },
+    {
+      "id": "syntax.using-declarations",
+      "kind": "syntax",
+      "name": "block- and function-scoped using declarations",
+      "status": "static",
+      "note": "LIFO disposal on normal and abrupt scope exit through [Symbol.dispose]"
     },
     {
       "id": "syntax.with-statements",

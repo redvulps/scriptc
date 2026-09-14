@@ -99,7 +99,10 @@ const FORCED_OPTIONS: ts.Ts7CompilerOptions = {
   // classification is intentionally independent below; this option is only
   // the binder's scope decision.
   moduleDetection: ts.ModuleDetectionKind.Force,
-  lib: ["lib.es2025.d.ts"],
+  // Explicit resource management is an ESNext library slice in TS 7 even
+  // though Node 24 ships the runtime protocol. Include that focused lib
+  // without widening the rest of the standard-library target past ES2025.
+  lib: ["lib.es2025.d.ts", "lib.esnext.disposable.d.ts"],
   types: [],
   allowImportingTsExtensions: true,
   allowJs: true,

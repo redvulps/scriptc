@@ -9,7 +9,7 @@ These are rejected at compile time with an `SC` code, a code frame, and usually 
 **Language edges**
 
 - Loose `==`/`!=` comparisons compile between two numbers, two strings, or two booleans, and for the `x == null`/`x != null` nullish idiom. Other coercing comparisons are rejected — use `===`/`!==`.
-- `break`/`continue` crossing a `finally` block, and any `return`/`break`/`continue` out of the `finally` body itself, are fenced. An ordinary `return` through `finally` compiles.
+- Block- and function-scoped `using` and `await using` compile for statically represented classes with zero-parameter disposal methods and for the supported FileHandle, timer, immediate, child-process, and readline handles. Array `for (using ... of ...)` loops compile. Top-level and switch-clause declarations, disposal through an engine-held package value, and the `DisposableStack` constructors remain fenced; a caught `SuppressedError` exposes its Node-compatible `name` and `message`, while its `error` and `suppressed` payload properties remain outside the static catch surface.
 - Generics monomorphize when the target resolves statically. The remaining edges include generic functions declared inside another function, generic class expressions, generic classes whose base depends on their own type parameters, and generic methods that would require dynamic dispatch.
 - Generic function values must be pinned at use to a concrete signature and come from a never-reassigned binding; unpinned or rebound values remain fenced. Built-in and standard-library functions often have call-only lowerings, so values such as `const g = Math.floor` are rejected — call them directly.
 

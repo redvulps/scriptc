@@ -1,8 +1,8 @@
 import { InternalCompilerError } from "../../errors.js";
 /* Statement lowering: the statement dispatch (lowerStmt), variable
  * declarations including destructuring patterns, scoped blocks, control
- * flow (if/while/for/for-of/do, switch, try/catch, jumps with the
- * finally-crossing fence), and blocked-binding poisoning. */
+ * flow (if/while/for/for-of/do, switch, try/catch, abrupt completions),
+ * explicit resource management, and blocked-binding poisoning. */
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { arrayValueRead, arrayValueStore, arrayValueType } from "./array-values.js";
@@ -31,6 +31,149 @@ import { canonicalBuiltinModule } from "../builtin-modules.js";
 import { isRelativeSpecifier } from "../workspace-registry.js";
 import { probeNodeRequireRefusal } from "../npm.js";
 import { numLit, varRef } from "../../ir/build.js";
+import { constituentTypes } from "../ts7/checker.js";
+
+interface UsingRegistration {
+  acquire: IrStmt;
+  cleanup: IrStmt[];
+  loc: SrcLoc;
+}
+
+interface UsingMarker {
+  start: number;
+  cleanup: IrStmt[];
+  loc: SrcLoc;
+}
+
+function isAwaitUsing(list: ts.VariableDeclarationList): boolean {
+  return (list.flags & ts.NodeFlags.AwaitUsing) === ts.NodeFlags.AwaitUsing;
+}
+
+function stdlibTypeNamed(lowerer: Lowerer, node: ts.Node, name: string): boolean {
+  const visit = (t: ts.Type): boolean => {
+    if (t.flags & ts.TypeFlags.Union) return constituentTypes(t).some(visit);
+    const sym = t.getAliasSymbol() ?? t.getSymbol();
+    return sym?.name === name && lowerer.checker.declarationsOf(sym).some((d) => lowerer.isStdlibFile(d.getSourceFile()));
+  };
+  return visit(lowerer.typeOf(node));
+}
+
+function cleanupCall(lowerer: Lowerer, node: ts.Identifier, value: IrExpr, awaited: boolean): { call: IrExpr; async: boolean } | null {
+  const loc = locOf(node);
+  if (value.type.kind === "object") {
+    const info = lowerer.classes.get(value.type.className);
+    if (!info) lowerer.flushDeferredClass(value.type.className);
+    const asyncFound = awaited && info ? lowerer.findMethodOn(info, "sym:asyncDispose") : null;
+    const syncFound = info ? lowerer.findMethodOn(info, "sym:dispose") : null;
+    const member = asyncFound ? "sym:asyncDispose" : syncFound ? "sym:dispose" : null;
+    const found = asyncFound ?? syncFound;
+    if (!info || !member || !found) return null;
+    if (found.sig.params.length !== 0) {
+      lowerer.unsupported("SC1090", node, `${member === "sym:asyncDispose" ? "[Symbol.asyncDispose]" : "[Symbol.dispose]"} methods with parameters`);
+    }
+    return {
+      call: lowerer.accessorCall(value.type.className, member, value, [], found.sig.ret, loc),
+      async: member === "sym:asyncDispose",
+    };
+  }
+  if (value.type.kind === "fileHandle") {
+    if (!awaited) lowerer.unsupported("SC1090", node, "synchronous 'using' with an async-only FileHandle (use 'await using')");
+    return {
+      call: { kind: "libCall", fn: "fileHandle.close", args: [value], type: { kind: "promise", inner: VOID }, loc },
+      async: true,
+    };
+  }
+  if (value.type.kind === "child") {
+    return {
+      call: {
+        kind: "libCall",
+        fn: "child.kill",
+        args: [value, { kind: "strLit", value: "SIGTERM", type: STRING, loc }],
+        type: BOOL,
+        loc,
+      },
+      async: false,
+    };
+  }
+  if (value.type.kind === "f64") {
+    if (stdlibTypeNamed(lowerer, node, "Timeout")) {
+      return { call: { kind: "libCall", fn: "timers.clearTimeout", args: [value], type: VOID, loc }, async: false };
+    }
+    if (stdlibTypeNamed(lowerer, node, "Immediate")) {
+      return { call: { kind: "libCall", fn: "timers.clearImmediate", args: [value], type: VOID, loc }, async: false };
+    }
+    if (stdlibTypeNamed(lowerer, node, "Interface")) {
+      return { call: { kind: "libCall", fn: "rl.close", args: [value], type: VOID, loc }, async: false };
+    }
+  }
+  return null;
+}
+
+function cleanupForValue(lowerer: Lowerer, node: ts.Identifier, value: IrExpr, awaited: boolean): IrStmt[] {
+  const loc = locOf(node);
+  if (isUnitType(value.type)) return [];
+  if (value.type.kind === "union") {
+    const def = lowerer.unions.get(value.type.unionId);
+    if (!def) throw new InternalCompilerError(`lowerer bug: unknown using union ${value.type.unionId}`);
+    const out: IrStmt[] = [];
+    for (let tag = 0; tag < def.arms.length; tag++) {
+      const arm = def.arms[tag]!;
+      if (isUnitType(arm)) continue;
+      const narrowed: IrExpr = { kind: "unionNarrow", unionId: value.type.unionId, tag, value, type: arm, loc };
+      const body = cleanupForValue(lowerer, node, narrowed, awaited);
+      out.push({
+        kind: "if",
+        cond: { kind: "unionIsTag", unionId: value.type.unionId, tag, negated: false, value, type: BOOL, loc },
+        then: body,
+        else_: null,
+        loc,
+      });
+    }
+    return out;
+  }
+  const cleanup = cleanupCall(lowerer, node, value, awaited);
+  if (!cleanup) {
+    lowerer.unsupported("SC1090", node, `disposing values of type '${lowerer.fmt(value.type)}' (use a class with a zero-parameter [Symbol.dispose] or [Symbol.asyncDispose] method, or a supported Node resource)`);
+  }
+  const call = cleanup!.call;
+  if (cleanup!.async) {
+    if (call.type.kind !== "promise" || call.type.inner.kind !== "void") {
+      lowerer.unsupported("SC1090", node, "[Symbol.asyncDispose] methods whose result is not Promise<void>");
+    }
+    return [{ kind: "exprStmt", expr: { kind: "awaitExpr", value: call, type: VOID, loc }, loc }];
+  }
+  const out: IrStmt[] = [{ kind: "exprStmt", expr: call, loc }];
+  if (awaited) out.push({ kind: "exprStmt", expr: { kind: "libCall", fn: "async.hop", args: [], type: VOID, loc }, loc });
+  return out;
+}
+
+function lowerUsingStatement(lowerer: Lowerer, stmt: ts.VariableStatement): UsingRegistration[] {
+  if (ts.isSourceFile(stmt.parent)) {
+    lowerer.unsupported("SC1090", stmt, "top-level 'using' declarations (wrap the resource lifetime in a block or function)");
+  }
+  if (ts.isCaseClause(stmt.parent) || ts.isDefaultClause(stmt.parent)) {
+    lowerer.unsupported("SC1090", stmt, "'using' declarations directly in switch clauses (wrap the clause body in a block)");
+  }
+  const awaited = isAwaitUsing(stmt.declarationList);
+  if (awaited && !lowerer.ctx.isAsync) {
+    lowerer.unsupported("SC1090", stmt, "'await using' outside an async function or top-level-await module");
+  }
+  const registrations: UsingRegistration[] = [];
+  for (const decl of stmt.declarationList.declarations) {
+    if (!ts.isIdentifier(decl.name)) lowerer.unsupported("SC1031", decl.name);
+    if (decl.initializer === undefined) lowerer.unsupported("SC1090", decl, "a 'using' declaration without an initializer");
+    const acquire = lowerer.lowerVarDecl(decl, false);
+    if (!acquire) throw new InternalCompilerError("lowerer bug: using declaration emitted no acquisition");
+    const symbol = lowerer.checker.getSymbolAtLocation(decl.name);
+    if (!symbol) throw new InternalCompilerError("lowerer bug: using declaration has no symbol");
+    const binding = lowerer.bindingIn(lowerer.ctx, symbol) ?? lowerer.globalsBySymbol.get(symbol) ?? null;
+    if (!binding) throw new InternalCompilerError("lowerer bug: using declaration has no runtime binding");
+    const value = varRef(binding.id, binding.type, locOf(decl.name));
+    const cleanup = cleanupForValue(lowerer, decl.name, value, awaited);
+    registrations.push({ acquire, cleanup, loc: locOf(decl) });
+  }
+  return registrations;
+}
 
 /** `const X = /* @__PURE__ *\/ makeX()` at a module's top level: every
  * declarator initialized by a call (or `new`) carrying the bundler PURE
@@ -107,6 +250,7 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
    * `let a = 1, b = a + 1;`) but is counted once. */
   export function lowerStmts(lowerer: Lowerer, stmts: readonly ts.Statement[]): IrStmt[] {
     const out: IrStmt[] = [];
+    const usingMarkers: UsingMarker[] = [];
     // JAVASCRIPT sources defer their compile fences to runtime (the
     // JS-input design: no annotations exist to change what lowers, so a
     // statement whose construct has no static lowering compiles to a
@@ -137,7 +281,26 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
         }
         const diagsBefore = lowerer.diags.length;
         try {
-          const lowered = lowerer.lowerStmt(stmt);
+          let lowered: IrStmt | IrStmt[] | null;
+          let appended = false;
+          if (
+            ts.isVariableStatement(stmt) &&
+            (stmt.declarationList.flags & ts.NodeFlags.Using) !== 0
+          ) {
+            const registrations = lowerUsingStatement(lowerer, stmt);
+            const accounting: IrStmt[] = [];
+            for (const registration of registrations) {
+              out.push(registration.acquire);
+              accounting.push(registration.acquire, ...registration.cleanup);
+              if (registration.cleanup.length > 0) {
+                usingMarkers.push({ start: out.length, cleanup: registration.cleanup, loc: registration.loc });
+              }
+            }
+            lowered = accounting;
+            appended = true;
+          } else {
+            lowered = lowerer.lowerStmt(stmt);
+          }
           // The lib-boundary chokepoint (lib-boundary.ts): checked-dynamic
           // arguments that reached builtin-call slots without the checked
           // coercion get their dynCheck here, and the uncoercible ones
@@ -145,8 +308,10 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
           // becomes the statement's runtimeFence exactly like every other
           // deferred rejection.
           if (lowered) enforceLibBoundary(lowerer, lowered);
-          if (Array.isArray(lowered)) out.push(...lowered);
-          else if (lowered) out.push(lowered);
+          if (!appended) {
+            if (Array.isArray(lowered)) out.push(...lowered);
+            else if (lowered) out.push(lowered);
+          }
           // Island accounting (--dynamic coverage): a statement that lowered
           // but carries island constructs compiles DYNAMICALLY — its work
           // runs in the embedded engine, and the report says so instead of
@@ -199,6 +364,23 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
             if (fence) out.push(fence);
           }
         }
+      }
+      // Each acquisition protects the remainder of its lexical statement
+      // list. Folding from the last registration outward produces the
+      // spec's LIFO nesting and ensures a later initializer failure only
+      // disposes resources acquired before it.
+      for (let i = usingMarkers.length - 1; i >= 0; i--) {
+        const marker = usingMarkers[i]!;
+        const body = out.splice(marker.start);
+        out.push({
+          kind: "tryCatch",
+          tryBody: body,
+          catchBody: null,
+          catchLocalId: null,
+          finallyBody: marker.cleanup,
+          suppressFinallyErrors: true,
+          loc: marker.loc,
+        });
       }
     } finally {
       lowerer.activeStmtLists.pop();
@@ -553,46 +735,6 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
     }
   }
 
-/** The finally fences. `return` crossing OUT of a try/catch body guarded
-   * by a finally is SUPPORTED now (the backend's pending-return path runs
-   * every crossed finally inner-to-outer before the function returns, the
-   * value snapshotted first — Node-exact); what stays rejected is (a) any
-   * jump out of a finally BLOCK itself (a return there would REPLACE a
-   * pending completion — clearing a still-propagating exception or
-   * abandoning a pending return, a model the emitter doesn't implement),
-   * and (b) break/continue crossing a try-with-finally (their targets bind
-   * inside the function; the pending-action plumbing exists only for
-   * return, the shape real code needs). Rejected, not miscompiled. Plain
-   * try/catch is transparent to jumps (it never appears in ctl). A LABELED
-   * jump walks outward past every construct (labeled targets can be
-   * arbitrarily far out) until the entry carrying its label, applying the
-   * same finally fences to everything crossed on the way. */
-  export function rejectJumpCrossingFinally(lowerer: Lowerer, kw: "break" | "continue" | "return", stmt: ts.Statement, label?: string): void {
-    const ctl = lowerer.ctx.ctl;
-    for (let i = ctl.length - 1; i >= 0; i--) {
-      const c = ctl[i]!;
-      if (c.kind === "finallyBlock") {
-        lowerer.unsupported(
-          "SC1090",
-          stmt,
-          `'${kw}' out of a 'finally' block (it would replace the pending completion — restructure so the finally only cleans up)`,
-        );
-      }
-      if (c.kind === "tryFinally") {
-        if (kw !== "return") {
-          lowerer.unsupported("SC1090", stmt, `'${kw}' crossing a 'finally' block`);
-        }
-        continue; // return runs the finally on the way out — supported
-      }
-      if (kw === "return") continue; // return crosses every construct
-      if (label !== undefined) {
-        if (c.labels?.includes(label)) return; // the labeled target — binds here
-        continue; // an inner construct the labeled jump exits
-      }
-      if (c.kind === "loop" || (kw === "break" && c.kind === "switch")) return; // binds inside the region
-    }
-  }
-
 /** `lbl: stmt` — labeled statements. A label chain collapses to one name
    * list (`a: b: while ...` — both names target the same loop, JS-exact).
    * Loops and switches take the labels DIRECTLY (a labeled continue needs
@@ -688,7 +830,6 @@ export function lowerStmt(lowerer: Lowerer, stmt: ts.Statement): IrStmt | IrStmt
     if (ts.isForOfStatement(stmt)) return lowerer.lowerForOf(stmt);
     if (ts.isLabeledStatement(stmt)) return lowerLabeled(lowerer, stmt);
     if (ts.isReturnStatement(stmt)) {
-      lowerer.rejectJumpCrossingFinally("return", stmt);
       // Implicit-any instance RETURN INFERENCE (lower-calls'
       // resolveInferredReturn): the value lowers BARE and the statement
       // records itself — the post-pass settles the instance's return type
@@ -761,10 +902,8 @@ export function lowerStmt(lowerer: Lowerer, stmt: ts.Statement): IrStmt | IrStmt
             `'${kw} ${label}' targeting this statement form (the labeled statement lowers through a desugar that has no label point)`,
           );
         }
-        lowerer.rejectJumpCrossingFinally(kw, stmt, label);
         return { kind: kw, label, loc: locOf(stmt) };
       }
-      lowerer.rejectJumpCrossingFinally(kw, stmt);
       // tsc rejects break outside loops/switches and continue outside loops,
       // so the context is always valid here (the validator re-checks).
       return { kind: kw, loc: locOf(stmt) };
@@ -3904,7 +4043,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     }
   }
 
-/** try/catch/finally. Supported subset:
+/** try/catch/finally:
    * - `catch { }` (bindingless) discards the thrown value on entry.
    * - `catch (e)` binds it as a CAUGHT local — a snapshot of the exception
    *   cell, deliberately narrower than dyn: the supported uses are the
@@ -3915,24 +4054,14 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
    *   assignment are fenced (SC1063 and friends); destructuring patterns
    *   are SC1062. The `: any` / `: unknown` annotations tsc admits both
    *   lower the same way (tsc narrows either through the tests).
-   * - `finally` runs on normal completion, on exception paths, and on the
-   *   way out of a `return` in the try/catch body (the backend's
-   *   pending-return path — inner-to-outer through nested finallys, the
-   *   value snapshotted before the finally runs, Node-exact).
-   *   break/continue crossing a try-with-finally stay rejected, as does
-   *   any jump out of the finally body itself (it would replace a pending
-   *   completion — rejectJumpCrossingFinally). Plain try/catch places no
-   *   restriction on jumps.
+   * - `finally` runs on normal completion, exception paths, and every
+   *   abrupt completion that crosses it. Return values are snapshotted
+   *   before cleanup; an abrupt completion inside the finally replaces the
+   *   pending one, matching JavaScript completion-record semantics.
    * Each block is its own lexical scope (the binding lives in a scope
    * WRAPPING the catch block, like the spec's catch environment). */
   export function lowerTry(lowerer: Lowerer, stmt: ts.TryStatement): IrStmt {
-    const hasFinally = stmt.finallyBlock !== undefined;
-    // try/catch bodies are jump-fenced only when a finally guards them.
-    const lowerGuarded = (block: ts.Block): IrStmt[] =>
-      hasFinally
-        ? lowerer.inCtl("tryFinally", () => lowerer.lowerScopedBlock(block))
-        : lowerer.lowerScopedBlock(block);
-    const tryBody = lowerGuarded(stmt.tryBlock);
+    const tryBody = lowerer.lowerScopedBlock(stmt.tryBlock);
     let catchBody: IrStmt[] | null = null;
     let catchLocalId: string | null = null;
     if (stmt.catchClause) {
@@ -3945,17 +4074,15 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
         try {
           const local = lowerer.declareLocal(vd.name, vd.name.text, CAUGHT, false);
           catchLocalId = local.id;
-          catchBody = lowerGuarded(stmt.catchClause.block);
+          catchBody = lowerer.lowerScopedBlock(stmt.catchClause.block);
         } finally {
           lowerer.scopes.pop();
         }
       } else {
-        catchBody = lowerGuarded(stmt.catchClause.block);
+        catchBody = lowerer.lowerScopedBlock(stmt.catchClause.block);
       }
     }
-    const finallyBody = stmt.finallyBlock
-      ? lowerer.inCtl("finallyBlock", () => lowerer.lowerScopedBlock(stmt.finallyBlock!))
-      : null;
+    const finallyBody = stmt.finallyBlock ? lowerer.lowerScopedBlock(stmt.finallyBlock) : null;
     return {
       kind: "tryCatch",
       tryBody,
@@ -6474,9 +6601,7 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
       );
     }
     const list = stmt.initializer;
-    if ((list.flags & ts.NodeFlags.Using) !== 0) {
-      lowerer.unsupported("SC1090", list, "'using' declarations (dispose-at-scope-exit semantics)");
-    }
+    const resourceLoop = (list.flags & ts.NodeFlags.Using) !== 0;
     const isLet = (list.flags & ts.NodeFlags.Let) !== 0 || (list.flags & ts.NodeFlags.BlockScoped) === 0;
     const decl = list.declarations[0]!; // the grammar allows exactly one
     // `for (const [k, v] of pairs)` — a destructuring loop variable: the
@@ -6534,7 +6659,18 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
         lowerer.runtimeOptionalStorageLocals.add(root);
       }
       const body = lowerer.inCtl("loop", () => lowerer.lowerScopedBlock(stmt.statement), labels);
-      return forValues(local.id, body);
+      if (!resourceLoop) return forValues(local.id, body);
+      const resource = varRef(local.id, local.type, locOf(decl.name));
+      const cleanup = cleanupForValue(lowerer, decl.name, resource, isAwaitUsing(list));
+      return forValues(local.id, [{
+        kind: "tryCatch",
+        tryBody: body,
+        catchBody: null,
+        catchLocalId: null,
+        finallyBody: cleanup,
+        suppressFinallyErrors: true,
+        loc: locOf(decl),
+      }]);
     } finally {
       lowerer.scopes.pop();
     }

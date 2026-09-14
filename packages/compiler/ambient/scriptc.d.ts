@@ -31,13 +31,14 @@
  * ref() restores it; hasRef() reports the state. The methods return the
  * handle for chaining. Under @types/node this MERGES with NodeJS.Timeout
  * (both map to the same numeric handle). */
-interface Timeout {
+interface Timeout extends Disposable {
   ref(): Timeout;
   unref(): Timeout;
   hasRef(): boolean;
   /* Re-arms the timer to fire at now + the original delay (Node's
    * Timeout.refresh). Chaining like ref/unref. */
   refresh(): Timeout;
+  [Symbol.dispose](): void;
 }
 /* The callback is invoked with NO arguments; the second overload admits a
  * callback declared with one parameter for the sleep idiom —
