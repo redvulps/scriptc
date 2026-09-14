@@ -28,7 +28,9 @@ import {
   fenceOrDropOptionKey,
   isChildSurfaceMember,
 } from "./surfaces.js";
-import { conditionalSpreadOf, droppableStatic, lowerAbsenceProbe, lowerDynObjectLiteral } from "./lower-exprs.js";
+import { lowerAbsenceProbe } from "./lower-exprs.js";
+import { conditionalSpreadOf, lowerDynObjectLiteral } from "./expressions/object-literals.js";
+import { isSafeToDiscard } from "./expressions/evaluation-safety.js";
 import { HTTP2_CONSTANTS } from "./http2-constants.js";
 import { CRYPTO_CIPHERS, CRYPTO_CONSTANTS, CRYPTO_CURVES, CRYPTO_HASHES } from "./crypto-tables.js";
 import { generatorMeta, timerStyleCallback } from "./lower-calls.js";
@@ -215,7 +217,7 @@ function lowerStaticallyUndefinedBuiltinArg(lowerer: Lowerer, node: ts.Expressio
 }
 
 function defaultAfterUndefined(value: IrExpr, dflt: IrExpr): IrExpr {
-  if (droppableStatic(value)) return dflt;
+  if (isSafeToDiscard(value)) return dflt;
   return {
     kind: "seqExpr",
     stmts: [{ kind: "exprStmt", expr: value, loc: value.loc }],
@@ -6500,7 +6502,7 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
           const evaluated = lowerer.lowerExprExpecting(encodingNode, STRING);
           if (canonical === raw) return evaluated;
           const normalized: IrExpr = { kind: "strLit", value: canonical, type: STRING, loc: locOf(encodingNode) };
-          return droppableStatic(evaluated)
+          return isSafeToDiscard(evaluated)
             ? normalized
             : {
               kind: "seqExpr",
@@ -6577,9 +6579,9 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
           // data and encoding, even though it schedules no callback. Strings
           // already evaluate encoding while producing `bytes`; byte chunks
           // fold both ignored argument effects into this final ABI slot.
-          if (thirdUndefined && !droppableStatic(thirdUndefined)) {
+          if (thirdUndefined && !isSafeToDiscard(thirdUndefined)) {
             const effects = isBytes
-              ? [encoding, thirdUndefined].filter((effect) => !droppableStatic(effect))
+              ? [encoding, thirdUndefined].filter((effect) => !isSafeToDiscard(effect))
               : [thirdUndefined];
             runtimeEncoding = {
               kind: "seqExpr",

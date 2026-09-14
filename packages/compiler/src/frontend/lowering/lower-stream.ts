@@ -35,7 +35,7 @@ import { isJsSourceFile, locOf } from "../program.js";
 import { newFnCtx, own } from "./lowerer.js";
 import { appendImplicitUndefinedReturn } from "./lower-calls.js";
 import { bufEncoding, knownBufEncoding } from "./lower-containers.js";
-import { probeLower } from "./lower-exprs.js";
+import { tryLowerExpression } from "./expressions/try-lower-expression.js";
 import { BOOL, DYN, F64, IrExpr, IrFunction, IrLibFn, IrStmt, IrType, RUNTIME_STREAM_CLASSES, STRING, SrcLoc, VOID, arrayOf, bytesOf, canBoxFuncIntoDyn, funcOf, typeEquals, typeKey } from "../../ir/ir.js";
 import { boolLit, numLit, strLit } from "../../ir/build.js";
 
@@ -962,7 +962,7 @@ export function lowerStreamUnderscoreAssign(lowerer: Lowerer, expr: ts.BinaryExp
   if (!methodName.startsWith("_")) return null;
   const optionByMethod = new Map(Array.from(UNDERSCORE_METHODS, ([o, m]) => [m, o] as const));
   if (!optionByMethod.has(methodName) && methodName !== "_writev" && methodName !== "_construct") return null;
-  const recv = probeLower(lowerer, expr.left.expression);
+  const recv = tryLowerExpression(lowerer, expr.left.expression);
   if (!recv || recv.type.kind !== "object") return null;
   const info = lowerer.classes.get(recv.type.className);
   let base: ClassInfo | null = null;
@@ -1479,7 +1479,7 @@ export function lowerStreamMethodCall(lowerer: Lowerer, call: ts.CallExpression,
       // A checker-untyped chunk (the JS lane's `t.write(x.toString())`
       // shapes): the LOWERING may still land on a supported kind — probe
       // it (the probe's IR is discarded; the caller re-lowers the node).
-      const probed = probeLower(lowerer, node);
+      const probed = tryLowerExpression(lowerer, node);
       if (probed?.type.kind === "string") return "string";
       if (probed?.type.kind === "bytes" && probed.type.elem === "u8") return "bytes";
       if (probed?.type.kind === "dyn") return "dyn";

@@ -24,7 +24,9 @@ import { lowerStreamUnderscoreAssign, streamClassAliasDecl, streamSidesOf } from
 import { lowerHttpResPropertyAssignment, lowerHttpServerTimeoutAssignment, lowerServerCloseOverrideAssignment } from "./lower-server.js";
 import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireCalleeFileOf, createRequireNamespaceDecl, textCodecBindingDecl } from "./lower-builtins.js";
 import { lowerEnumDeclaration } from "./lower-enums.js";
-import { abstractPropertyDeclOf, aliasTypeofNarrows, isMatchSliceType, lowerAbsenceProbe, lowerGroupsProjection, lowerOptionalNumber, matchResultNamedGroupsOf, probeLower, pureReemittable, runtimeOptionalTrueIds, symbolFieldInfo, withRuntimeOptionalNarrowed } from "./lower-exprs.js";
+import { abstractPropertyDeclOf, aliasTypeofNarrows, isMatchSliceType, lowerAbsenceProbe, lowerGroupsProjection, lowerOptionalNumber, matchResultNamedGroupsOf, runtimeOptionalTrueIds, symbolFieldInfo, withRuntimeOptionalNarrowed } from "./lower-exprs.js";
+import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
+import { tryLowerExpression } from "./expressions/try-lower-expression.js";
 import { UNSUPPORTED, checkerPanicDiag, isCheckerPanic, requiresDynamicDiag } from "../../diagnostics/diagnostic.js";
 import { isParseArgsDynTypeName, isUnitOnlyTsType, unitOnlyUnion } from "../type-mapper.js";
 import { canonicalBuiltinModule } from "../builtin-modules.js";
@@ -3901,7 +3903,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     }
     const prefix: IrStmt[] = [];
     let stableDisc = disc;
-    if (!pureReemittable(disc)) {
+    if (!isSafeToRepeat(disc)) {
       const temp = lowerer.declareHiddenLocal("%switch", unionType);
       prefix.push({ kind: "varDecl", localId: temp.id, init: disc, loc });
       stableDisc = { kind: "varRef", localId: temp.id, type: unionType, loc };
@@ -3969,7 +3971,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
           if (
             test.kind !== "strLit" && test.kind !== "numLit" &&
             test.kind !== "boolLit" && test.kind !== "unitLit" &&
-            !pureReemittable(test)
+            !isSafeToRepeat(test)
           ) {
             lowerer.unsupported(
               "SC1090",
@@ -4807,10 +4809,10 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
           // chain): the dyn keyed write — the value converts INTO dyn
           // (closures box), the runtime sets the member on OBJ receivers
           // and throws Node's TypeErrors on the rest. The receiver is
-          // PROBED (probeLower) and claimed exactly when it lowers to
+          // PROBED (tryLowerExpression) and claimed exactly when it lowers to
           // dyn; typed receivers keep their own lowerings and fences.
           if (!expr.left.questionDotToken) {
-            const recv = probeLower(lowerer, expr.left.expression);
+            const recv = tryLowerExpression(lowerer, expr.left.expression);
             if (recv && recv.type.kind === "dyn") {
               const loc = locOf(expr);
               const key: IrExpr = { kind: "strLit", value: expr.left.name.text, type: STRING, loc: locOf(expr.left.name) };
@@ -6495,7 +6497,7 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
             elemT = { kind: "union", unionId: lowerer.unions.intern(arms) };
           }
         }
-        if (elemT !== null && pureReemittable(iterable)) {
+        if (elemT !== null && isSafeToRepeat(iterable)) {
           const loc = locOf(stmt.expression);
           const shapeId = iterable.type.shapeId;
           const snapshotElem = elemT;

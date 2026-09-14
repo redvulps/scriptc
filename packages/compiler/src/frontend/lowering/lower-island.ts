@@ -9,7 +9,8 @@ import { BOOL, BYTES_U8, DYN, F64, IrExpr, IrStmt, IrType, JSVAL, MAX_ISLAND_CAL
 import { ISLAND_SURFACE, IslandFnEntry, STATIC_MATH_FNS, STATIC_MATH_PROPS, boundaryIntoIslandMsg } from "./surfaces.js";
 import { requiresDynamicApiDiag, requiresDynamicPackageDiag } from "../../diagnostics/diagnostic.js";
 import { esmNamedImportLinkCrash, isCjsJsFile, isJsSourceFile, locOf, npmPackageNameOf } from "../program.js";
-import { foldedStringKeyOf, lowerDynObjectLiteral, pureReemittable } from "./lower-exprs.js";
+import { foldedStringKeyOf, lowerDynObjectLiteral } from "./expressions/object-literals.js";
+import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
 import { PoisonError, dynUndefinedExpr, newFnCtx, nodeThrowExpr, own } from "./lowerer.js";
 import {
   NODE24_FETCH_COMPAT_PROFILE,
@@ -170,7 +171,7 @@ import {
     if (e.kind === "regexLit") {
       src = { kind: "strLit", value: e.pattern, type: STRING, loc };
       flags = { kind: "strLit", value: e.flags, type: STRING, loc };
-    } else if (pureReemittable(e)) {
+    } else if (isSafeToRepeat(e)) {
       src = { kind: "regexIntrinsic", method: "source", receiver: e, args: [], type: STRING, loc };
       flags = { kind: "regexIntrinsic", method: "flags", receiver: e, args: [], type: STRING, loc };
     } else {

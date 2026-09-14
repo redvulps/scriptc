@@ -25,7 +25,7 @@ import {
   sideEffectFreeOptionValue,
   TLS_SERVER_DOCUMENTED_OPTIONS,
 } from "./surfaces.js";
-import { conditionalSpreadOf } from "./lower-exprs.js";
+import { conditionalSpreadOf } from "./expressions/object-literals.js";
 import { boolLit, numLit, strLit, varRef } from "../../ir/build.js";
 import { resultIsDiscarded } from "./call-position.js";
 import { lowerCallbackArg as lowerCallbackArgShared } from "./callback-arg.js";

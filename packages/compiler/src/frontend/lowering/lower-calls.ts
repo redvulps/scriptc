@@ -18,7 +18,9 @@ import type { ScrDiagnostic } from "../../diagnostics/diagnostic.js";
 import { mixinFnShapeOf } from "./lower-mixins.js";
 import { bufEncoding, dynStringReceiver, lowerArrayFromCall, lowerDynArrayFilterCall, lowerDynArrayFlatMapCall, lowerGroupByStaticCall, lowerIteratorHelperCall, lowerObjectAssignIndexShape, lowerObjectFromEntriesCall, lowerObjectIterOverIndexShape, lowerRegexMethodCall, lowerStringMethodCall, lowerTupleReadMethodCall } from "./lower-containers.js";
 import { lowerChildStreamMethodCall, lowerCreateRequireCall, lowerDirentMethodCall, lowerFileHandleMethodCall, lowerImportMetaResolveCall, lowerPerfHooksCall, lowerProcStreamMethodCall, lowerReflectApplyCall, lowerRequireResolveCall, lowerWatcherMethodCall } from "./lower-builtins.js";
-import { droppableStatic, lowerAbsenceProbe, lowerPromiseAllTupleCall, lowerPromiseRejectCall, probeLower, templateRawTextOf } from "./lower-exprs.js";
+import { lowerAbsenceProbe, lowerPromiseAllTupleCall, lowerPromiseRejectCall, templateRawTextOf } from "./lower-exprs.js";
+import { isSafeToDiscard } from "./expressions/evaluation-safety.js";
+import { tryLowerExpression } from "./expressions/try-lower-expression.js";
 import { httpClientFnBindingOf, isStreamUndefCallExpr, lowerCompatReqStreamOptionalCall, lowerHttpClientFnCall } from "./lower-server.js";
 import { EMITTER_API_MEMBERS, exactInstanceClassOf, findGenericMethodOn, lowerClassGenericMethodCall, lowerStaticMethodCall, type ClassInfo } from "./lower-classes.js";
 import { emitterRooted, lowerEmitterMethodCall } from "./lower-event-emitter.js";
@@ -3535,7 +3537,7 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
         !expr.questionDotToken &&
         !expr.arguments.some((a) => ts.isSpreadElement(a))
       ) {
-        const recvProbe = probeLower(lowerer, expr.expression.expression);
+        const recvProbe = tryLowerExpression(lowerer, expr.expression.expression);
         if (recvProbe?.type.kind === "dyn") {
           const args = expr.arguments.map((a) => lowerer.lowerExprExpecting(a, DYN));
           return {
@@ -3852,7 +3854,7 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
             if (parsed) return parsed;
           }
         }
-        const probed = probeLower(lowerer, expr.arguments[0]!);
+        const probed = tryLowerExpression(lowerer, expr.arguments[0]!);
         if (name === "parseFloat" && probed?.type.kind === "string") {
           return { kind: "libCall", fn: "num.parseFloat", args: [probed], type: F64, loc };
         }
@@ -4847,7 +4849,7 @@ function lowerOptionalStringNumber(
       // evolving `let h = {}` object flowing back out of a JS helper —
       // tsc types the return by the evolved shape, the binding lowered
       // dyn): probe the lowering and claim exactly the dyn results.
-      const probed = probeLower(lowerer, access.expression);
+      const probed = tryLowerExpression(lowerer, access.expression);
       if (probed?.type.kind !== "dyn") return null;
       recv = probed;
     }
@@ -5389,7 +5391,7 @@ const inliningPredicates = new Set<ts.Symbol>();
       // nullish IR used by `digits ?? 0`.
       const zero: IrExpr = { kind: "numLit", value: 0, type: F64, loc: digits.loc };
       const defaultUnitDigits = (value: IrExpr): IrExpr =>
-        droppableStatic(value)
+        isSafeToDiscard(value)
           ? zero
           : {
               kind: "seqExpr",
@@ -7421,7 +7423,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
   function objectIsDisjointFalse(left: IrExpr, right: IrExpr, loc: SrcLoc): IrExpr {
     const stmts: IrStmt[] = [];
     for (const e of [left, right]) {
-      if (!droppableStatic(e)) stmts.push({ kind: "exprStmt", expr: e, loc });
+      if (!isSafeToDiscard(e)) stmts.push({ kind: "exprStmt", expr: e, loc });
     }
     const answer: IrExpr = { kind: "boolLit", value: false, type: BOOL, loc };
     if (stmts.length === 0) return answer;
@@ -7652,8 +7654,8 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
       // the explicit-undefined-is-absent stance). Everything else keeps
       // the spread hint.
       if (call.arguments.length === 2 && !call.arguments.some((a) => ts.isSpreadElement(a))) {
-        const tProbe = probeLower(lowerer, call.arguments[0]!);
-        const sProbe = probeLower(lowerer, call.arguments[1]!);
+        const tProbe = tryLowerExpression(lowerer, call.arguments[0]!);
+        const sProbe = tryLowerExpression(lowerer, call.arguments[1]!);
         // CHECKED-DYNAMIC target and source (the JS file-scope
         // object-literal identity story): the runtime dyn copy — own
         // members of the source land on the target, which returns.
@@ -7711,7 +7713,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
         let targetNode: ts.Expression = call.arguments[0]!;
         while (ts.isParenthesizedExpression(targetNode)) targetNode = targetNode.expression;
         const freshLiteralTarget = ts.isObjectLiteralExpression(targetNode);
-        const tProbe = freshLiteralTarget ? null : probeLower(lowerer, call.arguments[0]!);
+        const tProbe = freshLiteralTarget ? null : tryLowerExpression(lowerer, call.arguments[0]!);
         const tKind = tProbe?.type.kind;
         if (freshLiteralTarget || tKind === "dyn" || tKind === "nullT" || tKind === "undefinedT") {
           const loc = locOf(call);
@@ -7783,7 +7785,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
     // static shapes have no property table to extend.
     if (member === "defineProperties" && call.arguments.length === 2 &&
         !call.arguments.some((a) => ts.isSpreadElement(a))) {
-      let target = probeLower(lowerer, call.arguments[0]!);
+      let target = tryLowerExpression(lowerer, call.arguments[0]!);
       // A FUNCTION-typed target boxes through the dyn boundary: the
       // property table lives on the CLOSURE (shared by every box of this
       // function value), so defining through a fresh box sticks — the
@@ -7845,7 +7847,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
     if (member === "hasOwn" && call.arguments.length === 2 && !call.arguments.some((a) => ts.isSpreadElement(a))) {
       const recvNode = call.arguments[0]!;
       const keyNode = call.arguments[1]!;
-      const probed = probeLower(lowerer, recvNode);
+      const probed = tryLowerExpression(lowerer, recvNode);
       // A CHECKED-DYNAMIC receiver (the JS file-scope object-literal
       // identity story): the runtime dyn probe — OBJ member presence, ARR
       // index bounds, Node's ToObject TypeError on nullish.
@@ -7884,7 +7886,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
     // runtime walks the dyn node's own keys (integer-like keys first,
     // JS's own-key order) and answers a dyn array.
     {
-      const probed = probeLower(lowerer, argNode);
+      const probed = tryLowerExpression(lowerer, argNode);
       const isDyn = probed?.type.kind === "dyn";
       // Unit-typed arguments (Object.keys(null)) ride the same runtime
       // walk: it throws Node's catchable TypeError.
@@ -7901,7 +7903,7 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
     // record (the narrowed export-table literal) — the lowered value's
     // shape is the honest dispatch key, exactly the identity-Set stance.
     if (argIr === null && isJsSourceFile(argNode.getSourceFile())) {
-      const probed = probeLower(lowerer, argNode);
+      const probed = tryLowerExpression(lowerer, argNode);
       if (probed?.type.kind === "record") argIr = probed.type;
     }
     if (argIr?.kind !== "record") return null; // Maps, classes, arrays → the SC2020 fence

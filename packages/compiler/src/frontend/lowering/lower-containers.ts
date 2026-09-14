@@ -7,7 +7,10 @@ import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { BOOL, BYTES_U8, CAUGHT, DYN, F64, IrBytesElem, IrBytesIntrinsicMethod, IrExpr, IrFunction, IrLocal, IrMapIntrinsicMethod, IrParam, IrRecordShape, IrSetIntrinsicMethod, IrStmt, IrType, JSVAL, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, bytesOf, funcOf, isRefCounted, isSupportedArrayElem, isSupportedIndexValue, isUnitType, typeEquals } from "../../ir/ir.js";
 import { ARRAY_METHODS, MAP_METHODS, SET_COMBINE_METHODS, SET_METHODS, STR_METHODS } from "./surfaces.js";
-import { droppableStatic, isRequireMainFilename, lowerDynObjectLiteral, probeLower, pureReemittable } from "./lower-exprs.js";
+import { tryLowerExpression } from "./expressions/try-lower-expression.js";
+import { lowerDynObjectLiteral } from "./expressions/object-literals.js";
+import { isSafeToDiscard, isSafeToRepeat } from "./expressions/evaluation-safety.js";
+import { isRequireMainFilename } from "./expressions/optional-chains.js";
 import { forOfVarTarget, lowerDestructuringAssign } from "./lower-stmts.js";
 import { isJsSourceFile, locOf } from "../program.js";
 import { islandPrimitiveExit, lowerDynDispatchMethodCall } from "./lower-calls.js";
@@ -68,7 +71,7 @@ function lowerStaticallyUndefinedArg(lowerer: Lowerer, node: ts.Expression): IrE
 /** Preserve a statically-undefined argument's effects, then answer the
  * optional parameter's already-lowered default value. */
 function defaultAfterUndefined(value: IrExpr, defaultValue: IrExpr): IrExpr {
-  if (droppableStatic(value)) return defaultValue;
+  if (isSafeToDiscard(value)) return defaultValue;
   return {
     kind: "seqExpr",
     stmts: [{ kind: "exprStmt", expr: value, loc: value.loc }],
@@ -394,7 +397,7 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
               )
             : { kind: "numLit" as const, value: Infinity, type: F64, loc };
       const itemNodes = call.arguments.slice(2);
-      const itemProbes = itemNodes.map((arg) => probeLower(lowerer, arg));
+      const itemProbes = itemNodes.map((arg) => tryLowerExpression(lowerer, arg));
       const statefulItems = itemProbes.some((probe) =>
         probe !== null && lowerer.runtimeOptionalWidening(probe.type, elem) !== null);
       const items: IrExpr = statefulItems
@@ -492,7 +495,7 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
           loc,
         };
       }
-      const valueProbes = call.arguments.map((arg) => probeLower(lowerer, arg));
+      const valueProbes = call.arguments.map((arg) => tryLowerExpression(lowerer, arg));
       if (valueProbes.some((probe) =>
         probe !== null && lowerer.runtimeOptionalWidening(probe.type, elem) !== null)) {
         const items = lowerArrayValueItems(
@@ -1253,7 +1256,7 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
     if (!shape?.tuple) return null;
     receiver ??= lowerer.lowerExpr(access.expression);
     if (receiver.type.kind !== "record") return null;
-    if (!pureReemittable(receiver)) {
+    if (!isSafeToRepeat(receiver)) {
       lowerer.noLowering(
         `${lowerer.checker.typeToString(lowerer.typeOf(access.expression))}.${name}`,
         call,
@@ -2238,7 +2241,7 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
         lowerer.arrHofHelpers.set(key, helper);
         lowerer.liftedFns.push(buildBytesSortFn(helper, 0, false, loc));
       }
-      if (!undefinedArg || droppableStatic(undefinedArg)) {
+      if (!undefinedArg || isSafeToDiscard(undefinedArg)) {
         return { kind: "call", callee: helper, args: [receiver], type: bytesT, loc };
       }
       // The default helper takes no comparator argument. Snapshot the
@@ -3043,7 +3046,7 @@ const MAP_ITER_METHODS = new Set(["keys", "values", "entries"]);
     // identity tokens (the new-Set probe) — the lowered receiver's type
     // is the honest dispatch key.
     if (receiverIr === null && isJsSourceFile(access.getSourceFile())) {
-      const probed = probeLower(lowerer, access.expression);
+      const probed = tryLowerExpression(lowerer, access.expression);
       if (probed?.type.kind === "set") receiverIr = probed.type;
     }
     if (receiverIr?.kind !== "set") return null;

@@ -12,7 +12,7 @@ import { isGenericCallableMemberType, typeKey } from "../type-mapper.js";
 import { cjsClassExprWholeExportOf, isCjsJsFile, isJsSourceFile, isModuleExportsAccess, isNodeTypesPath, locOf } from "../program.js";
 import { PoisonError, dynFallbackType, dynUndefinedExpr, newFnCtx, own } from "./lowerer.js";
 import { bufEncoding, lowerMapSeedArrayNew } from "./lower-containers.js";
-import { pureReemittable } from "./lower-exprs.js";
+import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
 import { lowerSearchParamsNew } from "./lower-builtins.js";
 import { requiresDynamicPackageDiag, unsupportedDiag } from "../../diagnostics/diagnostic.js";
 import { STREAM_API_MEMBERS, STREAM_PROP_MEMBERS, UNDERSCORE_METHODS, lowerStreamNew, lowerStreamSuperCall, streamCtorShape } from "./lower-stream.js";
@@ -2979,7 +2979,7 @@ export function collectClassShapeInner(lowerer: Lowerer, decl: ts.ClassLikeDecla
 /** A class EXPRESSION's ClassInfo: collection on first encounter (the
    * declaration path over the shared ClassLikeDeclaration machinery, with
    * NamedEvaluation supplying the runtime .name), idempotent per node —
-   * probeLower's speculative visits and the heritage recursion reuse the
+   * tryLowerExpression's speculative visits and the heritage recursion reuse the
    * first collection. The honest v1 boundary is TOP-LEVEL evaluation
    * positions only: each evaluation of a class expression in JS mints a
    * DISTINCT class (fresh identity, fresh statics), and one immortal
@@ -5431,7 +5431,7 @@ export function lowerNew(lowerer: Lowerer, expr: ts.NewExpression): IrExpr {
             // observe it before throwing, so dropping it is exact for
             // effect-free operands; effectful ones keep the fence.
             const enc = lowerer.lowerExpr(expr.arguments[1]!);
-            if (enc.kind === "strLit" || pureReemittable(enc)) {
+            if (enc.kind === "strLit" || isSafeToRepeat(enc)) {
               return { kind: "libCall", fn: "buffer.newStringFail", args: [got], type: bytesOf("u8"), loc };
             }
           }

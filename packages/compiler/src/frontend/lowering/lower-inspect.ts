@@ -39,7 +39,7 @@ import type { Lowerer } from "./lowerer.js";
 import { isJsSourceFile } from "../program.js";
 import { BOOL, DYN, F64, IrExpr, IrStmt, IrType, RUNTIME_ERROR_CLASSES, STRING, SrcLoc, canConvertToDyn, canDynCheckTo, shapeHasAccessorSlots, typeKey } from "../../ir/ir.js";
 import type { ClassInfo } from "./lower-classes.js";
-import { pureReemittable } from "./lower-exprs.js";
+import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
 import { boolLit, numLit, strLit, varRef } from "../../ir/build.js";
 
 /* ── IR construction shorthand ───────────────────────────────────────── */
@@ -863,7 +863,7 @@ export function lowerConsoleInspectArg(
     // The baked text ("undefined"/"null"): the operand is a literal or a
     // pure read, so dropping its evaluation loses nothing. Effectful
     // unit-typed operands keep a fence — a silent skip is banned.
-    if (value.kind !== "unitLit" && !pureReemittable(value)) {
+    if (value.kind !== "unitLit" && !isSafeToRepeat(value)) {
       lowerer.unsupported(
         "SC1090",
         node,
@@ -1240,7 +1240,7 @@ export function lowerFormatCall(lowerer: Lowerer, expr: ts.CallExpression, loc: 
         // "undefined" text. Folding drops the operand, so only
         // side-effect-free reads compose (the typeof-fold stance).
         if (value.type.kind === "symbol") {
-          if (!pureReemittable(value)) {
+          if (!isSafeToRepeat(value)) {
             lowerer.noLowering(
               `util.format %j of computed symbol values`,
               node,
