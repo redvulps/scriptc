@@ -267,6 +267,22 @@ jobs:
           # moment it lands. pnpm pack rewrites workspace:* to the real
           # version; npm publish on the tarball handles OIDC.
           # Re-runs skip anything already on the registry at this version.
+          # npm may finish a trusted publication asynchronously. In that
+          # window a retry can report "previously staged" even though the
+          # same package/version is about to become publicly visible.
+          wait_for_published_version() {
+            name="$1"
+            for attempt in $(seq 1 12); do
+              if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+                return 0
+              fi
+              if [ "$attempt" -lt 12 ]; then
+                sleep 10
+              fi
+            done
+            return 1
+          }
+
           publish_dir() {
             dir="$1"
             packed="${2:-}"
@@ -279,7 +295,17 @@ jobs:
               tarball=$(cd "$dir" && pnpm pack --silent | tail -1)
               packed="$dir/$tarball"
             fi
-            npm publish "$packed" $PROVENANCE --access public
+            if npm publish "$packed" $PROVENANCE --access public; then
+              return 0
+            else
+              publish_status=$?
+            fi
+            echo "$name@$VERSION publish failed; waiting for registry visibility before retrying"
+            if wait_for_published_version "$name"; then
+              echo "$name@$VERSION is now published; treating the publish as successful"
+              return 0
+            fi
+            return "$publish_status"
           }
 
           publish_dir packages/runtime
