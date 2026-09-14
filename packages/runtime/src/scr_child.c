@@ -19,9 +19,14 @@
  */
 #include "scr_runtime.h"
 
+static size_t scr_child_arg_start(ScrStr *cmd, ScrArr *args) {
+  return scr_lib_should_collapse_reexec_arg(cmd, args) ? 1 : 0;
+}
+
 #ifdef _WIN32
 /* ── Windows arm: real children via CreateProcessW ────────────────────
- * The POSIX arm below is untouched; this arm reimplements the exported
+ * The POSIX arm below owns the corresponding implementation; this arm
+ * reimplements the exported
  * surface over Win32 primitives, matching Node-on-Windows (libuv) and
  * verified against the windows-dev box's Node:
  * - Executable resolution ports libuv's search_path: a command with a
@@ -198,13 +203,14 @@ static WCHAR *scr_quote_cmd_arg(const WCHAR *source, WCHAR *target) {
  * TYPED — CreateProcessW's lpApplicationName carries the resolved path,
  * so the child's argv[0] stays the caller's spelling, like Node). */
 static WCHAR *scr_child_cmdline(ScrStr *cmd, ScrArr *args) {
-  size_t n = (size_t)scr_arr_len(args);
+  size_t start = scr_child_arg_start(cmd, args);
+  size_t n = (size_t)scr_arr_len(args) - start;
   size_t argc = n + 1;
   WCHAR **wargs = malloc(argc * sizeof(WCHAR *));
   if (!wargs) scr_child_oom();
   wargs[0] = scr_child_wide(cmd->data, cmd->len);
   for (size_t i = 0; i < n; i++) {
-    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)i);
+    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)(i + start));
     wargs[i + 1] = scr_child_wide(s->data, s->len);
     scr_str_release(s);
   }
@@ -819,12 +825,13 @@ static ScrSpawnRes *scr_spawn_res_new(bool has_status, double status,
 /* Kept for the header's contract (the POSIX arms share it); no Windows
  * caller — CreateProcessW takes the quoted command LINE instead. */
 char **scr_child_argv(ScrStr *cmd, ScrArr *args) {
-  size_t n = (size_t)scr_arr_len(args);
+  size_t start = scr_child_arg_start(cmd, args);
+  size_t n = (size_t)scr_arr_len(args) - start;
   char **argv = malloc((n + 2) * sizeof(char *));
   if (!argv) scr_child_oom();
   argv[0] = cmd->data;
   for (size_t i = 0; i < n; i++) {
-    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)i);
+    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)(i + start));
     argv[i + 1] = s->data;
     scr_str_release(s); /* borrow: the array's reference keeps it alive */
   }
@@ -1874,12 +1881,13 @@ ScrError *scr_spawn_res_error(ScrSpawnRes *r) {
  * the +1 from scr_arr_get_ref is dropped immediately because the array
  * keeps its own reference). Free with free() (the vector only). */
 char **scr_child_argv(ScrStr *cmd, ScrArr *args) {
-  size_t n = (size_t)scr_arr_len(args);
+  size_t start = scr_child_arg_start(cmd, args);
+  size_t n = (size_t)scr_arr_len(args) - start;
   char **argv = malloc((n + 2) * sizeof(char *));
   if (!argv) scr_child_oom();
   argv[0] = cmd->data;
   for (size_t i = 0; i < n; i++) {
-    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)i);
+    ScrStr *s = (ScrStr *)scr_arr_get_ref(args, (double)(i + start));
     argv[i + 1] = s->data;
     scr_str_release(s); /* borrow: the array's reference keeps it alive */
   }

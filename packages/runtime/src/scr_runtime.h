@@ -2172,6 +2172,11 @@ ScrArr *scr_process_argv(void);
  * ["scriptc", argv[0], ...] shape from the same stash. */
 int scr_lib_arg_count(void);
 const char *scr_lib_arg(int i);
+/* True only for a child_process call whose command and first argument both
+ * resolve to this executable — Node's process.execPath/process.argv[1]
+ * self-reexec shape. Child argv builders collapse that known script marker;
+ * direct startup never filters user arguments. */
+bool scr_lib_should_collapse_reexec_arg(ScrStr *cmd, ScrArr *args);
 ScrStr *scr_process_platform(void); /* +1 interned ("darwin", "linux", ...) */
 ScrStr *scr_process_cwd(void);      /* +1 fresh (getcwd) */
 /* Submit one raw chunk to fd 1/2 and flush it before returning. Used by all
