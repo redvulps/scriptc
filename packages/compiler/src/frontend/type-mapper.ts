@@ -534,7 +534,7 @@ export function formatIrType(t: IrType, shapes: ShapeRegistry, unions: UnionRegi
     case "promise":
       return `Promise<${formatIrType(t.inner, shapes, unions, seen)}>`;
     case "generator":
-      return `Generator<${formatIrType(t.yieldT, shapes, unions, seen)}, ${formatIrType(t.retT, shapes, unions, seen)}, ${formatIrType(t.nextT, shapes, unions, seen)}>`;
+      return `${t.async ? "AsyncGenerator" : "Generator"}<${formatIrType(t.yieldT, shapes, unions, seen)}, ${formatIrType(t.retT, shapes, unions, seen)}, ${formatIrType(t.nextT, shapes, unions, seen)}>`;
     default: {
       const _exhaustive: never = t;
       void _exhaustive;
@@ -2090,9 +2090,9 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
     if (!inner) return null;
     return { kind: "promise", inner };
   }
-  // Generator<T, TReturn, TNext> (and the lib's IterableIterator<T, ...>,
-  // the older annotation spelling — Generator extends it): the sync
-  // generator kind. Channel normalization keeps the runtime honest:
+  // Generator<T, TReturn, TNext>, AsyncGenerator<T, TReturn, TNext> (and
+  // the lib's IterableIterator<T, ...>, the older sync annotation spelling):
+  // the generator kind. Channel normalization keeps the runtime honest:
   //   yield channel  — T must be a real value type (a generator that could
   //                    only yield undefined has no C value form); `never`
   //                    (a generator that never yields) rides the VOID
@@ -2108,14 +2108,18 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   //                    argument — fenced at the call).
   // Mixed dyn/concrete channels stay unmapped: the shared result record's
   // value slot would need a dyn union arm, which does not exist.
-  if (isStdlibInterface("Generator") || isStdlibInterface("IterableIterator")) {
+  if (isStdlibInterface("Generator") || isStdlibInterface("AsyncGenerator") || isStdlibInterface("IterableIterator")) {
     const args = checker.getTypeArguments(widened as ts.TypeReference);
     const channels = genChannels(args[0], args[1], args[2], ctx);
     if (!channels) return null;
     // The result record must exist too (its union must be legal), or
     // `.next()` could never answer — mapped generators always resume.
     if (!genResultRecord(channels.yieldT, channels.retT, ctx.shapes, unions)) return null;
-    return { kind: "generator", ...channels };
+    return {
+      kind: "generator",
+      ...(isStdlibInterface("AsyncGenerator") ? { async: true as const } : {}),
+      ...channels,
+    };
   }
   // IteratorResult<T, TReturn> — the checker's type of `g.next()` (an
   // alias for IteratorYieldResult<T> | IteratorReturnResult<TReturn>):
@@ -3047,7 +3051,7 @@ export function genResultRecord(
     shapeId: shapes.intern([
       { name: "done", type: BOOL },
       { name: "value", type: valueT },
-    ]),
+    ], false, undefined, ["value", "done"]),
   };
 }
 

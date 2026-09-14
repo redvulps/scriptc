@@ -6,7 +6,7 @@ import { InternalCompilerError } from "../../errors.js";
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { arrayValueRead, arrayValueStore, arrayValueType } from "./array-values.js";
-import { lowerForOfGenerator, lowerYieldStarStatement } from "./lower-generators.js";
+import { lowerForAwaitGenerator, lowerForOfGenerator, lowerYieldStarStatement, type GenType } from "./lower-generators.js";
 import { BOOL, BYTES_U8, CAUGHT, DYN, F64, IrExpr, IrGlobal, IrJsOp, IrLocal, IrStmt, IrType, JSVAL, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, isUnitType, shapeHasAccessorSlots, typeEquals } from "../../ir/ir.js";
 import { PoisonError, boundIdentifiersOf, dynFallbackType, dynUndefinedExpr, importCallHandleType, neverTaintedJsType, stmtUsesIsland, uncheckedOverloadHandleCall } from "./lowerer.js";
 import { enforceLibBoundary } from "./lib-boundary.js";
@@ -6235,12 +6235,19 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
     // desugars drop them — a labeled jump naming those loops fences at the
     // jump site (no label point exists in their desugared shape).
     const labels = lowerer.takeLabels();
-    // `for await` is ASYNC ITERATION, not the shipped async/await. ONE
-    // async iterable has a lowering: process.stdin (the piped-input
-    // pattern real CLIs use) — see lowerForAwaitStdin. Everything else is
-    // named specifically (the bare SC1070 text would claim async/await
-    // itself is missing).
+    // `for await` is ASYNC ITERATION, not the shipped async/await. Typed
+    // async generators use the generic request protocol; process.stdin
+    // and readable streams retain their dedicated next-chunk paths.
     if (stmt.awaitModifier) {
+      {
+        const genT = lowerer.mapTypeOf(lowerer.typeOf(stmt.expression));
+        if (genT?.kind === "generator" && genT.async) {
+          const iterable = lowerer.lowerExpr(stmt.expression);
+          if (iterable.type.kind === "generator" && iterable.type.async) {
+            return lowerForAwaitGenerator(lowerer, stmt, iterable as IrExpr & { type: GenType }, labels);
+          }
+        }
+      }
       if (
         ts.isPropertyAccessExpression(stmt.expression) &&
         lowerer.stdlibGlobalMember(stmt.expression, "process") === "stdin"
@@ -6259,7 +6266,7 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
           }
         }
       }
-      lowerer.unsupported("SC1070", stmt, "'for await' (async iteration over anything but process.stdin and readable streams)");
+      lowerer.unsupported("SC1070", stmt, "'for await' (async iteration over anything but typed async generators, process.stdin, and readable streams)");
     }
     lowerer.fenceStaticHeadersIteration(stmt.expression);
     // A stored numeric value iterator declared in this function keeps its

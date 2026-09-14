@@ -79,7 +79,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { CAUGHT, ffiCallbackType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, VOID } from "../../ir/ir.js";
+import { CAUGHT, ffiCallbackType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, typeKey, VOID } from "../../ir/ir.js";
 import { matchIntegerBytesForLoop } from "../../ir/integer-loops.js";
 import { allocateFfiCallbackAdapters, hasForeignFfiCallback, hasRetainedFfiCallback, type FfiCallbackAdapter } from "../ffi-callbacks.js";
 import { RUNTIME_ABI_MARKER } from "../runtime-abi.js";
@@ -1885,7 +1885,7 @@ class LlEmitter {
       );
     }
     for (const fn of this.mod.functions) {
-      if (fn.async !== true) continue;
+      if (fn.async !== true || fn.generator !== undefined) continue;
       const { definitions, ret, tr, spawnParams, argPackLines } =
         this.emitArgPackAndTrampolinePrologue(fn);
       out.push(...definitions);
@@ -2095,6 +2095,36 @@ class LlEmitter {
       }
       out.push(...tr);
 
+      let settleAsync: string | null = null;
+      if (fn.async) {
+        this.declare(`declare ptr @scr_async_gen_new(ptr, ptr, ptr, ptr)`);
+        const genT: IrType & { kind: "generator" } = {
+          kind: "generator",
+          async: true,
+          yieldT: fn.generator.yieldT,
+          retT: ret,
+          nextT: fn.generator.nextT,
+        };
+        const resultT = fn.generator.resultType;
+        const build = this.genResultThunkFor(genT, resultT);
+        settleAsync = `${build}_async`;
+        const settleKey = `ags:${typeKey(genT)}`;
+        if (!this.resolveThunks.has(settleKey)) {
+          this.resolveThunks.set(settleKey, settleAsync);
+          const adapters = vAdapters(this, resultT);
+          this.resolveThunkDefs.push(
+            `define internal void @${settleAsync}(ptr %g, ptr %p) ${FN_ATTRS} {`,
+            `entry:`,
+            `  %r = call ptr @${build}(ptr %g)`,
+            `  call void @scr_promise_fulfill_ref(ptr %p, ptr %r, ptr ${adapters.retain}, ptr ${adapters.release}, ptr ${traceArg(this, resultT)})`,
+            `  ret void`,
+            `}`,
+            ``,
+          );
+        }
+        this.declare(`declare void @scr_promise_fulfill_ref(ptr, ptr, ptr, ptr, ptr)`);
+      }
+
       // The never-started teardown: drop the packed (+1) arguments.
       const dr: string[] = [
         `define internal void @${mangleGenDrop(fn.name)}(ptr %ap) ${FN_ATTRS} {`,
@@ -2129,7 +2159,9 @@ class LlEmitter {
         ...argPackLines,
       ];
       sp.push(
-        `  %gg = call ptr @scr_gen_new(ptr @${mangleTrampoline(fn.name)}, ptr %ap, ptr @${mangleGenDrop(fn.name)})`,
+        settleAsync === null
+          ? `  %gg = call ptr @scr_gen_new(ptr @${mangleTrampoline(fn.name)}, ptr %ap, ptr @${mangleGenDrop(fn.name)})`
+          : `  %gg = call ptr @scr_async_gen_new(ptr @${mangleTrampoline(fn.name)}, ptr %ap, ptr @${mangleGenDrop(fn.name)}, ptr @${settleAsync})`,
         `  ret ptr %gg`,
         `}`,
         ``,
@@ -2789,8 +2821,8 @@ class LlEmitter {
    * fiber and returns the generator object) — CEmitter.callTargetC. */
   private callTarget(fnName: string): string {
     const fn = this.fnByName.get(fnName);
-    if (fn?.async === true) return mangleAsyncSpawn(fnName);
     if (fn?.generator !== undefined) return mangleGenSpawn(fnName);
+    if (fn?.async === true) return mangleAsyncSpawn(fnName);
     return mangleFunction(fnName);
   }
 
@@ -2925,7 +2957,7 @@ class LlEmitter {
       B.line(`call void @scr_wasi_coro_started(ptr ${handle})`);
       B.line(`${self} = call ptr @scr_fiber_self()`);
       this.currentWasiCoro = {
-        kind: fn.async === true ? "async" : "generator",
+        kind: fn.generator !== undefined ? "generator" : "async",
         id,
         handle,
         self,

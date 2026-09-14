@@ -30,7 +30,7 @@ import {
 import { conditionalSpreadOf, droppableStatic, lowerAbsenceProbe, lowerDynObjectLiteral } from "./lower-exprs.js";
 import { HTTP2_CONSTANTS } from "./http2-constants.js";
 import { CRYPTO_CIPHERS, CRYPTO_CONSTANTS, CRYPTO_CURVES, CRYPTO_HASHES } from "./crypto-tables.js";
-import { timerStyleCallback } from "./lower-calls.js";
+import { generatorMeta, timerStyleCallback } from "./lower-calls.js";
 import { registerHttpClientFnBinding, voidizedCallback } from "./lower-server.js";
 import { pairsSnapshotHelper } from "./pairs-snapshot.js";
 import { BOOL, BYTES_U8, CHILD_T, CHILDSTREAM_T, DYN, F64, FILEHANDLE_T, FSWATCHER_T, PROCSTREAM_T, IrExpr, IrFunction, IrLibFn, IrLocal, IrStmt, IrType, JSVAL, NULL_T, SEARCH_PARAMS_T, SPAWNRES_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, funcOf, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
@@ -43,6 +43,83 @@ function optionalStringTags(lowerer: Lowerer, type: IrType): { stringTag: number
   const stringTag = lowerer.armTag(type.unionId, STRING);
   const undefinedTag = lowerer.armTag(type.unionId, UNDEFINED_T);
   return stringTag >= 0 && undefinedTag >= 0 ? { stringTag, undefinedTag } : null;
+}
+
+/** timers/promises.setInterval(delay, value), the first Node API built on
+ * the generic async-generator protocol. The supported form has an explicit
+ * value and no AbortSignal options. It lowers to a generated typed async
+ * generator whose loop awaits the existing promise timeout then yields the
+ * retained value; creating the iterator remains lazy. */
+export function lowerTimersPromisesSetInterval(
+  lowerer: Lowerer,
+  expr: ts.CallExpression,
+  bi: { module: string; member: string },
+  loc: SrcLoc,
+): IrExpr | null {
+  if (bi.module !== "timers/promises" || bi.member !== "setInterval") return null;
+  if (expr.arguments.some(ts.isSpreadElement)) {
+    lowerer.unsupported("SC1090", expr, "spread arguments");
+  }
+  if (expr.arguments.length !== 2) {
+    lowerer.noLowering(
+      `timers/promises.setInterval with ${expr.arguments.length} arguments`,
+      expr,
+      "the lowered form is setInterval(delay, value) with an explicit yielded value; AbortSignal options are not supported yet",
+    );
+  }
+  const delayNode = expr.arguments[0]!;
+  const valueNode = expr.arguments[1]!;
+  const delay = lowerer.lowerExpr(delayNode);
+  const ms = delay.kind === "unitLit"
+    ? { kind: "numLit", value: 1, type: F64, loc } satisfies IrExpr
+    : lowerer.coerceInto(delayNode, delay, F64);
+  const value = lowerer.lowerExpr(valueNode);
+  const callType = lowerer.mapTypeOf(lowerer.typeOf(expr));
+  if (callType?.kind !== "generator" || !callType.async) {
+    lowerer.badType(expr, lowerer.typeOf(expr));
+  }
+  const genT = callType;
+  const yielded = lowerer.coerceInto(valueNode, value, genT.yieldT);
+  const fnName = `%fn${lowerer.lambdaCounter++}_tpInterval`;
+  const msParam: IrLocal = { id: "%tp.ms", name: "delay", type: F64, mutable: false };
+  const valueParam: IrLocal = { id: "%tp.value", name: "value", type: genT.yieldT, mutable: false };
+  const promiseVoid: IrType = { kind: "promise", inner: VOID };
+  const msRef = (): IrExpr => ({ kind: "varRef", localId: msParam.id, type: F64, loc });
+  const valueRef = (): IrExpr => ({ kind: "varRef", localId: valueParam.id, type: genT.yieldT, loc });
+  const fn: IrFunction = {
+    name: fnName,
+    params: [
+      { localId: msParam.id, name: msParam.name, type: msParam.type },
+      { localId: valueParam.id, name: valueParam.name, type: valueParam.type },
+    ],
+    returnType: VOID,
+    locals: [msParam, valueParam],
+    async: true,
+    generator: generatorMeta(lowerer, genT),
+    body: [
+      {
+        kind: "while",
+        cond: { kind: "boolLit", value: true, type: BOOL, loc },
+        body: [
+          {
+            kind: "exprStmt",
+            expr: {
+              kind: "awaitExpr",
+              value: { kind: "libCall", fn: "tp.setTimeout", args: [msRef()], type: promiseVoid, loc },
+              type: VOID,
+              loc,
+            },
+            loc,
+          },
+          { kind: "exprStmt", expr: { kind: "yieldExpr", value: valueRef(), type: VOID, loc }, loc },
+        ],
+        loc,
+      },
+    ],
+    loc,
+  };
+  lowerer.liftedFns.push(fn);
+  return { kind: "call", callee: fnName, args: [ms, yielded], type: genT, loc };
 }
 
 function lowerBuiltinValuePreservingUndefined(lowerer: Lowerer, node: ts.Expression): IrExpr {

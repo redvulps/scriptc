@@ -1154,6 +1154,9 @@ export interface IrValidationError {
  * TReturn channel, so call sites see the generator type. The one place
  * the body/call-site split is spelled out in the validator. */
 function callSiteReturnType(fn: IrFunction): IrType {
+  if (fn.async && fn.generator !== undefined) {
+    return { kind: "generator", async: true, yieldT: fn.generator.yieldT, retT: fn.returnType, nextT: fn.generator.nextT };
+  }
   if (fn.async) return { kind: "promise", inner: fn.returnType };
   if (fn.generator !== undefined) {
     return { kind: "generator", yieldT: fn.generator.yieldT, retT: fn.returnType, nextT: fn.generator.nextT };
@@ -1167,9 +1170,6 @@ export function validateModule(mod: IrModule): IrValidationError[] {
   for (const fn of mod.functions) {
     if (functionsByName.has(fn.name)) {
       errors.push({ message: `duplicate function "${fn.name}"`, loc: fn.loc });
-    }
-    if (fn.async && fn.generator !== undefined) {
-      errors.push({ message: `function "${fn.name}" is both async and a generator (async generators are fenced)`, loc: fn.loc });
     }
     functionsByName.set(fn.name, fn);
   }
@@ -4905,17 +4905,19 @@ function validateFunction(
             err(`genResume throw of a ${e.arg.type.kind} value`, e.loc);
           }
         }
-        // The result is the IteratorResult record { done: bool, value: V }
+        // Sync resumes return IteratorResult directly; async resumes return
+        // Promise<IteratorResult>. The record is { done: bool, value: V }
         // with V dyn (the any/unknown channel) or an undefined-armed union.
-        if (e.type.kind !== "record") {
-          err(`genResume result is ${e.type.kind}, not a record`, e.loc);
+        const resultT = genT.async ? (e.type.kind === "promise" ? e.type.inner : null) : e.type;
+        if (resultT?.kind !== "record") {
+          err(`genResume result is ${typeKey(e.type)}, not ${genT.async ? "a promise of " : ""}a record`, e.loc);
           break;
         }
-        const rec = records.get(e.type.shapeId);
+        const rec = records.get(resultT.shapeId);
         const doneF = rec?.fields.find((f) => f.name === "done");
         const valueF = rec?.fields.find((f) => f.name === "value");
         if (!rec || rec.fields.length !== 2 || doneF?.type.kind !== "bool" || valueF === undefined) {
-          err(`genResume result record ${e.type.shapeId} is not { done: bool, value: V }`, e.loc);
+          err(`genResume result record ${resultT.shapeId} is not { done: bool, value: V }`, e.loc);
           break;
         }
         if (valueF.type.kind === "dyn") break;

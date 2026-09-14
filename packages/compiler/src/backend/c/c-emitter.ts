@@ -60,7 +60,7 @@ import { cFnPtrCast, cType, releaseCallC, cStringLiteral, cDecl } from "./types.
 import { computeMayThrow } from "./may-throw.js";
 import { unionTruthyHelper, unionEqHelper, unionToStrHelper, unionJoinHelper, jsonWriteHelper, jsonIndentHelper, dynMatchHelper, dynCheckHelper, dynFuncBoxHelper, dynToStrHelper, caughtToDynHelper, toDynHelper, recordKeyGetHelper, recordKeySetHelper } from "./walkers.js";
 import { VtSlot, ClassMeta, emitStructDefs, vtEntriesFor, vtSlotParams, emitVtableDecls, emitVtableInstances, emitVtAdapterDefs, emitHierarchyClassHelpers, emitClassObjs, emitCtorThunkDefs, errorVtStampLines, emitterVtStampLines, streamVtStampLines, traceAdapterC, traceArgC, boxNewC, arrNewC } from "./shapes.js";
-import { emitAsyncScaffolding, childDataThunkFor, childExitThunkFor, childExitSignalThunkFor, closeBindThunkFor, connectResThunkFor, connectSockThunkFor, closeOverrideWrapFor, dgramMsgThunkFor, dnsLookupThunkFor, fsRenameThunkFor, netLookupAnswerThunkFor, emitterInvokeThunkFor, streamCbThunkFor, streamDataThunkFor, raceAdapterFor, resolveThunkFor, sniAnswerThunkFor } from "./async.js";
+import { emitAsyncScaffolding, childDataThunkFor, childExitThunkFor, childExitSignalThunkFor, closeBindThunkFor, connectResThunkFor, connectSockThunkFor, closeOverrideWrapFor, dgramMsgThunkFor, dnsLookupThunkFor, fsRenameThunkFor, genResultThunkFor, netLookupAnswerThunkFor, emitterInvokeThunkFor, streamCbThunkFor, streamDataThunkFor, raceAdapterFor, resolveThunkFor, sniAnswerThunkFor } from "./async.js";
 import { emitNpmEmbedding, islandAdapter, islandTypedAdapter } from "./island.js";
 import { emitFunction, emitBlock, emitStmts, emitStmt, emitTryCatch, emitSwitch, mergeBrace, emitBranchInto, emitCondition } from "./stmts.js";
 import { emitExpr } from "./exprs.js";
@@ -649,6 +649,23 @@ export class CEmitter {
 
   emit(): string {
     const body: string[] = [];
+    // Async-generator spawn wrappers need their type-directed result
+    // builders even when user code only creates and drops the iterator.
+    // Register them before the unit-instance table flushes below.
+    for (const fn of this.mod.functions) {
+      if (!fn.async || fn.generator === undefined) continue;
+      genResultThunkFor(
+        this,
+        {
+          kind: "generator",
+          async: true,
+          yieldT: fn.generator.yieldT,
+          retT: fn.returnType,
+          nextT: fn.generator.nextT,
+        },
+        fn.generator.resultType,
+      );
+    }
     // Function bodies are emitted first (into this.lines) so the literal
     // table is complete; the file is then assembled around them.
     for (const fn of this.mod.functions) {
@@ -797,7 +814,7 @@ export class CEmitter {
       const fn = this.fnByName.get(name)!;
       const params = ["ScrClosure *sc_env", ...fn.params.map((p) => cDecl(p.type, mangleLocal(p.localId)))];
       const call = `${this.callTargetC(name)}(${fn.params.map((p) => mangleLocal(p.localId)).join(", ")})`;
-      const retType = fn.async ? "ScrPromise *" : fn.generator ? "ScrGen *" : cType(fn.returnType);
+      const retType = fn.generator ? "ScrGen *" : fn.async ? "ScrPromise *" : cType(fn.returnType);
       out.push(
         ``,
         `static ${retType}${retType.endsWith("*") ? "" : " "}${mangleWrapper(name)}(${params.join(", ")}) {`,
@@ -1684,8 +1701,8 @@ export class CEmitter {
    * fiber and returns the generator object). */
   callTargetC(fnName: string): string {
     const fn = this.fnByName.get(fnName);
-    if (fn?.async === true) return mangleAsyncSpawn(fnName);
     if (fn?.generator !== undefined) return mangleGenSpawn(fnName);
+    if (fn?.async === true) return mangleAsyncSpawn(fnName);
     return mangleFunction(fnName);
   }
 

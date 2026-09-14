@@ -3375,6 +3375,7 @@ function emitAsyncExpr(
         if (e.value === null) throw new InternalCompilerError("emitter bug: yieldExpr with no operand (frontend fills undefined)");
         const v = emitter.emitExpr(e.value);
         const yt = e.value.type;
+        if (e.awaited) emitter.line(`scr_async_gen_hop_done();`);
         if (yt.kind === "f64" || yt.kind === "date") {
           emitter.line(`scr_gen_yield_f64(${v.name});${emitter.srcComment(e.loc)}`);
         } else if (yt.kind === "bool") {
@@ -3405,13 +3406,70 @@ function emitAsyncExpr(
         // build the IteratorResult record through the interned helper.
         const genT = e.gen.type;
         if (genT.kind !== "generator") throw new InternalCompilerError("emitter bug: genResume on a non-generator");
-        if (e.type.kind !== "record") throw new InternalCompilerError("emitter bug: genResume result is not a record");
+        const resultT = genT.async ? (e.type.kind === "promise" ? e.type.inner : null) : e.type;
+        if (resultT?.kind !== "record") throw new InternalCompilerError("emitter bug: genResume result is not an IteratorResult record");
         const g = emitter.emitExpr(e.gen); // borrowed for the calls below
         const sendArg = (store: (a: Temp) => string): void => {
           const a = emitter.emitExpr(e.arg!);
           if (isRefCounted(e.arg!.type)) emitter.moveTemp(a); // the slot takes ownership
           emitter.line(store(a));
         };
+        if (genT.async) {
+          let call: string;
+          if (e.mode === "next") {
+            if (e.arg === null) {
+              if (genT.nextT.kind === "dyn") {
+                call = `scr_async_gen_next_ref(${g.name}, scr_dyn_retain(scr_dyn_undefined()), scr_dyn_release_v)`;
+              } else {
+                call = `scr_async_gen_next_none(${g.name})`;
+              }
+            } else {
+              const a = emitter.emitExpr(e.arg);
+              const t = e.arg.type;
+              if (isRefCounted(t)) emitter.moveTemp(a);
+              call = t.kind === "f64" || t.kind === "date"
+                ? `scr_async_gen_next_f64(${g.name}, ${a.name})`
+                : t.kind === "bool"
+                  ? `scr_async_gen_next_bool(${g.name}, ${a.name})`
+                  : `scr_async_gen_next_ref(${g.name}, ${a.name}, ${vAdapters(t).release})`;
+            }
+          } else if (e.mode === "return") {
+            if (e.arg === null) {
+              call = `scr_async_gen_return_none(${g.name})`;
+            } else {
+              const a = emitter.emitExpr(e.arg);
+              const t = e.arg.type;
+              if (isRefCounted(t)) emitter.moveTemp(a);
+              call = t.kind === "f64" || t.kind === "date"
+                ? `scr_async_gen_return_f64(${g.name}, ${a.name})`
+                : t.kind === "bool"
+                  ? `scr_async_gen_return_bool(${g.name}, ${a.name})`
+                  : `scr_async_gen_return_ref(${g.name}, ${a.name}, ${vAdapters(t).release})`;
+            }
+          } else {
+            if (e.arg === null) throw new InternalCompilerError("emitter bug: async genResume throw with no payload");
+            const a = emitter.emitExpr(e.arg);
+            const t = e.arg.type;
+            if (isRefCounted(t)) emitter.moveTemp(a);
+            if (t.kind === "date") {
+              throw new InternalCompilerError("emitter bug: Date async-generator throw reached backend");
+            } else if (t.kind === "f64") {
+              emitter.line(`scr_throw_f64(${a.name});${emitter.srcComment(e.loc)}`);
+            } else if (t.kind === "bool") {
+              emitter.line(`scr_throw_bool(${a.name});${emitter.srcComment(e.loc)}`);
+            } else if (t.kind === "string") {
+              emitter.line(`scr_throw_str(${a.name});${emitter.srcComment(e.loc)}`);
+            } else if (t.kind === "object" && emitter.classMeta.get(t.className)?.hierarchy) {
+              const rc = vAdapters(t);
+              emitter.line(`scr_throw_obj(${a.name}, &${rc.retain}, &${rc.release}, ${emitter.traceArgC(t)});${emitter.srcComment(e.loc)}`);
+            } else {
+              const rc = vAdapters(t);
+              emitter.line(`scr_throw_ref(${a.name}, &${rc.retain}, &${rc.release}, ${emitter.traceArgC(t)});${emitter.srcComment(e.loc)}`);
+            }
+            call = `scr_async_gen_throw(${g.name})`;
+          }
+          return emitter.newTemp(e.type, call);
+        }
         if (e.mode === "next") {
           if (e.arg === null) {
             // Valueless resume: dyn channels read JS's undefined; unit
@@ -3466,7 +3524,7 @@ function emitAsyncExpr(
           }
           emitter.line(`scr_gen_resume_throw(${g.name});`);
         }
-        const helper = genResultThunkFor(emitter, genT, e.type);
+        const helper = genResultThunkFor(emitter, genT, resultT);
         // The record builds before the check so an unwind (a propagated
         // body exception) releases it as the frame's never-read dummy.
         return emitter.fallibleTemp(e.type, `${helper}(${g.name})`);

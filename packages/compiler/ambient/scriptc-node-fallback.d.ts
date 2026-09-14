@@ -777,12 +777,13 @@ declare module "timers" {
 /* node:timers/promises — the promisified pair the Node test harness leans
  * on (`await setTimeout(ms)` as a sleep). setTimeout's delay-only form and
  * setImmediate's bare form lower (a void promise the shared timer heap
- * settles); the resolve-value, options (AbortSignal), and setInterval
- * async-iterator forms are declared surface that fences per site. */
+ * settles); setInterval(delay, value) lowers to a typed async iterator.
+ * Resolve values on the one-shot pair and AbortSignal options remain
+ * declared surface that fences per site. */
 declare module "node:timers/promises" {
   export function setTimeout(delay?: number): Promise<void>;
   export function setImmediate(): Promise<void>;
-  export function setInterval(delay?: number, value?: unknown, options?: unknown): unknown;
+  export function setInterval<T = unknown>(delay?: number, value?: T, options?: unknown): AsyncGenerator<T, void, undefined>;
   export const scheduler: {
     wait(delay?: number): Promise<void>;
     yield(): Promise<void>;

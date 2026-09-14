@@ -1,3 +1,4 @@
+import { InternalCompilerError } from "../../errors.js";
 /* Call lowering: the lowerCall dispatch chain, parameter-shape analysis and
  * argument completion (optional/default/rest, explicit-undefined ≡ omission),
  * function/lambda lowering and signature collection, and monomorphizing
@@ -8,7 +9,7 @@ import { lowerGenMethodCall } from "./lower-generators.js";
 import { BOOL, CAUGHT, DYN, F64, IrExpr, IrFunction, IrLocal, IrParam, IrStmt, IrType, JSVAL, STRING, SYMBOL_T, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, canDynCheckTo, canMarshalTypedFuncIntoIsland, ffiClassType, ffiSourceParamTypes, funcOf, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isUnitType, shapeHasAccessorSlots, typeEquals } from "../../ir/ir.js";
 import type { IrFfiCallbackParam, IrFfiCallbackParamClass, IrFfiImport, IrFfiReleaseParam } from "../../ir/ir.js";
 import { isJsSourceFile, locOf } from "../program.js";
-import { isGenericCallableMemberType, typeKey } from "../type-mapper.js";
+import { genResultRecord, isGenericCallableMemberType, typeKey } from "../type-mapper.js";
 import { PoisonError, dynFallbackType, dynUndefinedExpr, importCallHandleType, jsFuncNameOf, newFnCtx, nodeThrowExpr } from "./lowerer.js";
 import { enforceLibBoundary } from "./lib-boundary.js";
 import { NARROW_FIRST, builtinFenceHintOf, builtinModuleFnOf } from "./surfaces.js";
@@ -57,11 +58,23 @@ export interface FnSig {
   /** Call-site result type — Promise<inner> for async functions, the
    * generator type for generator functions. */
   returnType: IrType;
-  /** Async: the IrFunction's returnType is the promise's INNER type. */
+  /** Async: the IrFunction's returnType is the promise's INNER type, or
+   * the generator's TReturn when generator is also present. */
   isAsync?: boolean;
   /** Generator: the IrFunction's returnType is the TReturn channel; the
    * yield/next channels ride here (IrFunction.generator's exact shape). */
-  generator?: { yieldT: IrType; nextT: IrType };
+  generator?: { yieldT: IrType; nextT: IrType; resultType: IrType & { kind: "record" } };
+}
+
+export function generatorMeta(
+  lowerer: Lowerer,
+  type: IrType & { kind: "generator" },
+): NonNullable<IrFunction["generator"]> {
+  const resultType = genResultRecord(type.yieldT, type.retT, lowerer.shapes, lowerer.unions);
+  if (resultType === null) {
+    throw new InternalCompilerError("lowerer bug: mapped generator without an IteratorResult record");
+  }
+  return { yieldT: type.yieldT, nextT: type.nextT, resultType };
 }
 
 /** Instantiation cap per generic function: same-key recursion (`len<T>`
@@ -870,9 +883,6 @@ export function collectSignatureInner(lowerer: Lowerer, decl: ts.FunctionDeclara
     if (!decl.typeParameters && mixinFnShapeOf(lowerer, decl)) return;
     const isAsync = decl.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) === true;
     const isGenerator = decl.asteriskToken !== undefined;
-    if (isGenerator && isAsync) {
-      lowerer.unsupported("SC1071", decl, "async generators (async function*)");
-    }
     if (decl.typeParameters) {
       // Generic async composes: each monomorphized instance is an async
       // IrFunction like any other — its own spawn wrapper, its body
@@ -927,10 +937,13 @@ export function collectSignatureInner(lowerer: Lowerer, decl: ts.FunctionDeclara
     }
     const nameBlame: ts.Node = decl.name ?? decl;
     const returnType = lowerer.declaredReturnType(decl, nameBlame);
-    if (isAsync && returnType.kind !== "promise") {
+    if (isAsync && !isGenerator && returnType.kind !== "promise") {
       lowerer.badType(nameBlame, lowerer.typeOf(nameBlame));
     }
-    if (isGenerator && returnType.kind !== "generator") {
+    if (
+      isGenerator &&
+      (returnType.kind !== "generator" || (returnType.async === true) !== isAsync)
+    ) {
       lowerer.badType(nameBlame, lowerer.typeOf(nameBlame));
     }
 
@@ -946,7 +959,7 @@ export function collectSignatureInner(lowerer: Lowerer, decl: ts.FunctionDeclara
       returnType,
       isAsync,
       ...(isGenerator && returnType.kind === "generator"
-        ? { generator: { yieldT: returnType.yieldT, nextT: returnType.nextT } }
+        ? { generator: generatorMeta(lowerer, returnType) }
         : {}),
     });
   }
@@ -1381,17 +1394,17 @@ export function genericFnOf(lowerer: Lowerer, ident: ts.Identifier): GenericFnIn
     // and awaits park this instance's fibers.
     const isAsync = decl.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) === true;
     const nameBlame: ts.Node = (ts.isArrowFunction(decl) ? undefined : decl.name) ?? decl;
-    if (isAsync && inst.returnType.kind !== "promise") {
+    const isGenerator = decl.asteriskToken !== undefined;
+    if (isAsync && !isGenerator && inst.returnType.kind !== "promise") {
       lowerer.badType(nameBlame, lowerer.checker.getTypeAtLocation(nameBlame));
     }
     // A generic GENERATOR instance mirrors async: the body returns the
     // resolved TReturn channel, calls enter through the instance's own
     // gen-spawn wrapper (the emitter routes by fn.generator).
-    const isGenerator = decl.asteriskToken !== undefined;
-    if (isGenerator && isAsync) {
-      lowerer.unsupported("SC1071", decl, "async generators (async function*)");
-    }
-    if (isGenerator && inst.returnType.kind !== "generator") {
+    if (
+      isGenerator &&
+      (inst.returnType.kind !== "generator" || (inst.returnType.async === true) !== isAsync)
+    ) {
       lowerer.badType(nameBlame, lowerer.checker.getTypeAtLocation(nameBlame));
     }
     let bodyReturn = isGenerator
@@ -1405,7 +1418,7 @@ export function genericFnOf(lowerer: Lowerer, ident: ts.Identifier): GenericFnIn
     if (inst.implicitInferReturn) fnCtx.inferReturn = { entries: [] };
     if (cls && info.member!.kind === "method") lowerer.currentClass = cls;
     if (isGenerator && inst.returnType.kind === "generator") {
-      fnCtx.generator = { yieldT: inst.returnType.yieldT, nextT: inst.returnType.nextT };
+      fnCtx.generator = generatorMeta(lowerer, inst.returnType);
     }
     lowerer.fnStack.push(fnCtx);
     try {
@@ -3656,6 +3669,8 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
         // bake at the call site — no runtime entry exists to table.
         const cryptoServed = lowerer.lowerCryptoModuleCall(expr, bi, loc);
         if (cryptoServed) return cryptoServed;
+        const timersInterval = lowerer.lowerTimersPromisesSetInterval(expr, bi, loc);
+        if (timersInterval) return timersInterval;
         const builtinFn = builtinModuleFnOf(lowerer, bi.module, bi.member);
         if (!builtinFn) {
           // Typed by @types/node (the fallback declarations only declare
@@ -5777,12 +5792,6 @@ function loweredTemplateStrings(
    * value rule (requireExactArityValue decides who may become a value). */
   export function lambdaSignature(lowerer: Lowerer, node: ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration,): { shapes: ParamShape[]; funcType: IrType & { kind: "func" } } {
     if (!node.body) lowerer.unsupported("SC1090", node, "function overload signatures");
-    if (
-      node.asteriskToken &&
-      node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
-    ) {
-      lowerer.unsupported("SC1071", node, "async generators (async function*)");
-    }
     if (node.typeParameters) {
       // Generic function-like forms monomorphize only where a static home
       // exists: top-level generic function declarations, generic methods
@@ -5984,12 +5993,15 @@ function loweredTemplateStrings(
     const isAsync =
       !ts.isAccessor(node) &&
       node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) === true;
-    if (isAsync && funcType.ret.kind !== "promise") lowerer.badType(node, lowerer.typeOf(node));
+    const isGenerator = node.asteriskToken !== undefined;
+    if (isAsync && !isGenerator && funcType.ret.kind !== "promise") lowerer.badType(node, lowerer.typeOf(node));
     // Generator lambdas (function* expressions and object-literal
     // *methods): the VALUE's type returns the generator; the lifted body
     // returns the TReturn channel (a `return v` is the done-value).
-    const isGenerator = node.asteriskToken !== undefined;
-    if (isGenerator && funcType.ret.kind !== "generator") lowerer.badType(node, lowerer.typeOf(node));
+    if (
+      isGenerator &&
+      (funcType.ret.kind !== "generator" || (funcType.ret.async === true) !== isAsync)
+    ) lowerer.badType(node, lowerer.typeOf(node));
     const bodyReturn = isGenerator
       ? lowerer.genBodyReturnType(funcType.ret)
       : lowerer.bodyReturnType(isAsync, funcType.ret);
@@ -5997,7 +6009,7 @@ function loweredTemplateStrings(
     const fnCtx = newFnCtx(true, selfSymbol, funcType, bodyReturn);
     fnCtx.isAsync = isAsync;
     if (isGenerator && funcType.ret.kind === "generator") {
-      fnCtx.generator = { yieldT: funcType.ret.yieldT, nextT: funcType.ret.nextT };
+      fnCtx.generator = generatorMeta(lowerer, funcType.ret);
     }
     const diagsBefore = lowerer.diags.length;
     lowerer.fnStack.push(fnCtx);

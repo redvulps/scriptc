@@ -5930,6 +5930,66 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2840-finally-completions.ts": {
+   "order": [
+    "<repo>/tests/corpus/2840-finally-completions.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2841-using-sync.ts": {
+   "order": [
+    "<repo>/tests/corpus/2841-using-sync.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2842-await-using.ts": {
+   "order": [
+    "<repo>/tests/corpus/2842-await-using.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2843-using-suppressed-error.ts": {
+   "order": [
+    "<repo>/tests/corpus/2843-using-suppressed-error.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2844-node-disposable-resources.ts": {
+   "order": [
+    "<repo>/tests/corpus/2844-node-disposable-resources.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2845-for-using-of.ts": {
+   "order": [
+    "<repo>/tests/corpus/2845-for-using-of.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2846-generator-using.ts": {
+   "order": [
+    "<repo>/tests/corpus/2846-generator-using.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2850-async-generators-protocol.ts": {
+   "order": [
+    "<repo>/tests/corpus/2850-async-generators-protocol.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2851-async-generators-values.ts": {
+   "order": [
+    "<repo>/tests/corpus/2851-async-generators-values.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2852-timers-promises-interval.ts": {
+   "order": [
+    "<repo>/tests/corpus/2852-timers-promises-interval.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

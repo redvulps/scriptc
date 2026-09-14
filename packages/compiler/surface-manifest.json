@@ -3539,6 +3539,13 @@
       "note": "the lowered call form takes no arguments"
     },
     {
+      "id": "syntax.async-generators",
+      "kind": "syntax",
+      "name": "typed async generator functions and methods",
+      "status": "static",
+      "note": "lazy bodies with queued next/return/throw requests, await, direct yield, and Node-compatible completion promises"
+    },
+    {
       "id": "syntax.await-using-declarations",
       "kind": "syntax",
       "name": "block- and function-scoped await using declarations",
@@ -3663,6 +3670,13 @@
       "name": "abrupt completions through finally",
       "status": "static",
       "note": "return, throw, break, continue, and labeled jumps run crossed finally blocks; a finally completion replaces the pending one"
+    },
+    {
+      "id": "syntax.for-await-async-generators",
+      "kind": "syntax",
+      "name": "for await over typed async generators",
+      "status": "static",
+      "note": "awaits each IteratorResult and closes the generator on early break"
     },
     {
       "id": "syntax.for-using-of",

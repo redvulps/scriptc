@@ -1179,9 +1179,9 @@
       "apiEntries": 25,
       "static": {
         "supported": 0,
-        "partial": 19,
+        "partial": 20,
         "refused": 0,
-        "not-implemented": 6,
+        "not-implemented": 5,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -59091,6 +59091,7 @@
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
           "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts",
           "tests/harness/fetch-conformance.test.ts"
         ]
       },
@@ -60968,7 +60969,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -61003,7 +61005,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -61038,7 +61041,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -61130,7 +61134,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -61165,7 +61170,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -61200,7 +61206,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102335,7 +102342,8 @@
           "tests/corpus/2093-timers-promises.ts",
           "tests/corpus/2672-http-request-response-callback.ts",
           "tests/corpus/2689-http-server-timeout-properties.ts",
-          "tests/corpus/2844-node-disposable-resources.ts"
+          "tests/corpus/2844-node-disposable-resources.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102397,7 +102405,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102432,7 +102441,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102467,7 +102477,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102529,7 +102540,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102564,7 +102576,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102599,7 +102612,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102661,7 +102675,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102696,7 +102711,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102726,8 +102742,14 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:timers"
+        "status": "partial",
+        "evidence": "compiler-dedicated:timersPromises.setInterval",
+        "tests": [
+          "tests/corpus/1804-timers-module.ts",
+          "tests/corpus/1805-timer-callback-args.ts",
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -102842,7 +102864,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102874,7 +102897,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -102906,7 +102930,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -103022,7 +103047,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -103054,7 +103080,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -103086,7 +103113,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {
@@ -103118,7 +103146,8 @@
         "tests": [
           "tests/corpus/1804-timers-module.ts",
           "tests/corpus/1805-timer-callback-args.ts",
-          "tests/corpus/2093-timers-promises.ts"
+          "tests/corpus/2093-timers-promises.ts",
+          "tests/corpus/2852-timers-promises-interval.ts"
         ]
       },
       "dynamic": {

@@ -4250,7 +4250,10 @@ ScrPromise *scr_fiber_promise(ScrFiber *f);
 typedef struct ScrGen ScrGen;
 
 ScrGen *scr_gen_new(void (*entry)(ScrFiber *, void *), void *argpack,
-                     void (*drop_args)(void *));
+                    void (*drop_args)(void *));
+ScrGen *scr_async_gen_new(void (*entry)(ScrFiber *, void *), void *argpack,
+                          void (*drop_args)(void *),
+                          void (*settle)(ScrGen *, ScrPromise *));
 ScrGen *scr_gen_retain(ScrGen *g);
 void scr_gen_release(ScrGen *g); /* NULL-tolerant */
 void *scr_gen_retain_v(void *g);
@@ -4260,6 +4263,20 @@ void scr_gen_resume(ScrGen *g);
 void scr_gen_resume_return(ScrGen *g);
 void scr_gen_resume_throw(ScrGen *g);
 bool scr_gen_done(ScrGen *g);
+
+/* Async-generator resume methods. Reference arguments move into the
+ * queued request; every function returns a +1 Promise<IteratorResult>. */
+ScrPromise *scr_async_gen_next_none(ScrGen *g);
+ScrPromise *scr_async_gen_next_f64(ScrGen *g, double value);
+ScrPromise *scr_async_gen_next_bool(ScrGen *g, bool value);
+ScrPromise *scr_async_gen_next_ref(ScrGen *g, void *value,
+                                   void (*release)(void *));
+ScrPromise *scr_async_gen_return_none(ScrGen *g);
+ScrPromise *scr_async_gen_return_f64(ScrGen *g, double value);
+ScrPromise *scr_async_gen_return_bool(ScrGen *g, bool value);
+ScrPromise *scr_async_gen_return_ref(ScrGen *g, void *value,
+                                     void (*release)(void *));
+ScrPromise *scr_async_gen_throw(ScrGen *g);
 
 /* IN slot (consumer stores before resume; body takes after the yield). */
 void scr_gen_in_f64(ScrGen *g, double v);
@@ -4284,6 +4301,7 @@ void scr_gen_ret_none(ScrGen *g);
 void scr_gen_yield_f64(double v);
 void scr_gen_yield_bool(bool v);
 void scr_gen_yield_ref(void *v, void (*release)(void *)); /* moves */
+void scr_async_gen_hop_done(void);
 void scr_gen_out_f64(ScrGen *g, double v); /* trampoline completion stores */
 void scr_gen_out_bool(ScrGen *g, bool v);
 void scr_gen_out_ref(ScrGen *g, void *v, void (*release)(void *)); /* moves */

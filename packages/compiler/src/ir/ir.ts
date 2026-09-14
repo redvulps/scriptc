@@ -296,7 +296,7 @@ export type IrType =
    * generators still suspended at exit). Fenced out of union arms (no
    * narrowing test — the map/set rule), map keys/values, set elements,
    * array elements, and JSON. */
-  | { kind: "generator"; yieldT: IrType; retT: IrType; nextT: IrType }
+  | { kind: "generator"; async?: true; yieldT: IrType; retT: IrType; nextT: IrType }
   /** The `undefined` unit type — a payload-less arm kind. Representable
    * ONLY as a union arm (`string | undefined`) or as the type of a
    * `unitLit` on its way into a `unionWrap`; it can never stand alone in
@@ -706,7 +706,7 @@ export function typeKey(t: IrType): string {
     case "promise":
       return `promise<${typeKey(t.inner)}>`;
     case "generator":
-      return `generator<${typeKey(t.yieldT)},${typeKey(t.retT)},${typeKey(t.nextT)}>`;
+      return `${t.async ? "async-generator" : "generator"}<${typeKey(t.yieldT)},${typeKey(t.retT)},${typeKey(t.nextT)}>`;
     default: {
       const _exhaustive: never = t as Exclude<typeof t, HandleType>;
       void _exhaustive;
@@ -742,6 +742,7 @@ export function typeEquals(a: IrType, b: IrType): boolean {
   if (a.kind === "generator") {
     return (
       b.kind === "generator" &&
+      (a.async === true) === (b.async === true) &&
       typeEquals(a.yieldT, b.yieldT) &&
       typeEquals(a.retT, b.retT) &&
       typeEquals(a.nextT, b.nextT)
@@ -1272,7 +1273,9 @@ export interface IrFunction {
    * Each is also listed in `locals` (with boxed: true); it is NOT a param. */
   captures?: IrParam[];
   /** Async: the body runs on a fiber; `returnType` is the INNER type T (a
-   * `return v` fulfills with v) while call sites receive Promise<T>. */
+   * `return v` fulfills with v) while ordinary call sites receive
+   * Promise<T>. With `generator` present, call sites receive the lazy
+   * async-generator object instead. */
   async?: true;
   /** Async module initializers only: a module-global Promise<T> slot where
    * the spawn wrapper caches its first evaluation promise. Every later
@@ -1285,15 +1288,16 @@ export interface IrFunction {
    * becomes the runtime cycle root. Dynamic imports wait on this shared
    * completion verdict instead of a build-time-selected member. */
   asyncCycleCacheGlobal?: string;
-  /** Generator (`function*`): the body runs on a fiber created SUSPENDED
+  /** Generator (`function*` / `async function*`): the body runs on a fiber created SUSPENDED
    * (nothing runs until the first `.next()`); `returnType` is the
    * generator's TReturn (VOID when it carries no value — `return;`
    * completes with the undefined arm) while call sites receive the
-   * generator type `{ yieldT, retT: returnType, nextT }` from an emitted
+   * generator type `{ async?, yieldT, retT: returnType, nextT }` from an emitted
    * spawn wrapper that only allocates. `yieldT` is what `yield e` sends
    * out, `nextT` what `.next(v)` sends in (the yield expression's result
-   * type). Mutually exclusive with `async` (async generators are fenced). */
-  generator?: { yieldT: IrType; nextT: IrType };
+   * type). `async` alongside this field marks an async generator: its
+   * resume methods queue requests and return promises. */
+  generator?: { yieldT: IrType; nextT: IrType; resultType: IrType & { kind: "record" } };
   body: IrStmt[];
   loc: SrcLoc;
 }
@@ -4645,7 +4649,7 @@ export type IrExpr =
    * through finally blocks but must NOT be taken by catch handlers
    * (backends emit a sentinel re-unwind prologue at catch entry inside
    * generator bodies; scr_exc_genret_pending answers it). */
-  | { kind: "yieldExpr"; value: IrExpr | null; type: IrType; loc: SrcLoc }
+  | { kind: "yieldExpr"; value: IrExpr | null; awaited?: true; type: IrType; loc: SrcLoc }
   /** One consumer resume of a generator: `g.next(arg)`, `g.return(arg)`,
    * `g.throw(arg)`, and the for-of/yield* desugars. `gen` is a borrowed
    * generator-typed temp. `arg` is the sent value (moves in): next's
@@ -4661,8 +4665,9 @@ export type IrExpr =
    * unless suspended (then the GENRET unwind runs finallys; a finally
    * yield answers done:false and parks the return value) / throw on a
    * non-suspended generator marks it done and re-throws at the call site.
-   * MAY-THROW SEED: a body exception (or the injected throw) propagates
-   * into the caller synchronously. */
+   * Sync generators return that record directly and propagate body errors
+   * synchronously. Async generators return Promise<record>; requests queue,
+   * and body errors reject the corresponding promise. */
   | { kind: "genResume"; mode: "next" | "return" | "throw"; gen: IrExpr; arg: IrExpr | null; type: IrType; loc: SrcLoc }
   /** Await a promise: parks the current fiber until it settles; a rejected
    * promise re-throws into the awaiter (may-throw seed). Result is the
