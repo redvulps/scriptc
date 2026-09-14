@@ -6046,6 +6046,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2855-searchparams-sort-complexity.ts": {
+   "order": [
+    "<repo>/tests/corpus/2855-searchparams-sort-complexity.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
