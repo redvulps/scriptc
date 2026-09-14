@@ -6,6 +6,14 @@ All notable changes to scriptc will be documented in this file.
 
 <!-- release:start -->
 
+## 0.1.1
+
+### Fixes
+
+- **Native package releases are more reliable.** Musl LLVM helpers build as portable static executables, downloaded helper artifacts retain executable permissions, and npm publishing reconciles asynchronous staged versions on retry.
+
+<!-- release:end -->
+
 ## 0.0.37
 
 ### Features
@@ -20,8 +28,6 @@ All notable changes to scriptc will be documented in this file.
 ### Performance
 
 - **Array sorting uses stable merge sort.** `sort` and `toSorted` preserve stable ties while avoiding quadratic comparator behavior on large inputs.
-
-<!-- release:end -->
 
 ## 0.0.36
 
