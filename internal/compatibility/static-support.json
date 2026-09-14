@@ -86,7 +86,7 @@
     { "chapter": "fs", "signatures": ["`filehandle[Symbol.asyncDispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "readline", "signatures": ["`rl[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "timers", "signatures": ["`immediate[Symbol.dispose]()`", "`timeout[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
-    { "chapter": "typescript", "symbols": ["type"], "status": "not-implemented" }
+    { "chapter": "typescript", "symbols": ["type"], "status": "supported", "evidence": ["tests/corpus/2702-type-import-link-static/main.ts", "tests/corpus/2703-type-import-link-static-reexport/main.ts", "tests/corpus/2704-type-import-link-static-success/main.ts", "tests/corpus/2707-type-import-link-static-default-reexport/main.ts", "tests/harness/errors.test.ts"] }
   ],
   "dedicated": [
     { "symbols": ["console.log", "console.info", "console.debug", "console.error", "console.warn"], "status": "partial", "evidence": ["tests/corpus/1460-console-error-warn.ts", "tests/corpus/2440-console-inspect-args.ts"] },
