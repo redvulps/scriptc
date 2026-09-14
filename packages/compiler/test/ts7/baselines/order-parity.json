@@ -6040,6 +6040,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2854-leading-bom-literals.ts": {
+   "order": [
+    "<repo>/tests/corpus/2854-leading-bom-literals.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
