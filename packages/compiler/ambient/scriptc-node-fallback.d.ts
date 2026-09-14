@@ -307,7 +307,14 @@ declare var global: typeof globalThis;
  * to the ENTRY module's record ({ filename } — a compiled binary's main
  * module is always the entry, Node's answer for a directly-run script);
  * the rest fences per site. */
-declare var require: {
+interface ScriptcRequireResolveOptions {
+  paths?: string[];
+}
+interface ScriptcRequireResolve {
+  (id: string, options?: ScriptcRequireResolveOptions): string;
+  paths(id: string): string[] | null;
+}
+interface ScriptcRequire {
   /* The call signature types NON-IMPORT-SHAPED require expressions (the
    * checker models import-shaped requires as module aliases regardless,
    * exactly like under @types/node's NodeRequire). `any`, like
@@ -315,9 +322,10 @@ declare var require: {
    * value model — reached uses fence per site. */
   (id: string): any;
   main: { filename: string } | undefined;
-  resolve(id: string): string;
+  resolve: ScriptcRequireResolve;
   cache: { [id: string]: unknown };
-};
+}
+declare var require: ScriptcRequire;
 
 /* setImmediate/clearImmediate — Node's macrotask pair (fires after I/O
  * events of the current loop turn, before timers due later). The handle
@@ -914,7 +922,7 @@ declare var performance: import("node:perf_hooks").Performance;
  * name the builtin, like in Node (the builtin wins over the npm package
  * named "module" for the bare specifier there too). */
 declare module "node:module" {
-  export function createRequire(filename: string | URL): (id: string) => unknown;
+  export function createRequire(filename: string | URL): ScriptcRequire;
   export const builtinModules: string[];
   export function isBuiltin(moduleName: string): boolean;
   export function syncBuiltinESMExports(): void;

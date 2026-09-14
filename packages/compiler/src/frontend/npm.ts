@@ -596,7 +596,7 @@ const KNOWN_BUILTINS = new Set([
  * several forms in one file; any STATIC occurrence makes the edge eager
  * (Node refuses the whole static graph at link time regardless of what the
  * lazy sites would have done). */
-interface SpecifierUse {
+export interface SpecifierUse {
   specifier: string;
   /** import/export declaration — eager, link-time. */
   static: boolean;
@@ -616,12 +616,16 @@ interface SpecifierUse {
   requireViaHelper: boolean;
   /** import("x") — evaluation-time. */
   dynamicImport: boolean;
+  /** import.meta.resolve("x") — resolves synchronously without loading.
+   * It still needs an emitted edge for bare package names so the island can
+   * answer from its fixed graph; relative and URL-like names need no edge. */
+  importMetaResolve: boolean;
 }
 
 /** moduleSpecifiersOf's full answer: the per-specifier call-site kinds
  * plus where the file's `__require` binding comes from, when it is not
  * its own. */
-interface ModuleSpecifiers {
+export interface ModuleSpecifiers {
   uses: SpecifierUse[];
   /** The specifier `__require` is IMPORTED from (`import { __require }
    * from "./chunk-X.js"` — esbuild's shared-helper chunk shape), else
@@ -641,7 +645,7 @@ interface ModuleSpecifiers {
  * __require("literal") (esbuild's external-require helper — collecting its
  * literal call sites gives bundled dists an honest build-time inventory).
  * A real parse, never a regex. */
-function moduleSpecifiersOf(source: string, fileName: string): ModuleSpecifiers {
+export function moduleSpecifiersOf(source: string, fileName: string): ModuleSpecifiers {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
   const uses: SpecifierUse[] = [];
   const bySpec = new Map<string, SpecifierUse>();
@@ -660,6 +664,7 @@ function moduleSpecifiersOf(source: string, fileName: string): ModuleSpecifiers 
         requireLocal: false,
         requireViaHelper: false,
         dynamicImport: false,
+        importMetaResolve: false,
       };
       bySpec.set(spec, use);
       uses.push(use);
@@ -698,6 +703,14 @@ function moduleSpecifiersOf(source: string, fileName: string): ModuleSpecifiers 
         ts.isStringLiteralLike(arg)
       ) {
         push(arg.text, "dynamicImport");
+      } else if (
+        ts.isPropertyAccessExpression(n.expression) &&
+        n.expression.name.text === "resolve" &&
+        ts.isMetaProperty(n.expression.expression) &&
+        n.expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+        n.arguments.length >= 1 && arg !== undefined && ts.isStringLiteralLike(arg)
+      ) {
+        push(arg.text, null).importMetaResolve = true;
       } else if (
         ts.isIdentifier(n.expression) &&
         (n.expression.text === "require" || n.expression.text === "__require") &&
@@ -944,6 +957,27 @@ export class NpmGraphBuilder {
   private readonly specifiersCache = new Map<string, ModuleSpecifiers | null>();
 
   constructor(private readonly host: Host = realHost) {}
+
+  /** Resolve one runtime module without embedding it. This is the package
+   * half of import.meta.resolve/require.resolve: the answer is executable
+   * source under Node's import/require conditions, never the declaration-file
+   * answer from resolve.ts. Diagnostics produced by the graph-oriented
+   * resolver are discarded here; the introspection lowering supplies Node's
+   * public error shape separately. */
+  resolveForIntrospection(
+    fromFile: string,
+    specifier: string,
+    mode: "import" | "require",
+  ): string | null {
+    const before = this.errors.length;
+    const key = this.resolvePackage(dirname(resolve(fromFile)), specifier, mode, {
+      importer: resolve(fromFile),
+      chain: [],
+      preferModuleField: false,
+    });
+    this.errors.length = before;
+    return key;
+  }
 
   /** Registers one user-level npm import and walks everything it reaches.
    * Idempotent per (importing dir, specifier). */
@@ -1349,7 +1383,7 @@ export class NpmGraphBuilder {
     fromDir: string,
     specifier: string,
     mode: "import" | "require",
-    ctx: { importer: string; chain: readonly string[] },
+    ctx: { importer: string; chain: readonly string[]; preferModuleField?: boolean },
   ): string | null {
     const name = packageNameOf(specifier);
     const parts = specifier.split("/");
@@ -1414,7 +1448,10 @@ export class NpmGraphBuilder {
           target = fromExports;
         } else if (subpath !== ".") {
           target = subpath;
-        } else if (mode === "import" && typeof pkg.module === "string" && pkg.module !== "") {
+        } else if (
+          mode === "import" && ctx.preferModuleField !== false &&
+          typeof pkg.module === "string" && pkg.module !== ""
+        ) {
           // No "exports": the "module" field names the ESM build (a
           // bundler convention Node itself ignores; embedding prefers the
           // real ES module over require-shimming the CJS "main").
@@ -1575,6 +1612,9 @@ export class NpmGraphBuilder {
       const spec = use.specifier;
       const eager = !lazy && use.static;
       if (spec.startsWith("./") || spec.startsWith("../")) {
+        if (use.importMetaResolve && !use.static && !use.dynamicImport && !use.require) {
+          continue;
+        }
         // A relative file: no conditions apply, so every call form shares
         // one "any" edge. A blocked lazy one embeds the import trap only
         // for import()/static-in-lazy sites — require-reached specs embed
@@ -1603,6 +1643,12 @@ export class NpmGraphBuilder {
         if (to.endsWith(".node")) this.noteLazyTrap(spec, use, pkgName, lazy, true);
         pushEdge(key, spec, to, "any");
         this.walk(to, chain, lazy || !use.static);
+        continue;
+      }
+      if (
+        use.importMetaResolve && !use.static && !use.dynamicImport && !use.require &&
+        (/^[A-Za-z][A-Za-z\d+.-]*:/.test(spec) || spec.startsWith("/"))
+      ) {
         continue;
       }
       const builtin = builtinKeyOf(spec);
@@ -1691,7 +1737,7 @@ export class NpmGraphBuilder {
           this.walk(to, nextChain, true);
         }
       }
-      if (use.static || use.dynamicImport) {
+      if (use.static || use.dynamicImport || use.importMetaResolve) {
         const errorsBefore = this.errors.length;
         const to = this.resolvePackage(dirname(key), spec, "import", { importer: key, chain });
         if (to === null) {
@@ -1724,7 +1770,9 @@ export class NpmGraphBuilder {
           );
         }
         pushEdge(key, spec, to, "import");
-        this.walk(to, nextChain, lazy || !use.static);
+        if (!use.importMetaResolve || use.static || use.dynamicImport) {
+          this.walk(to, nextChain, lazy || !use.static);
+        }
       }
     }
   }

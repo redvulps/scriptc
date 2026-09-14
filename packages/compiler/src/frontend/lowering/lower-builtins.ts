@@ -8,11 +8,12 @@ import { dirname, resolve } from "node:path";
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { PoisonError, dynUndefinedExpr, ladderFenceExpr, nodeThrowExpr, own } from "./lowerer.js";
-import { canonicalBuiltinModule, isJsSourceFile, locOf, requireSpecOf } from "../program.js";
+import { canonicalBuiltinModule, isJsSourceFile, isNodeEsmFile, locOf, requireSpecOf } from "../program.js";
 import { isRelativeSpecifier } from "../workspace-registry.js";
 import { probeNodeRequireRefusal } from "../npm.js";
 import { isNpmStaticPackage } from "../npm-static.js";
 import { trackedReadFile } from "../input-tracker.js";
+import { requireResolvePathsRuntime, resolveImportMetaRuntime, resolveRequireRuntime, type RuntimeResolveError, type RuntimeResolveResult } from "../runtime-resolve.js";
 import { invalidJsonModuleDiag, requiresDynamicImportDiag } from "../../diagnostics/diagnostic.js";
 import {
   BuiltinModuleFn,
@@ -621,6 +622,169 @@ function lowerBuiltinOptionalDefault(
       type: JSVAL,
       loc,
     };
+  }
+
+  function staticString(node: ts.Expression | undefined): string | null {
+    if (node === undefined) return null;
+    const value = stripTypeCasts(node);
+    return ts.isStringLiteralLike(value) ? value.text : null;
+  }
+
+  function runtimeResolveThrow(error: RuntimeResolveError, type: IrType, loc: SrcLoc): IrExpr {
+    return nodeThrowExpr(error.name === "TypeError" ? 1 : 0, error.code, error.message, type, loc);
+  }
+
+  /** import.meta.resolve("literal") folds through the runtime-module
+   * resolver, never TypeScript's declaration-file resolver. Relative and
+   * URL-like names remain valid even when no file exists; bare packages use
+   * Node's import-condition exports path. */
+  export function lowerImportMetaResolveCall(
+    lowerer: Lowerer,
+    call: ts.CallExpression,
+  ): IrExpr | null {
+    const callee = call.expression;
+    if (
+      !ts.isPropertyAccessExpression(callee) || callee.questionDotToken !== undefined ||
+      callee.name.text !== "resolve" || !ts.isMetaProperty(callee.expression) ||
+      callee.expression.keywordToken !== ts.SyntaxKind.ImportKeyword ||
+      callee.expression.name.text !== "meta"
+    ) {
+      return null;
+    }
+    if (call.questionDotToken !== undefined || call.arguments.length !== 1) {
+      lowerer.noLowering(
+        "import.meta.resolve with this argument shape",
+        call,
+        "the lowered form is import.meta.resolve(\"<static specifier>\") using the containing module as its parent",
+      );
+    }
+    const specifier = staticString(call.arguments[0]);
+    if (specifier === null) {
+      lowerer.noLowering(
+        "import.meta.resolve with a runtime-computed specifier",
+        call.arguments[0]!,
+        "a compiled binary has a fixed module graph — pass a string literal",
+      );
+    }
+    const result = resolveImportMetaRuntime(
+      call.getSourceFile().fileName,
+      specifier,
+      lowerer.targetPlatform,
+    );
+    if (result === null) {
+      lowerer.noLowering(
+        `import.meta.resolve of '${specifier}'`,
+        call,
+        "relative paths, URL-like names, builtins, and installed package names are supported; package-import aliases remain unsupported",
+      );
+    }
+    const loc = locOf(call);
+    return result.ok
+      ? { kind: "strLit", value: result.value, type: STRING, loc }
+      : runtimeResolveThrow(result.error, STRING, loc);
+  }
+
+  function requireResolverBaseFile(lowerer: Lowerer, receiver: ts.Expression): ts.SourceFile | null {
+    const created = createRequireCalleeFileOf(lowerer, receiver);
+    if (created !== null) return created;
+    return lowerer.isStdlibGlobal(receiver, "require") && !isNodeEsmFile(receiver.getSourceFile())
+      ? receiver.getSourceFile()
+      : null;
+  }
+
+  function staticResolveOptionPaths(node: ts.Expression | undefined): readonly string[] | undefined | null {
+    if (node === undefined) return undefined;
+    const value = stripTypeCasts(node);
+    if (ts.isIdentifier(value) && value.text === "undefined") return undefined;
+    if (!ts.isObjectLiteralExpression(value)) return null;
+    let paths: readonly string[] | undefined;
+    for (const prop of value.properties) {
+      if (!ts.isPropertyAssignment(prop)) return null;
+      const name = ts.isIdentifier(prop.name) || ts.isStringLiteralLike(prop.name) ? prop.name.text : null;
+      if (name !== "paths" || paths !== undefined) return null;
+      const init = stripTypeCasts(prop.initializer);
+      if (!ts.isArrayLiteralExpression(init)) return null;
+      const entries: string[] = [];
+      for (const item of init.elements) {
+        if (!ts.isStringLiteralLike(item)) return null;
+        entries.push(item.text);
+      }
+      paths = entries;
+    }
+    return paths;
+  }
+
+  /** CommonJS require.resolve and require.resolve.paths for the ambient
+   * wrapper or a supported createRequire binding. Results are build-time
+   * constants; failures lower to Node's catchable error object. */
+  export function lowerRequireResolveCall(
+    lowerer: Lowerer,
+    call: ts.CallExpression,
+  ): IrExpr | null {
+    const callee = call.expression;
+    if (!ts.isPropertyAccessExpression(callee) || callee.questionDotToken !== undefined) return null;
+    let receiver: ts.Expression;
+    let pathsCall = false;
+    if (callee.name.text === "resolve") {
+      receiver = callee.expression;
+    } else if (
+      callee.name.text === "paths" && ts.isPropertyAccessExpression(callee.expression) &&
+      callee.expression.questionDotToken === undefined && callee.expression.name.text === "resolve"
+    ) {
+      receiver = callee.expression.expression;
+      pathsCall = true;
+    } else {
+      return null;
+    }
+    const baseFile = requireResolverBaseFile(lowerer, receiver);
+    if (baseFile === null) return null;
+    if (call.questionDotToken !== undefined || call.arguments.length < 1 || call.arguments.length > (pathsCall ? 1 : 2)) {
+      lowerer.noLowering(
+        pathsCall ? "require.resolve.paths with this argument shape" : "require.resolve with this argument shape",
+        call,
+      );
+    }
+    const specifier = staticString(call.arguments[0]);
+    if (specifier === null) {
+      lowerer.noLowering(
+        `${pathsCall ? "require.resolve.paths" : "require.resolve"} with a runtime-computed request`,
+        call.arguments[0]!,
+        "a compiled binary has a fixed module graph — pass a string literal",
+      );
+    }
+    const loc = locOf(call);
+    if (pathsCall) {
+      const result = requireResolvePathsRuntime(baseFile.fileName, specifier, lowerer.targetPlatform);
+      if (result !== null && !Array.isArray(result)) {
+        return runtimeResolveThrow(result as RuntimeResolveError, lowerer.irTypeOf(call), loc);
+      }
+      const raw: IrExpr = result === null
+        ? { kind: "unitLit", unit: "null", type: NULL_T, loc }
+        : {
+            kind: "arrayLit",
+            elems: result.map((value) => ({ kind: "strLit", value, type: STRING, loc })),
+            type: arrayOf(STRING),
+            loc,
+          };
+      return lowerer.coerceInto(call, raw, lowerer.irTypeOf(call));
+    }
+    const paths = staticResolveOptionPaths(call.arguments[1]);
+    if (paths === null) {
+      lowerer.noLowering(
+        "require.resolve with runtime-computed options",
+        call.arguments[1]!,
+        "omit options or pass { paths: [\"<static directory>\", ...] }",
+      );
+    }
+    const result: RuntimeResolveResult = resolveRequireRuntime(
+      baseFile.fileName,
+      specifier,
+      lowerer.targetPlatform,
+      paths,
+    );
+    return result.ok
+      ? { kind: "strLit", value: result.value, type: STRING, loc }
+      : runtimeResolveThrow(result.error, STRING, loc);
   }
 
 /** The builtin modules whose `constants` object bakes as literals at

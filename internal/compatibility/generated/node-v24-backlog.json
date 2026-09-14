@@ -9,15 +9,15 @@
       "static": {
         "replace-refusal": 73,
         "verify-gap": 2759,
-        "audit-partial": 376,
+        "audit-partial": 379,
         "classify": 3,
-        "implement": 92
+        "implement": 89
       },
       "dynamic": {
-        "audit-partial": 745,
+        "audit-partial": 748,
         "verify-gap": 2302,
         "replace-refusal": 101,
-        "implement": 220
+        "implement": 217
       }
     },
     "priorities": {
@@ -59564,20 +59564,25 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.require.resolve",
-          "tests": []
+          "tests": [
+            "tests/corpus/2858-import-meta-resolve/main.mjs",
+            "tests/corpus/2860-require-resolve/main.cjs"
+          ]
         },
         "dynamic": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "island-feature:modules.require.resolve",
-          "tests": []
+          "tests": [
+            "tests/fixtures/npm/cases/create-require/main.ts"
+          ]
         }
       }
     },
@@ -59597,20 +59602,25 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.require.resolve.paths",
-          "tests": []
+          "tests": [
+            "tests/corpus/2858-import-meta-resolve/main.mjs",
+            "tests/corpus/2860-require-resolve/main.cjs"
+          ]
         },
         "dynamic": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "island-feature:modules.require.resolve.paths",
-          "tests": []
+          "tests": [
+            "tests/fixtures/npm/cases/create-require/main.ts"
+          ]
         }
       }
     },
@@ -60321,20 +60331,24 @@
       "priority": "normal",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:esm.import.meta.resolve",
-          "tests": []
+          "tests": [
+            "tests/corpus/2858-import-meta-resolve/main.mjs"
+          ]
         },
         "dynamic": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "island-feature:esm.import.meta.resolve",
-          "tests": []
+          "tests": [
+            "tests/fixtures/npm/cases/dual-entry/main.ts"
+          ]
         }
       }
     },

@@ -2378,6 +2378,27 @@ static char *isl_module_normalize(JSContext *ctx, const char *base,
   return js_strdup(ctx, target);
 }
 
+/* import.meta.resolve is module-relative, so each compiled module receives a
+ * tiny closure carrying its emitted key. The bootstrap owns the JavaScript
+ * resolution policy (builtins, URL-like names, relative URLs, and known
+ * embedded edges); this C shim only supplies the lexical module identity. */
+static JSValue isl_import_meta_resolve(JSContext *ctx, JSValueConst this_val,
+                                       int argc, JSValueConst *argv, int magic,
+                                       JSValueConst *func_data) {
+  (void)this_val;
+  (void)magic;
+  JSValue global = JS_GetGlobalObject(ctx);
+  JSValue fn = JS_GetPropertyStr(ctx, global, "__scr_import_meta_resolve");
+  JS_FreeValue(ctx, global);
+  if (JS_IsException(fn)) return fn;
+  JSValueConst args[2] = {
+      func_data[0], argc > 0 ? argv[0] : JS_UNDEFINED,
+  };
+  JSValue out = JS_Call(ctx, fn, JS_UNDEFINED, 2, args);
+  JS_FreeValue(ctx, fn);
+  return out;
+}
+
 /* Named export lists for the builtin ESM wrappers. The wrapper source is
  * `const m = __scr_require("node:x"); export default m; export const
  * {…} = m;` — the shims themselves live in the bootstrap below. The
@@ -2469,6 +2490,12 @@ static JSModuleDef *isl_module_load(JSContext *ctx, const char *name, void *opaq
       url = JS_NewString(ctx, name);
     }
     JS_SetPropertyStr(ctx, meta, "url", url); /* consumed */
+    JSValue key = JS_NewString(ctx, name);
+    JSValueConst data[1] = {key};
+    JSValue resolve_fn = JS_NewCFunctionData(ctx, isl_import_meta_resolve, 1,
+                                             0, 1, data);
+    JS_FreeValue(ctx, key); /* resolve_fn's func_data retains it */
+    JS_SetPropertyStr(ctx, meta, "resolve", resolve_fn); /* consumed */
     JS_FreeValue(ctx, meta);
   }
   JS_FreeValue(ctx, v);
@@ -2513,8 +2540,10 @@ static JSValue isl_host_resolve(JSContext *ctx, JSValueConst this_val, int argc,
     if (from) JS_FreeCString(ctx, from);
     return JS_EXCEPTION;
   }
-  /* host.resolve serves the require shim exclusively — require kind. */
-  const char *to = strncmp(spec, "node:", 5) == 0 ? spec : isl_edge_find(from, spec, 2);
+  /* The require shim asks for kind 2; import.meta.resolve passes a true third
+   * argument and asks for kind 1, preserving dual-package conditions. */
+  int want = argc > 2 && JS_ToBool(ctx, argv[2]) > 0 ? 1 : 2;
+  const char *to = strncmp(spec, "node:", 5) == 0 ? spec : isl_edge_find(from, spec, want);
   JSValue r = to ? JS_NewString(ctx, to) : JS_UNDEFINED;
   JS_FreeCString(ctx, from);
   JS_FreeCString(ctx, spec);
@@ -3442,6 +3471,7 @@ static const char isl_modules_bootstrap[] =
     "  }\n"
     "  const cache = Object.create(null);\n"
     "  const builtins = Object.create(null);\n"
+    "  const builtinModules = ['assert','assert/strict','async_hooks','buffer','child_process','cluster','console','constants','crypto','dgram','diagnostics_channel','dns','dns/promises','domain','events','fs','fs/promises','http','http2','https','inspector','inspector/promises','module','net','os','path','path/posix','path/win32','perf_hooks','process','punycode','querystring','readline','readline/promises','repl','stream','stream/consumers','stream/promises','stream/web','string_decoder','sys','timers','timers/promises','tls','trace_events','tty','url','util','util/types','v8','vm','wasi','worker_threads','zlib'];\n"
     /* Node's require stack: each CJS module remembers its FIRST requirer
      * (Node's module.parent / moduleParentCache — the chain is static,
      * captured at first load, not the dynamic call stack), and a failing
@@ -3478,6 +3508,39 @@ static const char isl_modules_bootstrap[] =
     "    }\n"
     "    return to;\n"
     "  };\n"
+    "  const requirePathsFrom = (from, spec) => {\n"
+    "    if (typeof spec !== 'string') {\n"
+    "      const err = new TypeError('The \"request\" argument must be of type string.');\n"
+    "      err.code = 'ERR_INVALID_ARG_TYPE';\n"
+    "      throw err;\n"
+    "    }\n"
+    "    const bare = spec.startsWith('node:') ? spec.slice(5) : spec;\n"
+    "    if (builtinModules.includes(bare) && (spec.startsWith('node:') || bare !== 'test')) return null;\n"
+    "    const slash = from.lastIndexOf('/');\n"
+    "    const base = slash < 0 ? '/' : (from.slice(0, slash) || '/');\n"
+    "    if (spec.startsWith('./') || spec.startsWith('../') || spec.startsWith('/')) return [base];\n"
+    "    const out = [];\n"
+    "    for (let dir = base;;) {\n"
+    "      out.push((dir === '/' ? '' : dir) + '/node_modules');\n"
+    "      const at = dir.lastIndexOf('/');\n"
+    "      const parent = at <= 0 ? '/' : dir.slice(0, at);\n"
+    "      if (parent === dir) break;\n"
+    "      dir = parent;\n"
+    "    }\n"
+    "    return out;\n"
+    "  };\n"
+    "  const decorateRequire = (req, from) => {\n"
+    "    const resolve = (spec) => {\n"
+    "      if (typeof spec !== 'string') return requirePathsFrom(from, spec);\n"
+    "      const bare = spec.startsWith('node:') ? spec.slice(5) : spec;\n"
+    "      if (builtinModules.includes(bare) && (spec.startsWith('node:') || bare !== 'test')) return spec;\n"
+    "      return resolveFrom(from, spec);\n"
+    "    };\n"
+    "    resolve.paths = (spec) => requirePathsFrom(from, spec);\n"
+    "    req.resolve = resolve;\n"
+    "    req.cache = cache;\n"
+    "    return req;\n"
+    "  };\n"
     "  const requireKey = (key, parent) => {\n"
     "    if (key.startsWith('node:')) {\n"
     "      const b = builtins[key.slice(5)];\n"
@@ -3495,8 +3558,7 @@ static const char isl_modules_bootstrap[] =
     "    if (format === 2) { mod.exports = JSON.parse(src); return mod.exports; }\n"
     "    if (format === 0) { delete cache[key]; throw new Error('require() of ES module ' + key); }\n"
     "    const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', src);\n"
-    "    const req = (spec) => requireKey(resolveFrom(key, spec), key);\n"
-    "    req.cache = cache;\n"
+    "    const req = decorateRequire((spec) => requireKey(resolveFrom(key, spec), key), key);\n"
     "    const dir = key.slice(0, key.lastIndexOf('/')) || '/';\n"
     /* A module whose evaluation THROWS leaves no cache entry — Node
      * deletes it so a later require re-evaluates (and a lazy require
@@ -4244,15 +4306,12 @@ static const char isl_modules_bootstrap[] =
     "      if (key.startsWith('file://')) key = decodeURIComponent(key.slice(7));\n"
     /* The base file is the created require's parent, like Node: modules
      * it loads report it in their require stacks. */
-    "      const req = (spec) => requireKey(spec.startsWith('node:') ? spec : resolveFrom(key, spec), key);\n"
-    "      req.cache = cache;\n"
-    "      return req;\n"
+    "      return decorateRequire((spec) => requireKey(spec.startsWith('node:') ? spec : resolveFrom(key, spec), key), key);\n"
     "    };\n"
     /* builtinModules/isBuiltin answer Node's QUESTION ("is this name a
      * Node builtin?") with Node's full list — resolution of unshimmed
      * ones still fails lazily at the call, the island's documented
      * shape. */
-    "    const builtinModules = ['assert','assert/strict','async_hooks','buffer','child_process','cluster','console','constants','crypto','dgram','diagnostics_channel','dns','dns/promises','domain','events','fs','fs/promises','http','http2','https','inspector','inspector/promises','module','net','os','path','path/posix','path/win32','perf_hooks','process','punycode','querystring','readline','readline/promises','repl','stream','stream/consumers','stream/promises','stream/web','string_decoder','sys','timers','timers/promises','tls','trace_events','tty','url','util','util/types','v8','vm','wasi','worker_threads','zlib'];\n"
     "    const isBuiltin = (name) => {\n"
     "      const n = String(name);\n"
     "      return n.startsWith('node:') ? builtinModules.includes(n.slice(5)) : builtinModules.includes(n);\n"
@@ -9205,6 +9264,22 @@ static const char isl_modules_bootstrap[] =
     "  }\n"
     "  if (globalThis.global === undefined) globalThis.global = globalThis;\n"
     "  globalThis.__scr_require = requireKey;\n"
+    "  globalThis.__scr_import_meta_resolve = (from, raw) => {\n"
+    "    const spec = String(raw);\n"
+    "    const bare = spec.startsWith('node:') ? spec.slice(5) : spec;\n"
+    "    if (builtinModules.includes(bare) && (spec.startsWith('node:') || bare !== 'test')) return 'node:' + bare;\n"
+    "    const base = from.startsWith('/') ? new URL('file://' + from).href : from;\n"
+    "    if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(spec) || spec.startsWith('./') || spec.startsWith('../') || spec.startsWith('/')) {\n"
+    "      return new URL(spec, base).href;\n"
+    "    }\n"
+    "    const to = host.resolve(from, spec, true);\n"
+    "    if (to === undefined) {\n"
+    "      const err = new Error(\"Cannot find package '\" + spec + \"' imported from \" + from);\n"
+    "      err.code = 'ERR_MODULE_NOT_FOUND';\n"
+    "      throw err;\n"
+    "    }\n"
+    "    return to.startsWith('/') ? new URL('file://' + to).href : to;\n"
+    "  };\n"
     "  return (key, name) => {\n"
     "    const exports = requireKey(key);\n"
     "    if (name === 'default') return exports;\n"

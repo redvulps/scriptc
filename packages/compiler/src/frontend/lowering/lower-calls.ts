@@ -17,7 +17,7 @@ import { ffiBindingDiag, ffiSignatureDiag, libCallbackDiag, requiresDynamicDiag 
 import type { ScrDiagnostic } from "../../diagnostics/diagnostic.js";
 import { mixinFnShapeOf } from "./lower-mixins.js";
 import { bufEncoding, dynStringReceiver, lowerArrayFromCall, lowerDynArrayFilterCall, lowerDynArrayFlatMapCall, lowerGroupByStaticCall, lowerIteratorHelperCall, lowerObjectAssignIndexShape, lowerObjectFromEntriesCall, lowerObjectIterOverIndexShape, lowerRegexMethodCall, lowerStringMethodCall, lowerTupleReadMethodCall } from "./lower-containers.js";
-import { lowerChildStreamMethodCall, lowerCreateRequireCall, lowerDirentMethodCall, lowerFileHandleMethodCall, lowerPerfHooksCall, lowerProcStreamMethodCall, lowerReflectApplyCall, lowerWatcherMethodCall } from "./lower-builtins.js";
+import { lowerChildStreamMethodCall, lowerCreateRequireCall, lowerDirentMethodCall, lowerFileHandleMethodCall, lowerImportMetaResolveCall, lowerPerfHooksCall, lowerProcStreamMethodCall, lowerReflectApplyCall, lowerRequireResolveCall, lowerWatcherMethodCall } from "./lower-builtins.js";
 import { droppableStatic, lowerAbsenceProbe, lowerPromiseAllTupleCall, lowerPromiseRejectCall, probeLower, templateRawTextOf } from "./lower-exprs.js";
 import { httpClientFnBindingOf, isStreamUndefCallExpr, lowerCompatReqStreamOptionalCall, lowerHttpClientFnCall } from "./lower-server.js";
 import { EMITTER_API_MEMBERS, exactInstanceClassOf, findGenericMethodOn, lowerClassGenericMethodCall, lowerStaticMethodCall, type ClassInfo } from "./lower-classes.js";
@@ -3048,6 +3048,11 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
     {
       const crServed = lowerCreateRequireCall(lowerer, expr, loc);
       if (crServed) return crServed;
+    }
+
+    {
+      const resolved = lowerImportMetaResolveCall(lowerer, expr) ?? lowerRequireResolveCall(lowerer, expr);
+      if (resolved) return resolved;
     }
 
     // `process.getuid?.()` — intercepted BEFORE the optional-chain

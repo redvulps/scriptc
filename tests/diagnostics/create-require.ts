@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 // The base names some OTHER file: unrecognized — the member fence.
 const req = createRequire("/tmp/parent.js");
 console.log(String(req("./config.cjs")));
-
+// The supported base still fences dynamic require calls and program-module loads.
 const require = createRequire(import.meta.url);
 
 // A computed specifier: fenced by name.

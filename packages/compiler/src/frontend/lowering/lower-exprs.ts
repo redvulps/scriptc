@@ -2005,13 +2005,6 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
 
     const sf = expr.getSourceFile();
     const fileName = moduleFileName(lowerer, sf);
-    if (lowerer.dynamic) {
-      lowerer.unsupported(
-        "SC1090",
-        expr,
-        `'import.meta.${expr.name.text}' in a dynamic island (module-loader metadata is supported only in static ESM)`,
-      );
-    }
     switch (expr.name.text) {
       case "url":
         return {
@@ -4088,7 +4081,7 @@ export function lowerOptionalChain(lowerer: Lowerer, expr: ts.CallExpression | t
       }
       lowerer.badType(expr, tsType);
     }
-    let type = mapped as IrType & { kind: "array" };
+    const type = mapped as IrType & { kind: "array" };
     // Keep the array payload type fixed. Optional reads are stored through
     // arrayValueStore, which records UNDEFINED in the state byte while the
     // payload remains number/string/etc.; widening the array element here
