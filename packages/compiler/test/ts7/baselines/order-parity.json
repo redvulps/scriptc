@@ -6058,6 +6058,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2857-branded-primitives.ts": {
+   "order": [
+    "<repo>/tests/corpus/2857-branded-primitives.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

@@ -1198,6 +1198,16 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
     fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return { kind: "record", shapeId: ctx.shapes.intern(fields, true) };
   }
+  // BRANDED PRIMITIVES (`string & { readonly __brand: "UserId" }`,
+  // `number & { readonly [tag]: "Meters" }`): the marker object is purely
+  // type-level, so the value rides the primitive's runtime representation.
+  // The recognizer is deliberately narrower than primitive-and-any-object:
+  // runtime-bearing class, callable, indexed, and non-literal data shapes
+  // remain intersections with no representation.
+  if (widened.isIntersectionType()) {
+    const brandedPrimitive = mapBrandedPrimitiveIntersection(widened, ctx);
+    if (brandedPrimitive) return brandedPrimitive;
+  }
   // Class instances: the type's symbol is a class declared in the user's
   // file. The class NAME as a value has the *constructor* type — same
   // REFINED handle intersections — @types/node's idioms: `ServerResponse<
@@ -3143,6 +3153,91 @@ function mapHybridCallableIntersection(widened: ts.Type, ctx: TypeMapperCtx): Ir
   if (fields.length === 1) return null; // no properties — it is just F
   fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return { kind: "record", shapeId: shapes.intern(fields, false, undefined, declaredOrder) };
+}
+
+/** A conventional primitive brand has one runtime-carrying primitive part
+ * and one or more phantom object parts whose fields are literal marker
+ * values. The marker can use a string or unique-symbol key, can be imported
+ * from a declaration file, and can be expressed through a generic alias;
+ * none of those facts changes the runtime value. Empty `{}` refinements are
+ * the marker-free form of the same primitive narrowing.
+ *
+ * Arbitrary primitive/object intersections do not erase here. A companion
+ * with a class identity, call/construct/index signature, accessor, or a
+ * non-literal value field might describe runtime behavior, so it retains the
+ * SC2008 refusal instead of borrowing the primitive representation. */
+function mapBrandedPrimitiveIntersection(widened: ts.Type, ctx: TypeMapperCtx): IrType | null {
+  if (!widened.isIntersectionType()) return null;
+  const { checker, resolveTypeParam, resolveTypeParamTs } = ctx;
+  const primitivePart = (part: ts.Type): IrType | null => {
+    const base = checker.getBaseTypeOfLiteralType(part);
+    if (base.flags & ts.TypeFlags.Number) return F64;
+    if (base.flags & ts.TypeFlags.String) return STRING;
+    if (base.flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) return BOOL;
+    if (base.flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) return SYMBOL_T;
+    if (base.flags & ts.TypeFlags.TypeParameter) {
+      const bound = resolveTypeParam?.(base) ?? null;
+      if (bound && (bound.kind === "f64" || bound.kind === "string" || bound.kind === "bool" || bound.kind === "symbol")) {
+        contextResolutions++;
+        return bound;
+      }
+    }
+    return null;
+  };
+  const markerValue = (value: ts.Type): boolean => {
+    if (
+      value.flags &
+      (ts.TypeFlags.StringLiteral |
+        ts.TypeFlags.NumberLiteral |
+        ts.TypeFlags.BigIntLiteral |
+        ts.TypeFlags.BooleanLiteral |
+        ts.TypeFlags.UniqueESSymbol |
+        ts.TypeFlags.EnumLiteral |
+        ts.TypeFlags.Never |
+        ts.TypeFlags.Undefined |
+        ts.TypeFlags.Void |
+        ts.TypeFlags.Null)
+    ) {
+      return true;
+    }
+    if (value.isUnionType()) return ts.constituentTypes(value).every(markerValue);
+    if (value.flags & ts.TypeFlags.TypeParameter) {
+      const bound = resolveTypeParamTs?.(value) ?? null;
+      if (bound) {
+        contextResolutions++;
+        return markerValue(bound);
+      }
+    }
+    return false;
+  };
+  let primitive: IrType | null = null;
+  let markerParts = 0;
+  for (const part of ts.constituentTypes(widened)) {
+    const mappedPrimitive = primitivePart(part);
+    if (mappedPrimitive) {
+      if (primitive && !typeEquals(primitive, mappedPrimitive)) return null;
+      primitive = mappedPrimitive;
+      continue;
+    }
+    const partSym = part.getSymbol();
+    const props = checker.getPropertiesOfType(part);
+    if (
+      (part.flags & ts.TypeFlags.Object) === 0 ||
+      checker.getCallSignatures(part).length > 0 ||
+      checker.getConstructSignatures(part).length > 0 ||
+      checker.getIndexInfosOfType(part).length > 0 ||
+      (partSym !== undefined && (partSym.flags & ts.SymbolFlags.Class) !== 0) ||
+      props.some(
+        (prop) =>
+          (prop.flags & (ts.SymbolFlags.GetAccessor | ts.SymbolFlags.SetAccessor)) !== 0 ||
+          !markerValue(checker.getTypeOfSymbol(prop)),
+      )
+    ) {
+      return null;
+    }
+    markerParts++;
+  }
+  return primitive && markerParts > 0 ? primitive : null;
 }
 
 /** True for MAPPED-type results — `Partial<Config>`, `Record<"a", n>`,
