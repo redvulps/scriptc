@@ -355,7 +355,9 @@ test("synthetic project paths use TypeScript's exact and best-pattern resolution
     ),
   );
   const from = join(dir, "main.ts");
-  expect(resolveProjectModule(from, join(dir, "src/exact.ts"))).toBe(join(dir, "src/exact.ts"));
+  expect(resolveProjectModule(from, join(dir, "src/exact.ts"))).toBe(
+    join(dir, "src/exact.ts").replaceAll("\\", "/"),
+  );
   for (const spec of ["exact", "@app/value", "@app/special/value", "@app/missing"]) {
     const reference = ts5.resolveModuleName(
       spec,

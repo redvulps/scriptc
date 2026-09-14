@@ -30,7 +30,19 @@ function isDirectory(path: string): boolean {
 }
 
 function realpathOr(path: string): string {
-  return trackedRealpath(path) ?? path;
+  return normalizeResolvedPath(trackedRealpath(path) ?? path);
+}
+
+/** TypeScript exposes resolved file names in its platform-independent path
+ * spelling, including on Windows where node:path and node:fs use `\\`.
+ * Keep native paths while probing, then normalize every resolver answer at
+ * the boundary so TS5 and TS7 callers observe the same contract. */
+function normalizeResolvedPath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function normalizeResolvedAnswer(path: string | null): string | null {
+  return path === null ? null : normalizeResolvedPath(path);
 }
 
 interface PkgJson {
@@ -329,16 +341,16 @@ export function resolveRelativeModule(fromFile: string, specifier: string): stri
   // claim, the JS is the code that compiles (npm-static.ts — the tsgo
   // host hides the same files, so both worlds answer the JS).
   if (npmStaticPackageOfPath(resolve(fromFile)) !== null) {
-    return loadAsJsFile(base) ?? loadAsJsDirectory(base);
+    return normalizeResolvedAnswer(loadAsJsFile(base) ?? loadAsJsDirectory(base));
   }
   const answer = loadAsFile(base) ?? loadAsDirectory(base);
   // A project declaration TWIN answers its runtime sibling (see
   // projectDtsRuntimeSibling — Node's truth for project code).
   if (answer !== null) {
     const sibling = projectDtsRuntimeSibling(answer);
-    if (sibling !== null) return sibling;
+    if (sibling !== null) return normalizeResolvedPath(sibling);
   }
-  return answer;
+  return normalizeResolvedAnswer(answer);
 }
 
 /** The JS-only twin of loadAsFile for --npm-static package internals:
@@ -560,9 +572,9 @@ export function resolveProjectImport(fromFile: string, specifier: string): strin
   // order, and the CJS link check all agree the package compiles as
   // program modules instead of island-embedding its published dist.
   const provenance = provenanceEntryFor(specifier);
-  if (provenance !== null) return provenance;
+  if (provenance !== null) return normalizeResolvedPath(provenance);
   const viaPaths = resolveViaProjectPaths(specifier);
-  if (viaPaths !== null) return viaPaths;
+  if (viaPaths !== null) return normalizeResolvedPath(viaPaths);
   const pkgDir = nearestPkgDir(dirname(resolve(fromFile)));
   if (pkgDir === null) return null;
   const pkg = pkgJsonOf(pkgDir) as (PkgJson & { imports?: unknown; exports?: unknown; type?: string }) | null;
@@ -594,7 +606,7 @@ export function resolveProjectImport(fromFile: string, specifier: string): strin
   }
   if (target === null) return null;
   const path = join(pkgDir, target);
-  return loadAsFile(path) ?? (isFile(path) ? path : null);
+  return normalizeResolvedAnswer(loadAsFile(path) ?? (isFile(path) ? path : null));
 }
 
 /** The one resolver entry point for source modules that compile into the
@@ -895,5 +907,5 @@ export function clearResolveCaches(): void {
 /** True when `path` is under a node_modules directory (the
  * isExternalLibraryImport test 5.9.3 answers on resolutions). */
 export function isNodeModulesPath(path: string): boolean {
-  return isAbsolute(path) && path.split("/").includes("node_modules");
+  return isAbsolute(path) && normalizeResolvedPath(path).split("/").includes("node_modules");
 }
