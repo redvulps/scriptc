@@ -17,6 +17,7 @@ const TS5_ISLANDS = [
   // The bundler-emitted-CJS export rewrite runs inside the fs shadow,
   // BEFORE the 7.0.2 program reads the file — a text→text parser island
   // beside cjs-lexer.ts (only strings cross its boundary).
+  "packages/compiler/src/frontend/npm-static-declarations.ts",
   "packages/compiler/src/frontend/npm-static-rewrite.ts",
   // Semantic cache validation parses source text only to identify exact
   // regex spans and syntax errors; its boundary is strings, offsets, and

@@ -183,10 +183,10 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
   // differential on the island lane (npm.test.ts) for now. Implicit-any
   // monomorphization moved the driven frontier BEHIND the typed-value →
   // untyped-param boundary (methods like _registerCommand and local
-  // helpers like knownBy now instantiate per argument types); the next
-  // fences are implicit-any FIELD writes of class instances (`cmd.parent
-  // = this` — the field inferred `any` from its ctor null) and
-  // getter/setter JSDoc union returns (`cmd.name()` → string | Command).
+  // helpers like knownBy now instantiate per argument types). Safe
+  // package-maintained overload groups preserve getter/setter results such
+  // as `cmd.name()` → string; the next fences include implicit-any FIELD
+  // writes of class instances (`cmd.parent = this`) and wider unknown flows.
   test("commander compiles static at the pinned coverage floor", () => {
     const { coverage } = analyze(join(fixturesRoot, "commander-calc/calc-npm-static.ts"), {
       npmStatic: ["commander"],
@@ -198,6 +198,8 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     const failed = coverage.stats.statementsFailed + (coverage.unreached?.stats.statementsFailed ?? 0);
     expect(total).toBeGreaterThan(1000); // the whole package joined the program
     expect((total - failed) / total).toBeGreaterThanOrEqual(0.85);
+    expect(total - failed).toBeGreaterThanOrEqual(1062);
+    expect(coverage.runtimeFences?.length ?? 0).toBeLessThanOrEqual(115);
   }, 180_000);
 
   // Tier 3: the island fallback — esbundled's chunk requires "net", an
@@ -216,24 +218,26 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     expect(coverage.preflightFailed).toBe(false);
   }, 120_000);
 
-  // AUTO drops a package whose opt-in breaks the PROGRAM's own typecheck
-  // (the .d.ts-overload vs inferred-surface gap — commander's chaining
-  // shape in miniature): chainy's declared `name(): string / name(v):
-  // this` overloads admit the chained spelling, its inferred surface
-  // (`string | Chainy`) does not, so auto answers fallback with the
-  // inferred-surface note and the program stays analyzable. Explicit
-  // opt-ins keep the errors (the user asked for exactly that package).
-  test("auto falls back when the program fails against an inferred surface", () => {
-    const { coverage } = analyze(join(pilotRoot, "chainy-cli.ts"), { npmStatic: "auto" });
-    expect(coverage.npmStatic).toEqual([
-      {
-        package: "chainy",
-        status: "fallback",
-        detail: "auto: the program does not typecheck against its inferred surface",
-      },
-    ]);
+  // A package-maintained .d.ts may state overloads its readable JS body
+  // cannot infer. chainy is commander's getter/setter shape in miniature:
+  // name()/tag() return strings with no argument and `this` with one. The
+  // safe declaration groups project into JSDoc on the matching runtime
+  // class, so the body still compiles from JS while calls keep the authored
+  // surface — no island fallback and no unchecked declaration-only value.
+  test("auto preserves safe declaration overloads while compiling the JavaScript body", async () => {
+    const entry = join(pilotRoot, "chainy-cli.ts");
+    const { coverage } = analyze(entry, { npmStatic: "auto" });
+    expect(coverage.npmStatic).toEqual([{ package: "chainy", status: "static" }]);
     expect(coverage.preflightFailed).toBe(false);
-  }, 120_000);
+    expect(coverage.stats.statementsFailed).toBe(0);
+    const binary = await buildStatic(entry, "auto");
+    const [nodeRes, nativeRes] = await Promise.all([
+      runBinary("node", [entry]),
+      runBinary(binary, []),
+    ]);
+    expect(nativeRes.stdout.toString("utf8")).toBe(nodeRes.stdout.toString("utf8"));
+    expect(nativeRes.exitCode).toBe(nodeRes.exitCode);
+  }, 180_000);
 
   // Non-opted UNTYPED node_modules packages keep the checked-dynamic
   // surface: maxNodeModuleJsDepth (active on every --npm-static load)

@@ -766,8 +766,10 @@ export function resolveBareModule(
   fromFile: string,
   specifier: string,
   /** "js-only" forces the runtime-JS resolution regardless of the active
-   * --npm-static set (the auto-detection probe); default follows the set. */
-  mode?: "js-only",
+   * --npm-static set (the auto-detection probe); "types-only" forces the
+   * unshadowed declaration pass for overload-overlay discovery; default
+   * follows the active set. */
+  mode?: "js-only" | "types-only",
 ): BareResolution | null {
   const pkgName = packageNameOfSpecifier(specifier);
   const rest = specifier.slice(pkgName.length).replace(/^\//, "");
@@ -775,7 +777,7 @@ export function resolveBareModule(
   // An opted-in --npm-static package resolves to its RUNTIME JS: the js
   // pass only, the "types" export condition dropped, the @types mangling
   // never consulted — mirroring the shadowed world the tsgo host serves.
-  const npmStatic = mode === "js-only" || isNpmStaticPackage(pkgName);
+  const npmStatic = mode === "js-only" || (mode !== "types-only" && isNpmStaticPackage(pkgName));
   const conditions = npmStatic ? JS_ONLY_CONDITIONS : EXPORT_CONDITIONS;
 
   const inPackage = (nmPkgDir: string, name: string, pass: ResolutionPass): BareResolution | null => {
@@ -859,6 +861,7 @@ export function resolveBareModule(
     }
   };
 
+  if (mode === "types-only") return passOnce("types");
   return npmStatic ? passOnce("js") : (passOnce("types") ?? passOnce("js"));
 }
 

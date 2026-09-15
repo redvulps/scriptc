@@ -790,11 +790,11 @@ function runFrontend(
     preflight = checkPreflight(load);
   }
   // The last resort, ALL modes: an opt-in can change the PROGRAM's OWN
-  // typecheck through errors that name no package at all (the inferred
-  // surface replaces the shipped .d.ts — the commander name()/description()
-  // chaining shape, or a .d.ts type-GUARD an inferred JS function cannot
-  // reproduce, so every catch-clause narrowing site reports "'err' is of
-  // type 'unknown'"). Those SC0001s anchor in USER files no offender or
+  // typecheck through errors that name no package at all (declaration
+  // shapes outside the safe overload projection — generic overloads,
+  // declaration-only members, or a .d.ts type-GUARD an inferred JS
+  // function cannot reproduce). Those SC0001s anchor in USER files no
+  // offender or
   // message attribution reaches, so each remaining package is probed
   // ALONE-dropped (n is the opt-in count — a handful of extra analysis
   // loads); culprits whose removal clears the errors fall back with a

@@ -8,14 +8,14 @@
  * included) types the bodies, and every statement the lowering cannot
  * honor becomes the standard JS runtime fence (the trap throws AT the
  * statement if the program ever drives it — trust-but-verify, never
- * silent trust). The .d.ts is deliberately DROPPED from the opted-in
- * package's resolution: a declaration is a CLAIM about the body, and the
- * compiled artifact must be built from what the body provably is, not
- * from what the declaration says it should be. Program-side use sites
- * therefore typecheck against the INFERRED export surface; where the
- * package's own JSDoc (usually written against that same .d.ts) types a
- * boundary, the declared types flow in through inference and the runtime
- * fences guard the sites the checker could not prove.
+ * silent trust). The .d.ts is deliberately DROPPED from module resolution:
+ * a declaration is a CLAIM about the body, and the compiled artifact must
+ * be built from what the body provably is, not from declaration-only
+ * values. One bounded part of that claim survives: complete non-generic
+ * overload groups over representation-safe types project as JSDoc onto
+ * their matching exported runtime class. Calls retain authored overload
+ * precision while the implementation body, its union ABI, and every
+ * runtime fence still come from JavaScript.
  *
  * MECHANISM. Resolution is the single lever:
  *   - tsgo's server-side resolution reads package.json and probes sibling
@@ -26,6 +26,10 @@
  *     @types twin is hidden whole — the bundler resolution then lands on
  *     the shipped JS, which allowJs + maxNodeModuleJsDepth admit into the
  *     program as checkable source.
+ *   - Before that shadow is enabled, the package's own declaration entry
+ *     and relative declaration barrels are scanned for safe overload groups.
+ *     The runtime entry binds each class to its direct or one-hop re-export
+ *     file; only that file receives the generated JSDoc projection.
  *   - scriptc's own resolver (resolve.ts) mirrors the same answer: for an
  *     opted-in package the types pass is skipped, the "types" export
  *     condition is dropped, and the @types mangling never runs.
@@ -56,10 +60,13 @@
 
 import { dirname } from "node:path";
 import { rewriteBundlerCjsExports } from "./npm-static-rewrite.js";
+import { applyNpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
+import type { NpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
 import { npmPackageNameOf, registerWorkspacePackage, workspacePackageOfPath } from "./workspace-registry.js";
 import { trackedExists, trackedReadFile, trackedRealpath } from "./input-tracker.js";
 
 let activePackages: ReadonlySet<string> = new Set();
+let declarationOverloads: ReadonlyMap<string, NpmStaticDeclarationOverloads> = new Map();
 
 /** Offender records of the CURRENT load attempt: packages whose static
  * compilation the preflight had to refuse, with the first reason. The
@@ -72,10 +79,18 @@ const rewriteCache = new Map<string, string | null>();
 
 export function setNpmStaticPackages(packages: Iterable<string>): void {
   activePackages = new Set(packages);
+  declarationOverloads = new Map();
   offenders.clear();
   rewriteCache.clear();
   untypedPkgCache.clear();
   realpathProbed.clear();
+}
+
+export function setNpmStaticDeclarationOverloads(
+  overloads: ReadonlyMap<string, NpmStaticDeclarationOverloads>,
+): void {
+  declarationOverloads = overloads;
+  rewriteCache.clear();
 }
 
 export function npmStaticActive(): boolean {
@@ -373,11 +388,16 @@ export function npmStaticFsShadow(): NpmStaticFsShadow | null {
         try {
           const source = trackedReadFile(path);
           if (source !== null) {
-            const answer = rewriteBundlerCjsExports(source, path);
+            const projected = applyNpmStaticDeclarationOverloads(
+              path,
+              source,
+              declarationOverloads.get(path.split("\\").join("/")) ?? new Map(),
+            );
+            const answer = rewriteBundlerCjsExports(projected?.text ?? source, path);
             if (answer !== null && typeof answer === "object") {
               reportNpmStaticOffender(target.pkg, answer.degrade);
             } else {
-              rewritten = answer;
+              rewritten = answer ?? projected?.text ?? null;
             }
           }
         } catch {

@@ -1,7 +1,7 @@
-// Chained getter/setter calls typed by the package's own .d.ts overloads:
-// the auto opt-in drops chainy back to the island (its INFERRED surface
-// types name() as `string | Chainy`, breaking these chains) — the program
-// must stay analyzable either way.
+// Chained getter/setter calls typed by the package's own .d.ts overloads.
+// --npm-static projects the safe overload groups onto the matching runtime
+// JavaScript class, preserving the authored call surface while compiling
+// and validating the actual implementation body.
 import { Chainy } from "chainy";
 
 const c = new Chainy();

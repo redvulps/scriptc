@@ -52,7 +52,9 @@ import {
 } from "../diagnostics/diagnostic.js";
 import { isNodeModulesPath, nearestInvalidPackageJsonPath, nearestPackageType, nearestPkgJsonPath, projectDtsRuntimeSibling, resolveBareModule, resolveProjectModule, resolveTypeDirective, setProjectPathMappings, setProjectRealm } from "./resolve.js";
 import { probeNodeImportRefusal, probeNodeRequireRefusal } from "./npm.js";
-import { isNpmStaticPackage, npmStaticActive, npmStaticFsShadow, npmStaticPackageOfPath, reportNpmStaticOffender, setNpmStaticPackages } from "./npm-static.js";
+import { isNpmStaticPackage, npmStaticActive, npmStaticFsShadow, npmStaticPackageOfPath, reportNpmStaticOffender, setNpmStaticDeclarationOverloads, setNpmStaticPackages } from "./npm-static.js";
+import { npmStaticDeclarationReexports, npmStaticRuntimeClassTargets, parseNpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
+import type { NpmStaticDeclarationOverloads, NpmStaticOverloadSignature } from "./npm-static-declarations.js";
 import { provenanceEntryFor, provenancePaths } from "./provenance-registry.js";
 import { cjsLexerVisibleNames } from "./cjs-lexer.js";
 import {
@@ -72,6 +74,7 @@ import {
   clearWorkspacePackages,
   isRelativeSpecifier,
   isWorkspacePackageName,
+  npmPackageNameOf,
   registerWorkspacePackage,
   workspacePackageOfPath,
 } from "./workspace-registry.js";
@@ -81,7 +84,7 @@ import {
   JS_ANY_OPERATOR_CODES,
   JS_RELAXED_TSC_CODES,
 } from "./tsc-codes.js";
-import { trackedFileExists } from "./input-tracker.js";
+import { trackedFileExists, trackedReadFile, trackedRealpath } from "./input-tracker.js";
 
 const BASE_OPTIONS: ts.Ts7CompilerOptions = {
   strict: true,
@@ -246,6 +249,73 @@ export interface LoadResult {
    * declaration surface. */
   externalTypeSpecifiersByFile: ReadonlyMap<string, readonly string[]>;
   projectWorld: () => ts.Program;
+}
+
+function declarationReexportTarget(fromFile: string, specifier: string): string | null {
+  const base = resolve(dirname(fromFile), specifier);
+  const candidates: string[] = [];
+  const extension = /\.(mjs|cjs|js)$/.exec(base)?.[1];
+  if (extension !== undefined) {
+    const stem = base.slice(0, -(extension.length + 1));
+    if (extension === "mjs") candidates.push(`${stem}.d.mts`, `${stem}.d.ts`);
+    else if (extension === "cjs") candidates.push(`${stem}.d.cts`, `${stem}.d.ts`);
+    else candidates.push(`${stem}.d.ts`, `${stem}.d.mts`, `${stem}.d.cts`);
+  } else {
+    candidates.push(base, `${base}.d.ts`, `${base}.d.mts`, `${base}.d.cts`);
+  }
+  candidates.push(
+    resolve(base, "index.d.ts"),
+    resolve(base, "index.d.mts"),
+    resolve(base, "index.d.cts"),
+  );
+  return candidates.find((candidate) => trackedFileExists(candidate)) ?? null;
+}
+
+function runtimeReexportTarget(fromFile: string, specifier: string): string | null {
+  const base = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    base,
+    `${base}.js`,
+    `${base}.mjs`,
+    `${base}.cjs`,
+    resolve(base, "index.js"),
+    resolve(base, "index.mjs"),
+    resolve(base, "index.cjs"),
+  ];
+  const target = candidates.find((candidate) => trackedFileExists(candidate) && isJsSourceFileName(candidate));
+  return target === undefined ? null : (trackedRealpath(target) ?? target);
+}
+
+/** Loads an opted package's own declaration entry and its relative barrel
+ * closure. This is intentionally narrower than TypeScript module
+ * resolution: bare edges name other packages and never inherit trust. */
+function npmStaticDeclarationOverloadsOf(entryPath: string): NpmStaticDeclarationOverloads {
+  const classes = new Map<string, Map<string, readonly NpmStaticOverloadSignature[]>>();
+  const seen = new Set<string>();
+  const packageJson = nearestPkgJsonPath(entryPath);
+  const packageRoot = (packageJson === null ? dirname(entryPath) : dirname(packageJson)).split("\\").join("/");
+  const visit = (path: string): void => {
+    path = resolve(path);
+    const normalized = path.split("\\").join("/");
+    if (normalized !== packageRoot && !normalized.startsWith(packageRoot + "/")) return;
+    if (seen.has(path)) return;
+    seen.add(path);
+    const source = trackedReadFile(path);
+    if (source === null) return;
+    for (const [className, methods] of parseNpmStaticDeclarationOverloads(path, source)) {
+      const target = classes.get(className) ?? new Map<string, readonly NpmStaticOverloadSignature[]>();
+      classes.set(className, target);
+      for (const [methodName, signatures] of methods) {
+        if (!target.has(methodName)) target.set(methodName, signatures);
+      }
+    }
+    for (const specifier of npmStaticDeclarationReexports(path, source)) {
+      const target = declarationReexportTarget(path, specifier);
+      if (target !== null) visit(target);
+    }
+  };
+  visit(entryPath);
+  return classes;
 }
 
 /** See LoadResult.startupCrash: Node's exact error message, the IR error
@@ -447,7 +517,45 @@ export function loadProgram(
     }
     externalTypes.set(specifier, declarationPath);
   }
-  setNpmStaticPackages(opts?.npmStatic ?? []);
+  const npmStaticPackages = [...new Set(opts?.npmStatic ?? [])];
+  // Resolve authored declaration entries before enabling the JS-only
+  // package resolver. Safe overload metadata binds through the runtime
+  // entry to one exact implementation file; it never contributes values
+  // or executable module edges.
+  const declarationOverloads = new Map<string, NpmStaticDeclarationOverloads>();
+  for (const pkg of npmStaticPackages) {
+    const resolved = resolveBareModule(entryPath, pkg, "types-only");
+    if (
+      resolved === null ||
+      resolved.packageName !== pkg ||
+      !/\.d\.(?:ts|mts|cts)$/.test(resolved.typesFile)
+    ) {
+      continue;
+    }
+    const overloads = npmStaticDeclarationOverloadsOf(resolved.typesFile);
+    if (overloads.size === 0) continue;
+    const runtime = resolveBareModule(entryPath, pkg, "js-only");
+    if (runtime === null || !isJsSourceFileName(runtime.typesFile)) continue;
+    const runtimeSource = trackedReadFile(runtime.typesFile);
+    if (runtimeSource === null) continue;
+    const targets = npmStaticRuntimeClassTargets(runtime.typesFile, runtimeSource, new Set(overloads.keys()));
+    for (const [className, specifier] of targets) {
+      const methods = overloads.get(className);
+      if (methods === undefined) continue;
+      const target = specifier === null ? runtime.typesFile : runtimeReexportTarget(runtime.typesFile, specifier);
+      if (target === null) continue;
+      const targetPackage = npmPackageNameOf(target);
+      const targetNorm = target.split("\\").join("/");
+      const insideWorkspace = runtime.workspaceDir !== undefined &&
+        targetNorm.startsWith(runtime.workspaceDir.split("\\").join("/") + "/");
+      if (targetPackage !== pkg && !insideWorkspace) continue;
+      const byClass = new Map(declarationOverloads.get(targetNorm) ?? []);
+      byClass.set(className, methods);
+      declarationOverloads.set(targetNorm, byClass);
+    }
+  }
+  setNpmStaticPackages(npmStaticPackages);
+  setNpmStaticDeclarationOverloads(declarationOverloads);
   // Workspace-package registrations reset per load (same discipline as the
   // npm-static set), then the opted-in names are probed UP FRONT: a
   // workspace-linked opt-in resolves to files whose realpaths carry no
