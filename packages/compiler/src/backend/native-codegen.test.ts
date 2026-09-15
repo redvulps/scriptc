@@ -102,7 +102,8 @@ test("requires a portable target backend in addition to the host helper backend"
 });
 
 test("accepts a WASI-capable helper whose default host target differs", () => {
-  const helper = WASM32_WASI_TARGET.hostHelpers?.["darwin-arm64"]!;
+  const helper = WASM32_WASI_TARGET.hostHelpers?.["darwin-arm64"];
+  if (!helper) throw new Error("missing darwin-arm64 WASI helper fixture");
   expect(validateNativeCodegenVersion({
     ok: true,
     protocol_version: "1",

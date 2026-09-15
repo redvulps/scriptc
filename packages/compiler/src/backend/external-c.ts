@@ -11,7 +11,6 @@
 import {
   compileC,
   compileLibArchive,
-  configuredTargetPlatform,
   type CcOptions,
   type LibArchiveOptions,
 } from "./native-toolchain.js";
