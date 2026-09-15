@@ -651,6 +651,8 @@ interface ReadableStream<T = unknown> {
   readonly locked: boolean;
   cancel(reason?: unknown): Promise<void>;
   getReader(): ReadableStreamDefaultReader<T>;
+  [Symbol.asyncIterator](options?: { preventCancel?: boolean }): AsyncIterableIterator<T>;
+  values(options?: { preventCancel?: boolean }): AsyncIterableIterator<T>;
 }
 declare var ReadableStream: {
   new <T = unknown>(source?: UnderlyingSource<T>): ReadableStream<T>;
@@ -3292,6 +3294,7 @@ declare module "stream" {
     _read(size: number): void;
     _destroy(error: Error | null, callback: (error?: Error | null) => void): void;
     [Symbol.asyncIterator](): AsyncIterableIterator<any>;
+    iterator(options?: { destroyOnReturn?: boolean }): AsyncIterableIterator<any>;
     push(chunk: Buffer | string | null, encoding?: string): boolean;
     unshift(chunk: Buffer | string, encoding?: string): void;
     read(size?: number): Buffer | null;

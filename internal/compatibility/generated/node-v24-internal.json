@@ -1107,9 +1107,9 @@
       "apiEntries": 137,
       "static": {
         "supported": 0,
-        "partial": 31,
+        "partial": 33,
         "refused": 0,
-        "not-implemented": 106,
+        "not-implemented": 104,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -1443,9 +1443,9 @@
       "apiEntries": 88,
       "static": {
         "supported": 0,
-        "partial": 2,
+        "partial": 3,
         "refused": 2,
-        "not-implemented": 84,
+        "not-implemented": 83,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -93874,7 +93874,9 @@
         "tests": [
           "tests/corpus/1685-stream-readable-basics.ts",
           "tests/corpus/1688-stream-writable-basics.ts",
-          "tests/corpus/1814-stream-pipeline.cjs"
+          "tests/corpus/1746-stream-for-await.ts",
+          "tests/corpus/1814-stream-pipeline.cjs",
+          "tests/corpus/2861-readable-iterator-close.ts"
         ]
       },
       "dynamic": {
@@ -96610,8 +96612,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:stream"
+        "status": "partial",
+        "evidence": "compiler-feature:stream.readable",
+        "tests": [
+          "tests/corpus/1746-stream-for-await.ts",
+          "tests/corpus/2861-readable-iterator-close.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -96691,8 +96697,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:stream"
+        "status": "partial",
+        "evidence": "compiler-feature:stream.readable.iterator",
+        "tests": [
+          "tests/corpus/1746-stream-for-await.ts",
+          "tests/corpus/2861-readable-iterator-close.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -120156,6 +120166,7 @@
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
+          "tests/corpus/2862-web-readable-async-iteration.ts",
           "tests/harness/fetch-conformance.test.ts"
         ]
       },
@@ -120675,8 +120686,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:webstreams"
+        "status": "partial",
+        "evidence": "compiler-feature:webstreams.readableStream.values",
+        "tests": [
+          "tests/corpus/2862-web-readable-async-iteration.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",

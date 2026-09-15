@@ -966,6 +966,7 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
   "writable.uncork": { argTypes: [null], result: VOID },
   "stream.destroy": { argTypes: [null], result: VOID },
   "stream.destroyErr": { argTypes: [null, null], result: VOID },
+  "stream.iteratorClose": { argTypes: [null], result: VOID },
   "stream.prop": { argTypes: [null, STRING], result: VOID },
   "stream.errored": { argTypes: [null], result: VOID },
   // node:assert: pass/negated/deep/hasMsg are frontend-computed bools; the
@@ -4550,7 +4551,7 @@ function validateFunction(
           e.fn.startsWith("readable.") || e.fn.startsWith("writable.") ||
           e.fn.startsWith("duplex.") || e.fn.startsWith("transform.") ||
           e.fn.startsWith("passthrough.") || e.fn === "stream.destroy" ||
-          e.fn === "stream.destroyErr" || e.fn === "stream.prop" ||
+          e.fn === "stream.destroyErr" || e.fn === "stream.iteratorClose" || e.fn === "stream.prop" ||
           e.fn === "stream.errored" || e.fn === "stream.finished" ||
           e.fn === "stream.finishedDyn" || e.fn === "stream.pipeline" ||
           e.fn === "stream.pipelineDyn"
@@ -4656,7 +4657,8 @@ function validateFunction(
           if (e.fn === "readable.pause" || e.fn === "readable.resume" ||
               e.fn === "readable.unpipe" || e.fn === "writable.end" ||
               e.fn === "readable.setEncoding" || e.fn === "readable.pushEncoding" ||
-              e.fn === "stream.destroy" || e.fn === "stream.destroyErr") {
+              e.fn === "stream.destroy" || e.fn === "stream.destroyErr" ||
+              e.fn === "stream.iteratorClose") {
             if (!typeEquals(e.type, e.args[0]!.type)) {
               err(`libCall ${e.fn} must return its receiver's type (the chaining 'this')`, e.loc);
             }

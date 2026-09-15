@@ -7,6 +7,7 @@ import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { arrayValueRead, arrayValueStore, arrayValueType } from "./array-values.js";
 import { lowerForAwaitGenerator, lowerForOfGenerator, lowerYieldStarStatement, type GenType } from "./lower-generators.js";
+import { lowerForAwaitBuiltin } from "./lower-async-iteration.js";
 import { BOOL, BYTES_U8, CAUGHT, DYN, F64, IrExpr, IrGlobal, IrJsOp, IrLocal, IrStmt, IrType, JSVAL, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, isUnitType, shapeHasAccessorSlots, typeEquals } from "../../ir/ir.js";
 import { PoisonError, boundIdentifiersOf, dynFallbackType, dynUndefinedExpr, importCallHandleType, neverTaintedJsType, stmtUsesIsland, uncheckedOverloadHandleCall } from "./lowerer.js";
 import { enforceLibBoundary } from "./lib-boundary.js";
@@ -20,7 +21,7 @@ import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingG
 import { isMixinFnBinding, mixinResultBindingClassOf } from "./lower-mixins.js";
 import type { ClassInfo, ClassIteratorInfo } from "./lower-classes.js";
 import { genericIfaceBindingKeepsClass } from "./lower-classes.js";
-import { lowerStreamUnderscoreAssign, streamClassAliasDecl, streamSidesOf } from "./lower-stream.js";
+import { lowerStreamUnderscoreAssign, streamClassAliasDecl } from "./lower-stream.js";
 import { lowerHttpResPropertyAssignment, lowerHttpServerTimeoutAssignment, lowerServerCloseOverrideAssignment } from "./lower-server.js";
 import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireCalleeFileOf, createRequireNamespaceDecl, textCodecBindingDecl } from "./lower-builtins.js";
 import { lowerEnumDeclaration } from "./lower-enums.js";
@@ -6256,19 +6257,13 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
       ) {
         return lowerForAwaitStdin(lowerer, stmt);
       }
-      // Readable streams (the readableAsyncIterator surface): the mapped
-      // receiver class roots at a readable-sided stream class.
-      {
-        const recvT = lowerer.mapTypeOf(lowerer.typeOf(stmt.expression));
-        if (recvT?.kind === "object") {
-          const info = lowerer.classes.get(recvT.className);
-          const sides = streamSidesOf(lowerer, info);
-          if (sides === "r" || sides === "rw") {
-            return lowerForAwaitReadable(lowerer, stmt, recvT);
-          }
-        }
-      }
-      lowerer.unsupported("SC1070", stmt, "'for await' (async iteration over anything but typed async generators, process.stdin, and readable streams)");
+      const builtin = lowerForAwaitBuiltin(lowerer, stmt);
+      if (builtin) return builtin;
+      lowerer.unsupported(
+        "SC1070",
+        stmt,
+        "'for await' over this value (supported: typed async generators, represented class async iterators, process.stdin, and Node/Web readable streams)",
+      );
     }
     lowerer.fenceStaticHeadersIteration(stmt.expression);
     // A stored numeric value iterator declared in this function keeps its
@@ -7904,114 +7899,6 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
         kind: "while",
         cond: { kind: "boolLit", value: true, type: BOOL, loc },
         body: [...head, ...body],
-        loc,
-      };
-    } finally {
-      lowerer.scopes.pop();
-    }
-  }
-
-/** `for await (const chunk of readable)` — the stream async iterator
-   * (the stdin desugar's sibling): every pass awaits the runtime's
-   * next-chunk promise — buffered content, or a REJECTION carrying the
-   * stream's error (the await rethrows it, Node's iterator contract) —
-   * and exits on the EOF sentinel. Chunks are Buffers in typed code
-   * (encoded streams fence at the runtime entry); in the JS lane the
-   * chunk is checked-dynamic and boxes by runtime tag (dyn strings once
-   * an encoding applies, dyn undefined as the sentinel — chunks are
-   * never undefined). Early exit leaves the stream alive (Node's
-   * iterator return() would destroy it — a documented divergence). */
-  function lowerForAwaitReadable(lowerer: Lowerer, stmt: ts.ForOfStatement, recvT: IrType & { kind: "object" }): IrStmt {
-    if (!lowerer.ctx.isAsync) {
-      lowerer.unsupported("SC1090", stmt, "top-level 'for await' (await outside async functions)");
-    }
-    if (!ts.isVariableDeclarationList(stmt.initializer)) {
-      lowerer.unsupported(
-        "SC1090",
-        stmt.initializer,
-        "for-await over a pre-declared variable (declare the loop variable in the loop: for await (const chunk of ...))",
-      );
-    }
-    const list = stmt.initializer;
-    const isConst = (list.flags & ts.NodeFlags.Const) !== 0;
-    const isLet = (list.flags & ts.NodeFlags.Let) !== 0;
-    // `for await (var chunk of ...)`: the chunk binding is per-await
-    // machinery (a fresh value each pass, fiber-parked in between) —
-    // threading it through a shared hoisted slot has no user yet.
-    if (!isConst && !isLet) lowerer.unsupported("SC1030", list, "'var' loop bindings in 'for await' (use const)");
-    const decl = list.declarations[0]!;
-    if (!ts.isIdentifier(decl.name)) lowerer.unsupported("SC1031", decl.name);
-    const loc = locOf(stmt);
-    // The chunk is CHECKED-DYNAMIC in both lanes (the shim types the
-    // iterator's element as any): the runtime boxes by tag — Buffers
-    // normally, strings once an encoding applies — and the dyn surface
-    // carries the common consumptions (.length, [i], toString, +=,
-    // typeof). A statically-typed chunk would have to pick one side of
-    // the encoding question at compile time.
-    const dynLane = true;
-    const chunkT: IrType = DYN;
-    const promiseT: IrType = { kind: "promise", inner: chunkT };
-    lowerer.scopes.push(new Map());
-    try {
-      // The receiver evaluates ONCE, before the loop.
-      const recvLocal = lowerer.declareHiddenLocal("%faStream", recvT);
-      const recvDecl: IrStmt = {
-        kind: "varDecl",
-        localId: recvLocal.id,
-        init: lowerer.lowerExpr(stmt.expression),
-        loc,
-      };
-      const p = lowerer.declareHiddenLocal("%streamNext", promiseT);
-      const chunk = lowerer.declareLocal(decl.name, decl.name.text, chunkT, isLet);
-      const body = lowerer.inCtl("loop", () => lowerer.lowerScopedBlock(stmt.statement));
-      const chunkRef: IrExpr = { kind: "varRef", localId: chunk.id, type: chunkT, loc };
-      const eofCond: IrExpr = dynLane
-        ? { kind: "dynTest", test: "undefined", value: chunkRef, type: BOOL, loc }
-        : {
-            kind: "bin",
-            op: "===",
-            left: { kind: "bytesIntrinsic", method: "length", receiver: chunkRef, args: [], type: F64, loc },
-            right: { kind: "numLit", value: 0, type: F64, loc },
-            type: BOOL,
-            loc,
-          };
-      const head: IrStmt[] = [
-        {
-          kind: "varDecl",
-          localId: p.id,
-          init: {
-            kind: "libCall",
-            fn: dynLane ? "readable.nextChunkDyn" : "readable.nextChunk",
-            args: [{ kind: "varRef", localId: recvLocal.id, type: recvT, loc }],
-            type: promiseT,
-            loc,
-          },
-          loc,
-        },
-        {
-          kind: "varDecl",
-          localId: chunk.id,
-          init: {
-            kind: "awaitExpr",
-            value: { kind: "varRef", localId: p.id, type: promiseT, loc },
-            type: chunkT,
-            loc,
-          },
-          loc,
-        },
-        { kind: "if", cond: eofCond, then: [{ kind: "break", loc }], else_: null, loc },
-      ];
-      return {
-        kind: "block",
-        body: [
-          recvDecl,
-          {
-            kind: "while",
-            cond: { kind: "boolLit", value: true, type: BOOL, loc },
-            body: [...head, ...body],
-            loc,
-          },
-        ],
         loc,
       };
     } finally {

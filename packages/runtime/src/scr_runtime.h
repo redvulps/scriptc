@@ -1974,6 +1974,10 @@ void scr_stream_uncork(ScrStream *s);
 
 /* Shared lifecycle. destroy's err is BORROWED (may be NULL). */
 ScrStream *scr_stream_destroy(ScrStream *s, ScrError *err); /* recv +1 */
+/* Readable async-iterator return(): destroy with Node's AbortError payload;
+ * the iterator's internal error consumer suppresses an unhandled crash when
+ * no user error listener exists. Receiver +1. */
+ScrStream *scr_stream_iterator_close(ScrStream *s);
 double scr_stream_prop(ScrStream *s, const char *name);
 ScrError *scr_stream_errored(ScrStream *s); /* +1 or NULL */
 

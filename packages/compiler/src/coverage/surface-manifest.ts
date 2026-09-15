@@ -171,6 +171,8 @@ export function generateSurfaceManifest(compilerVersion: string): SurfaceManifes
   for (const [id, name, note] of [
     ["async-generators", "typed async generator functions and methods", "lazy bodies with queued next/return/throw requests, await, direct yield, and Node-compatible completion promises"],
     ["for-await-async-generators", "for await over typed async generators", "awaits each IteratorResult and closes the generator on early break"],
+    ["for-await-readable-streams", "for await over Node Readable and Web ReadableStream values", "closes on every abrupt completion, with destroyOnReturn and preventCancel literal options"],
+    ["for-await-class-async-iterators", "for await over statically represented class async iterators", "drives zero-parameter next methods returning Promise<{ value, done? }> and awaits an optional zero-parameter return method on abrupt completion"],
     ["using-declarations", "block- and function-scoped using declarations", "LIFO disposal on normal and abrupt scope exit through [Symbol.dispose]"],
     ["await-using-declarations", "block- and function-scoped await using declarations", "LIFO asynchronous disposal through [Symbol.asyncDispose], with synchronous fallback"],
     ["for-using-of", "for (using ... of ...) over arrays", "each array element is disposed at the end of its iteration, including break and continue paths"],

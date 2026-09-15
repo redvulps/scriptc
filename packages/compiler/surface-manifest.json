@@ -2888,7 +2888,7 @@
       "name": "ReadableStream.[Symbol.asyncIterator]",
       "status": "unsupported",
       "code": "SC2020",
-      "note": "Node 24.15.0 / Undici 7.24.4; symbol-keyed async iterator handles have no compiler lowering in either tier; use values() with --dynamic"
+      "note": "Node 24.15.0 / Undici 7.24.4; direct for-await consumption compiles statically; explicit symbol access and stored iterator handles have no compiler lowering in either tier"
     },
     {
       "id": "stdlib.readable-stream.tee",
@@ -2904,7 +2904,7 @@
       "name": "ReadableStream.values",
       "status": "dynamic-only",
       "code": "SC2020",
-      "note": "Node 24.15.0 / Undici 7.24.4; the wider Web Streams graph is outside the native readable-stream slice"
+      "note": "Node 24.15.0 / Undici 7.24.4; direct for-await consumption compiles statically; storing or driving the first-class iterator handle requires --dynamic"
     },
     {
       "id": "stdlib.request.arrayBuffer",
@@ -3677,6 +3677,20 @@
       "name": "for await over typed async generators",
       "status": "static",
       "note": "awaits each IteratorResult and closes the generator on early break"
+    },
+    {
+      "id": "syntax.for-await-class-async-iterators",
+      "kind": "syntax",
+      "name": "for await over statically represented class async iterators",
+      "status": "static",
+      "note": "drives zero-parameter next methods returning Promise<{ value, done? }> and awaits an optional zero-parameter return method on abrupt completion"
+    },
+    {
+      "id": "syntax.for-await-readable-streams",
+      "kind": "syntax",
+      "name": "for await over Node Readable and Web ReadableStream values",
+      "status": "static",
+      "note": "closes on every abrupt completion, with destroyOnReturn and preventCancel literal options"
     },
     {
       "id": "syntax.for-using-of",

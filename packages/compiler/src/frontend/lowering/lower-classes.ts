@@ -3837,7 +3837,12 @@ export function lowerClassMembers(lowerer: Lowerer, info: ClassInfo): IrFunction
     while (ts.isParenthesizedExpression(e)) e = e.expression;
     if (ts.isPropertyAccessExpression(e)) {
       const member = lowerer.stdlibGlobalMember(e, "Symbol");
-      if (member === "iterator" || member === "dispose" || member === "asyncDispose") {
+      if (
+        member === "iterator" ||
+        member === "asyncIterator" ||
+        member === "dispose" ||
+        member === "asyncDispose"
+      ) {
         return `sym:${member}`;
       }
     }

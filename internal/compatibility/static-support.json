@@ -32,6 +32,8 @@
     "syntax.await-using-declarations": ["tests/corpus/2842-await-using.ts"],
     "syntax.for-using-of": ["tests/corpus/2845-for-using-of.ts"],
     "syntax.finally-abrupt-completions": ["tests/corpus/2840-finally-completions.ts"],
+    "syntax.for-await-readable-streams": ["tests/corpus/2861-readable-iterator-close.ts", "tests/corpus/2862-web-readable-async-iteration.ts"],
+    "syntax.for-await-class-async-iterators": ["tests/corpus/2863-class-async-iterator.ts"],
     "node-builtin.assert": ["tests/corpus/1600-assert-passing.ts", "tests/corpus/1609-assert-async.ts"],
     "node-builtin.async_hooks": ["tests/corpus/2213-async-local-storage.cjs"],
     "node-builtin.buffer": ["tests/corpus/1402-buffer-encodings.ts", "tests/corpus/1660-buffer-read-write-num.ts"],
@@ -54,7 +56,7 @@
     "node-builtin.process": ["tests/corpus/990-process-basics.ts", "tests/corpus/2314-process-introspection.ts"],
     "node-builtin.querystring": ["tests/corpus/957-builtins-namespace.ts"],
     "node-builtin.readline": ["tests/corpus/1475-readline-closed-stdin.ts"],
-    "node-builtin.stream": ["tests/corpus/1685-stream-readable-basics.ts", "tests/corpus/1814-stream-pipeline.cjs", "tests/corpus/2629-stream-consumers.ts"],
+    "node-builtin.stream": ["tests/corpus/1685-stream-readable-basics.ts", "tests/corpus/1746-stream-for-await.ts", "tests/corpus/1814-stream-pipeline.cjs", "tests/corpus/2629-stream-consumers.ts", "tests/corpus/2861-readable-iterator-close.ts"],
     "node-builtin.string_decoder": ["tests/corpus/1662-string-decoder-encodings.ts"],
     "node-builtin.test": ["tests/harness/node-test.test.ts"],
     "node-builtin.timers": ["tests/corpus/1804-timers-module.ts", "tests/corpus/2093-timers-promises.ts"],
@@ -88,6 +90,8 @@
     { "chapter": "fs", "signatures": ["`filehandle[Symbol.asyncDispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "readline", "signatures": ["`rl[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "timers", "signatures": ["`immediate[Symbol.dispose]()`", "`timeout[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
+    { "chapter": "stream", "signatures": ["`readable[Symbol.asyncIterator]()`", "`readable.iterator([options])`"], "status": "partial", "evidence": ["tests/corpus/1746-stream-for-await.ts", "tests/corpus/2861-readable-iterator-close.ts"] },
+    { "chapter": "webstreams", "signatures": ["`readableStream.values([options])`"], "status": "partial", "evidence": ["tests/corpus/2862-web-readable-async-iteration.ts"] },
     { "chapter": "typescript", "symbols": ["type"], "status": "supported", "evidence": ["tests/corpus/2702-type-import-link-static/main.ts", "tests/corpus/2703-type-import-link-static-reexport/main.ts", "tests/corpus/2704-type-import-link-static-success/main.ts", "tests/corpus/2707-type-import-link-static-default-reexport/main.ts", "tests/harness/errors.test.ts"] }
   ],
   "dedicated": [

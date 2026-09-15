@@ -3709,6 +3709,10 @@ export type IrLibFn =
   | "writable.uncork"
   | "stream.destroy"
   | "stream.destroyErr"
+  /** AsyncIteratorClose for Readable[Symbol.asyncIterator](): destroy with
+   * Node's AbortError/ABORT_ERR payload while the iterator's internal error
+   * consumer prevents an unhandled-error crash. */
+  | "stream.iteratorClose"
   | "stream.prop"
   | "stream.errored"
   /** The underscore-method assignment surface (`r._read = fn` after
@@ -7117,6 +7121,7 @@ export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
   "writable.uncork",
   "stream.destroy",
   "stream.destroyErr",
+  "stream.iteratorClose",
   // setMaxListeners(n) throws Node's ERR_OUT_OF_RANGE RangeError for
   // negative/NaN arguments; the static form's default-max write validates
   // identically (Node's validateNumber(n, "setMaxListeners", 0)).

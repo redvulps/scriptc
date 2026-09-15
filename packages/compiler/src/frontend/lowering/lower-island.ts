@@ -1304,6 +1304,23 @@ function isStdlibFetchInterface(
   return null;
 }
 
+/** The statically represented element channel of a native Web
+ * ReadableStream. The stream itself remains an opaque checked-dynamic
+ * handle, but its generic argument is the contract reader.read() exits
+ * through. Null means this is not the standard-library ReadableStream or
+ * its element cannot be represented statically. */
+export function staticReadableStreamElementType(
+  lowerer: Lowerer,
+  node: ts.Expression,
+): IrType | null {
+  if (lowerer.dynamic || !isStdlibFetchInterface(lowerer, node, "ReadableStream")) {
+    return null;
+  }
+  const type = lowerer.checker.getBaseTypeOfLiteralType(lowerer.typeOf(node));
+  const [element] = lowerer.checker.getTypeArguments(type as ts.TypeReference);
+  return element ? lowerer.mapTypeOf(element) : DYN;
+}
+
 function fetchObjectBindingMemberName(
   lowerer: Lowerer,
   element: ts.BindingElement,
@@ -1859,7 +1876,7 @@ export function fenceStaticReadableStreamMember(
   lowerer.noLowering(
     `ReadableStream.${member} in a static build`,
     access,
-    "the native static ReadableStream surface is locked plus cancel() and getReader(); use a reader directly or --dynamic for the wider Web Streams API",
+    "the native static ReadableStream surface is locked plus cancel() and getReader(); values()/[Symbol.asyncIterator]() compile when consumed directly by for await, while stored iterator handles require --dynamic",
     sym,
   );
 }

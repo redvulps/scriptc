@@ -7961,6 +7961,9 @@ function emitStreamLibCall(state: LibCallState): Temp {
           case "stream.destroyErr":
             emitter.usesTimers = true;
             return finish(`(${cType(e.type).trim()})scr_stream_destroy((ScrStream *)${arg(0)}, ${arg(1)})`);
+          case "stream.iteratorClose":
+            emitter.usesTimers = true;
+            return finish(`(${cType(e.type).trim()})scr_stream_iterator_close((ScrStream *)${arg(0)})`);
           case "stream.prop": {
             // The property NAME is a compile-time literal; args[1]'s
             // emitted temp is unused (released with the statement's frame).

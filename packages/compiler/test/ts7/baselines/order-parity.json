@@ -6082,6 +6082,24 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2861-readable-iterator-close.ts": {
+   "order": [
+    "<repo>/tests/corpus/2861-readable-iterator-close.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2862-web-readable-async-iteration.ts": {
+   "order": [
+    "<repo>/tests/corpus/2862-web-readable-async-iteration.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2863-class-async-iterator.ts": {
+   "order": [
+    "<repo>/tests/corpus/2863-class-async-iterator.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
@@ -7086,6 +7104,12 @@
   "<repo>/tests/diagnostics/assert-fences.ts": {
    "order": [
     "<repo>/tests/diagnostics/assert-fences.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/diagnostics/async-iterator-handles.ts": {
+   "order": [
+    "<repo>/tests/diagnostics/async-iterator-handles.ts"
    ],
    "diags": []
   },

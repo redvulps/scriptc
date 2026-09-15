@@ -596,6 +596,9 @@ function publicDetail(tier) {
   if (source.startsWith("compiler-feature:")) {
     if (tier.status === "not-applicable") return "Node configuration or documentation that does not map to a compiled program API.";
     if (tier.status === "not-implemented") return "Not implemented in scriptc's static module-loader subset yet.";
+    if (source.startsWith("compiler-feature:stream.") || source.startsWith("compiler-feature:webstreams.")) {
+      return "Implemented for the documented static async-iteration subset.";
+    }
     return "Implemented for the documented scriptc module-loader subset.";
   }
   if (source.startsWith("compiler-chapter-policy:")) {
