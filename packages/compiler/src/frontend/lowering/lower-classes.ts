@@ -11,7 +11,8 @@ import { MAX_GENERIC_INSTANCES, generatorMeta, genericCallInstance, implicitAnyP
 import { isGenericCallableMemberType, typeKey } from "../type-mapper.js";
 import { cjsClassExprWholeExportOf, isCjsJsFile, isJsSourceFile, isModuleExportsAccess, isNodeTypesPath, locOf } from "../program.js";
 import { PoisonError, dynFallbackType, dynUndefinedExpr, newFnCtx, own } from "./lowerer.js";
-import { bufEncoding, lowerMapSeedArrayNew } from "./lower-containers.js";
+import { lowerMapSeedArrayNew } from "./lower-containers.js";
+import { bufEncoding } from "./containers/bytes.js";
 import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
 import { lowerSearchParamsNew } from "./lower-builtins.js";
 import { requiresDynamicPackageDiag, unsupportedDiag } from "../../diagnostics/diagnostic.js";

@@ -31,6 +31,7 @@ import {
 import { lowerAbsenceProbe } from "./lower-exprs.js";
 import { conditionalSpreadOf, lowerDynObjectLiteral } from "./expressions/object-literals.js";
 import { isSafeToDiscard } from "./expressions/evaluation-safety.js";
+import { defaultAfterUndefined, lowerStaticallyUndefinedArgument } from "./optional-arguments.js";
 import { HTTP2_CONSTANTS } from "./http2-constants.js";
 import { CRYPTO_CIPHERS, CRYPTO_CONSTANTS, CRYPTO_CURVES, CRYPTO_HASHES } from "./crypto-tables.js";
 import { generatorMeta, timerStyleCallback } from "./lower-calls.js";
@@ -188,45 +189,6 @@ function lowerOptionalNumberPredicate(
   return { kind: "call", callee: helper, args: [value], type: BOOL, loc };
 }
 
-/** Lower an optional builtin argument whose checker type is statically
- * undefined/void. The returned expression exists only to preserve effects;
- * callers replace its value with the API default. */
-function lowerStaticallyUndefinedBuiltinArg(lowerer: Lowerer, node: ts.Expression): IrExpr | null {
-  const peel = (value: ts.Expression): ts.Expression => {
-    let expr = value;
-    while (
-      ts.isParenthesizedExpression(expr) ||
-      ts.isAsExpression(expr) ||
-      ts.isTypeAssertion(expr) ||
-      ts.isSatisfiesExpression(expr)
-    ) {
-      expr = expr.expression;
-    }
-    return expr;
-  };
-  let expr = node;
-  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
-  if ((lowerer.typeOf(expr).flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) === 0) return null;
-  expr = peel(expr);
-  let sawVoid = false;
-  while (ts.isVoidExpression(expr)) {
-    sawVoid = true;
-    expr = peel(expr.expression);
-  }
-  return lowerer.lowerExpr(sawVoid ? expr : node);
-}
-
-function defaultAfterUndefined(value: IrExpr, dflt: IrExpr): IrExpr {
-  if (isSafeToDiscard(value)) return dflt;
-  return {
-    kind: "seqExpr",
-    stmts: [{ kind: "exprStmt", expr: value, loc: value.loc }],
-    result: dflt,
-    type: dflt.type,
-    loc: value.loc,
-  };
-}
-
 /** Complete an optional builtin argument. Statically undefined spellings
  * preserve their effects and select the default; a runtime unit-armed union
  * uses nullish selection when every non-unit arm is the expected type. */
@@ -237,7 +199,7 @@ function lowerBuiltinOptionalDefault(
   dflt: IrExpr,
   nullIsDefault = false,
 ): IrExpr {
-  const undefinedArg = lowerStaticallyUndefinedBuiltinArg(lowerer, node);
+  const undefinedArg = lowerStaticallyUndefinedArgument(lowerer, node);
   if (undefinedArg) return defaultAfterUndefined(undefinedArg, dflt);
   if (nullIsDefault && (lowerer.typeOf(node).flags & ts.TypeFlags.Null) !== 0) {
     return defaultAfterUndefined(lowerer.lowerExpr(node), dflt);
@@ -4792,7 +4754,7 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
     const num = (node: ts.Expression | undefined, dflt: number): { value: IrExpr; defaulted: IrExpr } => {
       const defaultValue = { kind: "numLit", value: dflt, type: F64, loc } satisfies IrExpr;
       if (!node) return { value: defaultValue, defaulted: boolLit(true, loc) };
-      const undefinedArg = lowerStaticallyUndefinedBuiltinArg(lowerer, node);
+      const undefinedArg = lowerStaticallyUndefinedArgument(lowerer, node);
       if (undefinedArg) {
         return { value: defaultAfterUndefined(undefinedArg, defaultValue), defaulted: boolLit(true, loc) };
       }
@@ -6457,10 +6419,10 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
         const secondNode = args[1];
         const thirdNode = args[2];
         const secondUndefined = secondNode
-          ? lowerStaticallyUndefinedBuiltinArg(lowerer, secondNode)
+          ? lowerStaticallyUndefinedArgument(lowerer, secondNode)
           : null;
         const thirdUndefined = thirdNode
-          ? lowerStaticallyUndefinedBuiltinArg(lowerer, thirdNode)
+          ? lowerStaticallyUndefinedArgument(lowerer, thirdNode)
           : null;
         const secondT = secondNode && !secondUndefined ? lowerer.mapTypeOf(lowerer.typeOf(secondNode)) : undefined;
         const callbackNode = args.length === 3 && !thirdUndefined
