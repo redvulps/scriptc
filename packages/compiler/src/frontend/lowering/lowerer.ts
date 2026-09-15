@@ -52,7 +52,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { arrayOf, BOOL, canAdaptDynFuncTo, canConvertToDyn, canCrossIslandBoundary, canExitIslandToType, canMarshalTypedFuncIntoIsland, DYN, F64, isJsonSafeType, isJsonStringifySafeType, isUndefinedArmedUnion, isUnitType, JSVAL, RUNTIME_ERROR_CLASSES, STRING, typeEquals, UNDEFINED_T, VOID } from "../../ir/ir.js";
+import { arrayOf, BOOL, canAdaptDynFuncTo, canConvertToDyn, canCrossIslandBoundary, canExitIslandToType, canMarshalTypedFuncIntoIsland, DYN, F64, isJsonSafeType, isJsonStringifySafeType, isUndefinedArmedUnion, isUnitType, JSVAL, NULL_T, RUNTIME_ERROR_CLASSES, STRING, typeEquals, UNDEFINED_T, VOID } from "../../ir/ir.js";
 import { type DynamicImportResolution, type NpmBuiltinUse, type NpmLazyTrap } from "../npm.js";
 import { provenanceActive } from "../provenance-registry.js";
 import {
@@ -116,6 +116,7 @@ import type { ExpandoMember } from "./lower-expando.js";
 import { lowerRecordFieldCall, lowerObjectMethodCall } from "./lower-calls.js";
 import { fenceCrossBlockNsRef, nsPathPrefix } from "./lower-namespaces.js";
 import { numLit, varRef } from "../../ir/build.js";
+import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
 
 /** Entry function name. '%' cannot appear in a TS identifier, so a user
  * function can never collide with it (mangling is injective per prefix). */
@@ -776,6 +777,41 @@ export function dynFallbackType(lowerer: Lowerer, node: ts.Node, t: ts.Type): Ir
     // the whole type's own fence.
     return anyPiecedFuncType(lowerer, node, t);
   }
+  // JS inference commonly spells a callback field initialized to null as
+  // `((value: any) => any) | null`. Preserve the callable arm and its
+  // checked-dynamic pieces instead of collapsing the whole slot to dyn.
+  // Besides keeping direct calls static, this leaves closure captures
+  // visible to the native cycle collector (a dyn-boxed closure edge is
+  // intentionally opaque to it).
+  if (t.isUnionType()) {
+    const arms: IrType[] = [];
+    let functions = 0;
+    for (const part of ts.constituentTypes(t)) {
+      if (part.flags & ts.TypeFlags.Null) {
+        arms.push(NULL_T);
+        continue;
+      }
+      if (part.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) {
+        arms.push(UNDEFINED_T);
+        continue;
+      }
+      const mapped = lowerer.mapTypeOf(part) ?? jsFallbackFunctionType(lowerer, node, part);
+      if (mapped?.kind !== "func") {
+        functions = -1;
+        break;
+      }
+      functions++;
+      arms.push(mapped);
+    }
+    if (functions === 1 && arms.length > 1) {
+      const canonical = [...new Map(arms.map((arm) => [typeKey(arm), arm])).entries()]
+        .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+        .map(([, arm]) => arm);
+      return canonical.length === 1
+        ? canonical[0]!
+        : { kind: "union", unionId: lowerer.unions.intern(canonical) };
+    }
+  }
   if (lowerer.checker.isArrayType(t)) {
     const elem = lowerer.checker.getTypeArguments(t as ts.TypeReference)[0];
     const elemTainted =
@@ -797,18 +833,21 @@ export function dynFallbackType(lowerer: Lowerer, node: ts.Node, t: ts.Type): Ir
   // construct signatures, overloads, and function-with-properties shapes
   // stay out (the whole value falls to dyn below, where every reached
   // use meets its own fence or boxes as-is).
-  const sig = pureSingleCallSignatureOf(lowerer, t);
-  if (sig) {
-    const params = sig.getParameters().map((p): IrType => {
-      const pt = lowerer.checker.getTypeOfSymbolAtLocation(p, node);
-      return lowerer.mapTypeOf(pt) ?? DYN;
-    });
-    const retT = lowerer.checker.getReturnTypeOfSignature(sig);
-    const ret: IrType =
-      retT.flags & ts.TypeFlags.Void ? VOID : lowerer.mapTypeOf(retT) ?? DYN;
-    return { kind: "func", params, ret };
-  }
+  const fallbackFunction = jsFallbackFunctionType(lowerer, node, t);
+  if (fallbackFunction !== null) return fallbackFunction;
   return DYN;
+}
+
+function jsFallbackFunctionType(lowerer: Lowerer, node: ts.Node, t: ts.Type): IrType | null {
+  const sig = pureSingleCallSignatureOf(lowerer, t);
+  if (!sig) return null;
+  const params = sig.getParameters().map((p): IrType => {
+    const pt = lowerer.checker.getTypeOfSymbolAtLocation(p, node);
+    return lowerer.mapTypeOf(pt) ?? DYN;
+  });
+  const retT = lowerer.checker.getReturnTypeOfSignature(sig);
+  const ret: IrType = retT.flags & ts.TypeFlags.Void ? VOID : lowerer.mapTypeOf(retT) ?? DYN;
+  return { kind: "func", params, ret };
 }
 
 /** The one call signature of a PURE function type — single signature, no
@@ -1242,8 +1281,9 @@ export class Lowerer {
   }
 
   /** A strict property or method receiver over an array-derived optional
-   * value. Stabilize the receiver once, throw Node's member-read TypeError
-   * for a unit arm, and extract the expected present arm otherwise. */
+   * value. Reuse a plain read directly or stabilize an effectful receiver
+   * once, throw Node's member-read TypeError for a unit arm, and extract the
+   * expected present arm otherwise. */
   runtimeOptionalPropertyReceiver(
     node: ts.Expression,
     value: IrExpr,
@@ -1261,8 +1301,9 @@ export class Lowerer {
     ) return null;
 
     const loc = locOf(node);
-    const stable = this.declareHiddenLocal("%propertyRecv", source.type);
-    const stableRef = (): IrExpr => varRef(stable.id, source.type, loc);
+    const repeatSource = isSafeToRepeat(source);
+    const stable = repeatSource ? null : this.declareHiddenLocal("%propertyRecv", source.type);
+    const stableRef = (): IrExpr => repeatSource ? source : varRef(stable!.id, source.type, loc);
     let result: IrExpr = {
       kind: "unionNarrow",
       unionId: source.type.unionId,
@@ -1292,6 +1333,7 @@ export class Lowerer {
         loc,
       };
     }
+    if (stable === null) return result;
     return {
       kind: "seqExpr",
       stmts: [{ kind: "varDecl", localId: stable.id, init: source, loc }],

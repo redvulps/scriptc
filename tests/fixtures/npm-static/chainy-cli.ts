@@ -8,3 +8,7 @@ const c = new Chainy();
 c.name("emulate").tag("cli");
 console.log(c.render());
 console.log(c.name());
+console.log(c.readOwnName());
+console.log(c.findOwnName(["other", "emulate"]));
+console.log(c.findOwnName([""]));
+console.log(c.ancestorNames().join(","));

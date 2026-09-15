@@ -86,6 +86,9 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
     const name = access.name.text;
     if (!ARRAY_METHODS.has(name) && name !== "sort" && name !== "shift" && name !== "splice") return null;
     let receiverIr = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+    const checkerReceiver = lowerer.checker.getTypeAtLocation(access.expression);
+    const implicitArrayReceiver = receiverIr?.kind === "array" &&
+      (checkerReceiver.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) || lowerer.checkerAnyArrayType(checkerReceiver));
     // A checker-`any[]` receiver (the readonly-array Array.isArray quirk)
     // whose VALUE lowers to a real static array (maybeNarrow's isArray
     // bridge): ride the ordinary tables on the lowered element type — the
@@ -94,8 +97,10 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
     // the isStdlibMember gate is skipped for probed receivers (nothing
     // user-declared can shadow a method on a value the checker calls any).
     let probedUntyped = false;
+    if (implicitArrayReceiver) probedUntyped = true;
     if (
-      !receiverIr &&
+      (receiverIr === null || receiverIr.kind === "dyn" ||
+        (receiverIr.kind === "array" && receiverIr.elem.kind === "dyn")) &&
       (lowerer.checkerAnyArray(access.expression) ||
         // A checker-`any` CHAIN whose value lowers to a real static array
         // (`context.stack.split('\n').slice(2)` — the dyn-receiver string
@@ -461,8 +466,12 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
           lowerer.unsupported("SC1090", argNode, "spread arguments to concat (pass the array itself — concat already spreads array arguments)");
         }
         const argIr = lowerer.mapTypeOf(lowerer.typeOf(argNode));
-        if (argIr !== null && argIr.kind === "array" && typeEquals(argIr.elem, elem)) {
-          if (elem.kind === "array" && typeEquals(argIr, elem)) {
+        const probedArg = probedUntyped ? tryLowerExpression(lowerer, argNode) : null;
+        const argArrayType = probedArg?.type.kind === "array"
+          ? probedArg.type
+          : argIr?.kind === "array" ? argIr : null;
+        if (argArrayType !== null && typeEquals(argArrayType.elem, elem)) {
+          if (elem.kind === "array" && typeEquals(argArrayType, elem)) {
             // number[][].concat(inner: number[]) — TS says element, JS's
             // IsArray says spread; no honest static answer exists.
             lowerer.unsupported(
@@ -577,7 +586,7 @@ function fenceProducedArrayElem(lowerer: Lowerer, node: ts.Node, producer: strin
       name === "find" || name === "findIndex" || name === "findLast" ||
       name === "findLastIndex" || name === "some" || name === "every"
     ) {
-      return lowerArrayFindLikeCall(lowerer, call, access, name, elem);
+      return lowerArrayFindLikeCall(lowerer, call, access, name, elem, probedUntyped);
     }
     if (name === "at") return lowerArrayAtCall(lowerer, call, access, elem);
     if (name === "flatMap") return lowerArrayFlatMapCall(lowerer, call, access, elem);
@@ -820,8 +829,9 @@ function arraySearchHelper(
    * loop passes exactly what it declares (JS passes everything; a callback
    * only sees the parameters it names). Returns the lowered callback and
    * its declared arity. */
-  function hofCallbackArg(lowerer: Lowerer, argNode: ts.Expression, lead: IrType[], arrT: IrType):
+  function hofCallbackArg(lowerer: Lowerer, argNode: ts.Expression, lead: IrType[], arrT: IrType, bindUntyped = false):
     { fnArg: IrExpr & { type: IrType & { kind: "func" } }; arity: number } {
+    const full = [...lead, F64, arrT];
     // A DYN-receiver HOF's callback (`parsed.flatMap((value) => ...)`):
     // the contextual signature types the unannotated param `any` (the
     // receiver is checker-`any[]`), while the VALUE each call receives is
@@ -852,13 +862,55 @@ function arraySearchHelper(
         lowerer.jsvalParamOverrides.add(p);
       });
     }
+    // A checker-untyped array expression whose lowered value supplies a
+    // concrete static element type still contextually types an inline HOF
+    // callback with any/unknown. Bind only unannotated parameters to the
+    // exact ABI the synthesized loop passes. The override is temporary:
+    // one callback AST may be lowered under several generic instances.
+    const contextual: { symbol: ts.Symbol; previous: IrType | undefined }[] = [];
+    const previousImplicit = lowerer.implicitParamTypes;
+    let contextualTs: Map<ts.Symbol, ts.Type> | null = null;
+    if (bindUntyped && (ts.isArrowFunction(argNode) || ts.isFunctionExpression(argNode))) {
+      argNode.parameters.forEach((param, i) => {
+        const expected = full[i];
+        if (
+          expected === undefined || expected.kind === "dyn" || expected.kind === "jsval" ||
+          !ts.isIdentifier(param.name) || param.type || param.initializer || param.dotDotDotToken
+        ) {
+          return;
+        }
+        const checkerType = lowerer.checker.getTypeAtLocation(param.name);
+        if ((checkerType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) return;
+        const symbol = lowerer.checker.getSymbolAtLocation(param.name);
+        if (!symbol) return;
+        contextual.push({ symbol, previous: lowerer.runtimeOptionalBindingTypes.get(symbol) });
+        lowerer.runtimeOptionalBindingTypes.set(symbol, expected);
+        const bodyExpected =
+          expected.kind === "union" && lowerer.armTag(expected.unionId, UNDEFINED_T) >= 0
+            ? lowerer.stripUndefinedArm(expected)
+            : expected;
+        const expectedTs =
+          bodyExpected.kind === "string" ? lowerer.checker.getStringType() :
+            bodyExpected.kind === "f64" ? lowerer.checker.getNumberType() :
+              bodyExpected.kind === "bool" ? lowerer.checker.getBooleanType() : null;
+        if (expectedTs !== null) {
+          contextualTs ??= new Map(previousImplicit ?? []);
+          contextualTs.set(symbol, expectedTs);
+        }
+      });
+    }
+    if (contextualTs !== null) lowerer.implicitParamTypes = contextualTs;
     let fnArg: IrExpr;
     try {
       fnArg = lowerer.lowerExpr(argNode);
     } finally {
       for (const n of overridden) lowerer.chainNarrowedType.delete(n);
+      for (const { symbol, previous } of contextual) {
+        if (previous === undefined) lowerer.runtimeOptionalBindingTypes.delete(symbol);
+        else lowerer.runtimeOptionalBindingTypes.set(symbol, previous);
+      }
+      lowerer.implicitParamTypes = previousImplicit;
     }
-    const full = [...lead, F64, arrT];
     if (
       fnArg.type.kind !== "func" ||
       fnArg.type.params.length > full.length ||
@@ -1452,13 +1504,14 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
   function lowerArrayFindLikeCall(lowerer: Lowerer, call: ts.CallExpression,
     access: ts.PropertyAccessExpression,
     method: "find" | "findIndex" | "findLast" | "findLastIndex" | "some" | "every",
-    elem: IrType,): IrExpr {
+    elem: IrType,
+    bindUntyped = false,): IrExpr {
     const loc = locOf(call);
     const receiver = lowerer.lowerExpr(access.expression);
     const arrT = arrayOf(elem);
     const argNode = call.arguments[0];
     if (!argNode) lowerer.unsupported("SC1090", call, "this call form"); // tsc-guarded
-    const { fnArg, arity } = hofCallbackArg(lowerer, argNode, [arrayValueType(lowerer, elem)], arrT);
+    const { fnArg, arity } = hofCallbackArg(lowerer, argNode, [arrayValueType(lowerer, elem)], arrT, bindUntyped);
     // JS takes the ToBoolean of the predicate's result — allowed wherever
     // that ToBoolean has a static answer (bool passes through; f64/string
     // by value; a truthy-answerable union by its arm — the
@@ -1489,7 +1542,7 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
     // found element passes through untouched; otherwise it wraps into its
     // arm. A union element whose result union differs would need the
     // union-into-union re-tag that doesn't exist — fenced.
-    const resultT = lowerer.irTypeOf(call);
+    const resultT = bindUntyped ? arrayValueType(lowerer, elem) : lowerer.irTypeOf(call);
     if (resultT.kind !== "union") lowerer.badType(call, lowerer.typeOf(call)); // defensive: T | undefined always maps to a union
     const undefTag = lowerer.armTag(resultT.unionId, UNDEFINED_T);
     if (undefTag < 0) lowerer.badType(call, lowerer.typeOf(call));
@@ -2510,7 +2563,15 @@ function getElemExpr(arrT: IrType, elem: IrType, loc: SrcLoc): IrExpr {
     if (lowerer.chainBlocked(access, call)) return null;
     const name = access.name.text;
     if (!MAP_METHODS.has(name) && !MAP_ITER_METHODS.has(name)) return null;
-    const receiverIr = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+    let receiverIr = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+    let probedUntyped = false;
+    if (receiverIr?.kind !== "map" && isJsSourceFile(access.getSourceFile())) {
+      const probed = tryLowerExpression(lowerer, access.expression);
+      if (probed?.type.kind === "map") {
+        receiverIr = probed.type;
+        probedUntyped = true;
+      }
+    }
     if (receiverIr?.kind !== "map") return null;
     if (!lowerer.isStdlibMember(access)) return null;
     const loc = locOf(call);
@@ -2560,7 +2621,7 @@ function getElemExpr(arrT: IrType, elem: IrType, loc: SrcLoc): IrExpr {
       return lowerMapIterDrainCall(lowerer, call, receiver, receiverIr, name as "keys" | "values" | "entries");
     }
     // forEach
-    return lowerer.lowerMapForEachCall(call, receiver, receiverIr);
+    return lowerMapForEachCall(lowerer, call, receiver, receiverIr, probedUntyped);
   }
 
 /** The iterator methods the lowering DOES cover — in exactly one context. */
@@ -2706,11 +2767,46 @@ const MAP_ITER_METHODS = new Set(["keys", "values", "entries"]);
    * fewer parameters — (value) or () — is ordinary TS and supported. */
   export function lowerMapForEachCall(lowerer: Lowerer, call: ts.CallExpression,
     receiver: IrExpr,
-    mapT: IrType & { kind: "map" },): IrExpr {
+    mapT: IrType & { kind: "map" },
+    bindUntyped = false,): IrExpr {
     const loc = locOf(call);
     const argNode = call.arguments[0];
     if (!argNode) lowerer.unsupported("SC1090", call, "this call form"); // tsc-guarded
-    const fnArg = lowerer.lowerExpr(argNode);
+    const previousRuntime: { symbol: ts.Symbol; type: IrType | undefined }[] = [];
+    const previousImplicit = lowerer.implicitParamTypes;
+    let contextualTs: Map<ts.Symbol, ts.Type> | null = null;
+    if (bindUntyped && (ts.isArrowFunction(argNode) || ts.isFunctionExpression(argNode))) {
+      const expected = [mapT.value, mapT.key];
+      argNode.parameters.slice(0, 2).forEach((param, i) => {
+        const type = expected[i];
+        if (type === undefined || !ts.isIdentifier(param.name) || param.type || param.initializer || param.dotDotDotToken) return;
+        const checkerType = lowerer.checker.getTypeAtLocation(param.name);
+        if ((checkerType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) return;
+        const symbol = lowerer.checker.getSymbolAtLocation(param.name);
+        if (!symbol) return;
+        previousRuntime.push({ symbol, type: lowerer.runtimeOptionalBindingTypes.get(symbol) });
+        lowerer.runtimeOptionalBindingTypes.set(symbol, type);
+        const primitive =
+          type.kind === "string" ? lowerer.checker.getStringType() :
+            type.kind === "f64" ? lowerer.checker.getNumberType() :
+              type.kind === "bool" ? lowerer.checker.getBooleanType() : null;
+        if (primitive !== null) {
+          contextualTs ??= new Map(previousImplicit ?? []);
+          contextualTs.set(symbol, primitive);
+        }
+      });
+    }
+    if (contextualTs !== null) lowerer.implicitParamTypes = contextualTs;
+    let fnArg: IrExpr;
+    try {
+      fnArg = lowerer.lowerExpr(argNode);
+    } finally {
+      lowerer.implicitParamTypes = previousImplicit;
+      for (const { symbol, type } of previousRuntime) {
+        if (type === undefined) lowerer.runtimeOptionalBindingTypes.delete(symbol);
+        else lowerer.runtimeOptionalBindingTypes.set(symbol, type);
+      }
+    }
     if (
       fnArg.type.kind !== "func" ||
       fnArg.type.params.length > 2 ||
@@ -2849,7 +2945,7 @@ const MAP_ITER_METHODS = new Set(["keys", "values", "entries"]);
     // Set<union-of-signatures>, but the VALUE lowered as a real Set of
     // identity tokens (the new-Set probe) — the lowered receiver's type
     // is the honest dispatch key.
-    if (receiverIr === null && isJsSourceFile(access.getSourceFile())) {
+    if (receiverIr?.kind !== "set" && isJsSourceFile(access.getSourceFile())) {
       const probed = tryLowerExpression(lowerer, access.expression);
       if (probed?.type.kind === "set") receiverIr = probed.type;
     }

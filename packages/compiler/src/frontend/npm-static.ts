@@ -60,13 +60,14 @@
 
 import { dirname } from "node:path";
 import { rewriteBundlerCjsExports } from "./npm-static-rewrite.js";
-import { applyNpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
-import type { NpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
+import { applyNpmStaticDeclarationOverloads, applyNpmStaticDeclarationProperties } from "./npm-static-declarations.js";
+import type { NpmStaticDeclarationOverloads, NpmStaticDeclarationProperties } from "./npm-static-declarations.js";
 import { npmPackageNameOf, registerWorkspacePackage, workspacePackageOfPath } from "./workspace-registry.js";
 import { trackedExists, trackedReadFile, trackedRealpath } from "./input-tracker.js";
 
 let activePackages: ReadonlySet<string> = new Set();
 let declarationOverloads: ReadonlyMap<string, NpmStaticDeclarationOverloads> = new Map();
+let declarationProperties: ReadonlyMap<string, NpmStaticDeclarationProperties> = new Map();
 
 /** Offender records of the CURRENT load attempt: packages whose static
  * compilation the preflight had to refuse, with the first reason. The
@@ -80,6 +81,7 @@ const rewriteCache = new Map<string, string | null>();
 export function setNpmStaticPackages(packages: Iterable<string>): void {
   activePackages = new Set(packages);
   declarationOverloads = new Map();
+  declarationProperties = new Map();
   offenders.clear();
   rewriteCache.clear();
   untypedPkgCache.clear();
@@ -88,8 +90,10 @@ export function setNpmStaticPackages(packages: Iterable<string>): void {
 
 export function setNpmStaticDeclarationOverloads(
   overloads: ReadonlyMap<string, NpmStaticDeclarationOverloads>,
+  properties: ReadonlyMap<string, NpmStaticDeclarationProperties> = new Map(),
 ): void {
   declarationOverloads = overloads;
+  declarationProperties = properties;
   rewriteCache.clear();
 }
 
@@ -388,16 +392,21 @@ export function npmStaticFsShadow(): NpmStaticFsShadow | null {
         try {
           const source = trackedReadFile(path);
           if (source !== null) {
-            const projected = applyNpmStaticDeclarationOverloads(
+            const propertyProjected = applyNpmStaticDeclarationProperties(
               path,
               source,
+              declarationProperties.get(path.split("\\").join("/")) ?? new Map(),
+            );
+            const projected = applyNpmStaticDeclarationOverloads(
+              path,
+              propertyProjected?.text ?? source,
               declarationOverloads.get(path.split("\\").join("/")) ?? new Map(),
             );
-            const answer = rewriteBundlerCjsExports(projected?.text ?? source, path);
+            const answer = rewriteBundlerCjsExports(projected?.text ?? propertyProjected?.text ?? source, path);
             if (answer !== null && typeof answer === "object") {
               reportNpmStaticOffender(target.pkg, answer.degrade);
             } else {
-              rewritten = answer ?? projected?.text ?? null;
+              rewritten = answer ?? projected?.text ?? propertyProjected?.text ?? null;
             }
           }
         } catch {

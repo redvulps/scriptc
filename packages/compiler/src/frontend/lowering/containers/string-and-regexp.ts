@@ -68,7 +68,7 @@ export function lowerRegexMethodCall(lowerer: Lowerer, call: ts.CallExpression,
       }
     }
     const receiver = lowerReceiver();
-    const args = call.arguments.map((a) => lowerer.lowerExpr(a));
+    const args = call.arguments.map((a) => lowerer.ensureString(lowerer.lowerExpr(a), a));
     return { kind: "regexIntrinsic", method: "test", receiver, args, type: BOOL, loc };
   }
   // `re.exec(s)` for non-g/y regexes: spec-identical to `s.match(re)`
@@ -234,12 +234,15 @@ export function lowerStringMethodCall(lowerer: Lowerer, call: ts.CallExpression,
   // methods can only BE the string intrinsics.
   if (dynReceiver === undefined) {
     const receiverIr = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+    const nullableString = receiverIr?.kind === "union" &&
+      (lowerer.unions.get(receiverIr.unionId)?.arms.some((arm) => arm.kind === "string") ?? false) &&
+      (lowerer.unions.get(receiverIr.unionId)?.arms.every((arm) => arm.kind === "string" || isUnitType(arm)) ?? false);
     // `require.main?.filename.startsWith(...)`: the checker types the
     // receiver `string | undefined` (the chain's short-circuit arm), but
     // the entry-module fold lowers it to a compile-time STRING — the
     // suite harness's skip() shape. Everything else keeps the strict
     // string gate.
-    if (receiverIr?.kind !== "string" && !isRequireMainFilename(lowerer, access.expression)) return null;
+    if (receiverIr?.kind !== "string" && !nullableString && !isRequireMainFilename(lowerer, access.expression)) return null;
     if (!lowerer.isStdlibMember(access)) return null;
   }
   // The lib declares optional parameters beyond the lowered forms

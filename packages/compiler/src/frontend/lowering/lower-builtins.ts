@@ -5695,6 +5695,17 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
       const fn = expr.name.text === "node" ? "process.versionsNode" : "process.versionsOpenssl";
       return { kind: "libCall", fn, args: [], type: STRING, loc: locOf(expr) };
     }
+    // process.versions?.electron is the runtime-capability probe used by
+    // CLI packages to select Electron argument conventions. versions
+    // itself always exists, and a native scriptc binary is not Electron,
+    // so both the optional and ordinary property spellings read undefined.
+    if (
+      ts.isPropertyAccessExpression(expr.expression) &&
+      lowerer.stdlibGlobalMember(expr.expression, "process") === "versions" &&
+      expr.name.text === "electron"
+    ) {
+      return { kind: "unitLit", unit: "undefined", type: UNDEFINED_T, loc: locOf(expr) };
+    }
     // The capability-probe members that honestly DON'T EXIST in a
     // compiled binary — each reads undefined (their declared types carry
     // the undefined arm), so feature probes take their documented

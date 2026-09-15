@@ -17,7 +17,7 @@ import { isProvenanceSourceFile } from "../provenance-registry.js";
 import { ambientUndefVarRootOf, lowerImportEquals, nsUndefRead, nsWritableTarget, trapDeclRootOf } from "./lower-namespaces.js";
 import { expandoWritableTarget, lowerExpandoAssignStmt } from "./lower-expando.js";
 import { ForOfIterProjection, lowerForOfArrayIter, lowerForOfMap, lowerForOfSearchParams, lowerForOfSet, lowerSafeIndexRead, objectIterOverIndexShape, strCharsCall } from "./lower-containers.js";
-import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, nullishExprUnitOf, nullishGenericBindingUnitOf, recordKeysArrayCall } from "./lower-calls.js";
+import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, implicitMethodCallInfersReturn, nullishExprUnitOf, nullishGenericBindingUnitOf, recordKeysArrayCall } from "./lower-calls.js";
 import { isMixinFnBinding, mixinResultBindingClassOf } from "./lower-mixins.js";
 import type { ClassInfo, ClassIteratorInfo } from "./lower-classes.js";
 import { genericIfaceBindingKeepsClass } from "./lower-classes.js";
@@ -35,6 +35,7 @@ import { isRelativeSpecifier } from "../workspace-registry.js";
 import { probeNodeRequireRefusal } from "../npm.js";
 import { numLit, varRef } from "../../ir/build.js";
 import { constituentTypes } from "../ts7/checker.js";
+import { npmStaticPackageOfPath } from "../npm-static.js";
 
 interface UsingRegistration {
   acquire: IrStmt;
@@ -46,6 +47,110 @@ interface UsingMarker {
   start: number;
   cleanup: IrStmt[];
   loc: SrcLoc;
+}
+
+/** An opted package's directly-returned empty array may take the function's
+ * explicit static return element type. This is the common JS accumulator
+ * shape (`const result = []; result.push(value); return result`) and is
+ * narrower than treating every evolving array in the function alike. */
+function npmStaticReturnedEmptyArrayType(
+  lowerer: Lowerer,
+  decl: ts.VariableDeclaration,
+): (IrType & { kind: "array" }) | null {
+  if (
+    !ts.isIdentifier(decl.name) ||
+    decl.initializer === undefined ||
+    !ts.isArrayLiteralExpression(decl.initializer) ||
+    decl.initializer.elements.length !== 0 ||
+    !isJsSourceFile(decl.getSourceFile()) ||
+    npmStaticPackageOfPath(decl.getSourceFile().fileName) === null ||
+    lowerer.ctx.returnType.kind !== "array"
+  ) {
+    return null;
+  }
+  const symbol = lowerer.checker.getSymbolAtLocation(decl.name);
+  if (symbol === undefined) return null;
+  let owner: ts.Node | undefined = decl.parent;
+  while (owner !== undefined && !ts.isFunctionLike(owner)) owner = owner.parent;
+  const ownerBody = owner !== undefined && "body" in owner ? owner.body : undefined;
+  if (ownerBody === undefined || !ts.isBlock(ownerBody)) return null;
+  let returned = false;
+  ts.walkPreorder(ownerBody, (node) => {
+    if (node !== ownerBody && ts.isFunctionLike(node)) return "skip";
+    if (!ts.isReturnStatement(node) || node.expression === undefined) return undefined;
+    let expression = node.expression;
+    while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+    if (ts.isIdentifier(expression) && lowerer.checker.getSymbolAtLocation(expression) === symbol) {
+      returned = true;
+      return "stop";
+    }
+    return undefined;
+  });
+  return returned ? lowerer.ctx.returnType : null;
+}
+
+/** A JS loop cursor in opted package source can be initialized with `T`
+ * and later assigned a nullable self link (`cursor = cursor.parent`). Keep
+ * that optional value in the local so the next loop condition, rather than
+ * the assignment, narrows it. */
+function npmStaticOptionalSelfWriteType(
+  lowerer: Lowerer,
+  decl: ts.VariableDeclaration,
+  initial: IrType,
+): (IrType & { kind: "union" }) | null {
+  if (
+    !ts.isIdentifier(decl.name) ||
+    !isJsSourceFile(decl.getSourceFile()) ||
+    npmStaticPackageOfPath(decl.getSourceFile().fileName) === null ||
+    initial.kind === "union"
+  ) {
+    return null;
+  }
+  const symbol = lowerer.checker.getSymbolAtLocation(decl.name);
+  if (symbol === undefined) return null;
+  let owner: ts.Node | undefined = decl.parent;
+  while (owner !== undefined && !ts.isFunctionLike(owner)) owner = owner.parent;
+  const ownerBody = owner !== undefined && "body" in owner ? owner.body : undefined;
+  if (ownerBody === undefined || !ts.isBlock(ownerBody)) return null;
+  let candidate: (IrType & { kind: "union" }) | null = null;
+  let invalid = false;
+  ts.walkPreorder(ownerBody, (node) => {
+    if (node !== ownerBody && ts.isFunctionLike(node)) return "skip";
+    if (ts.isBinaryExpression(node)) {
+      let left = node.left;
+      while (ts.isParenthesizedExpression(left)) left = left.expression;
+      if (ts.isIdentifier(left) && lowerer.checker.getSymbolAtLocation(left) === symbol) {
+        if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+          invalid = true;
+          return "stop";
+        }
+        const written = lowerer.mapTypeOf(lowerer.typeOf(node.right));
+        if (written !== null && typeEquals(written, initial)) return undefined;
+        const arms = written?.kind === "union" ? lowerer.unions.get(written.unionId)?.arms : undefined;
+        if (
+          written?.kind !== "union" ||
+          arms === undefined ||
+          !arms.some((arm) => typeEquals(arm, initial)) ||
+          !arms.every((arm) => typeEquals(arm, initial) || isUnitType(arm)) ||
+          (candidate !== null && !typeEquals(candidate, written))
+        ) {
+          invalid = true;
+          return "stop";
+        }
+        candidate = written;
+      }
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      ts.isIdentifier(node.operand) &&
+      lowerer.checker.getSymbolAtLocation(node.operand) === symbol
+    ) {
+      invalid = true;
+      return "stop";
+    }
+    return undefined;
+  });
+  return invalid ? null : candidate;
 }
 
 function isAwaitUsing(list: ts.VariableDeclarationList): boolean {
@@ -3188,6 +3293,99 @@ export function isParseArgsDynCheckerType(lowerer: Lowerer, type: ts.Type): bool
     return lowered;
   }
 
+/** A single static type for an initializer-less JavaScript `let` whose
+ * later plain writes all agree. An evolving JS local reads as `undefined`
+ * until control flow proves a write, so a scalar slot is sound only when
+ * every ordinary use already has that concrete flow type. Any closure
+ * capture stays checked-dynamic: it can observe the local before an outer
+ * assignment, and the checker deliberately leaves captured evolving lets
+ * broad. */
+function inferredEvolvingLetType(lowerer: Lowerer, decl: ts.VariableDeclaration): IrType | null {
+  if (!ts.isIdentifier(decl.name)) return null;
+  const symbol = lowerer.checker.getSymbolAtLocation(decl.name);
+  const scope = decl.parent.parent.parent;
+  if (symbol === undefined || (!ts.isBlock(scope) && !ts.isSourceFile(scope))) return null;
+
+  const isPlainAssignmentTarget = (node: ts.Identifier): boolean => {
+    let target: ts.Expression = node;
+    while (ts.isParenthesizedExpression(target.parent) && target.parent.expression === target) {
+      target = target.parent;
+    }
+    const parent = target.parent;
+    return ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.left === target;
+  };
+  const captures = (fn: ts.Node): boolean => {
+    let captured = false;
+    ts.walkPreorder(fn, (node) => {
+      if (
+        node !== fn &&
+        ts.isIdentifier(node) &&
+        lowerer.checker.getSymbolAtLocation(node) === symbol
+      ) {
+        captured = true;
+        return "stop";
+      }
+      return undefined;
+    });
+    return captured;
+  };
+
+  const writes: IrType[] = [];
+  const reads: ts.Identifier[] = [];
+  let invalid = false;
+  ts.walkPreorder(scope, (node) => {
+    if (node !== scope && ts.isFunctionLike(node)) {
+      if (captures(node)) invalid = true;
+      return "skip";
+    }
+    if (ts.isBinaryExpression(node)) {
+      let left = node.left;
+      while (ts.isParenthesizedExpression(left)) left = left.expression;
+      if (ts.isIdentifier(left) && lowerer.checker.getSymbolAtLocation(left) === symbol) {
+        if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+          invalid = true;
+          return "stop";
+        }
+        if (ts.isCallExpression(node.right) && implicitMethodCallInfersReturn(lowerer, node.right)) {
+          invalid = true;
+          return "stop";
+        }
+        const mapped = lowerer.mapTypeOf(lowerer.typeOf(node.right));
+        if (!mapped || mapped.kind === "dyn" || mapped.kind === "jsval" || mapped.kind === "void" || isUnitType(mapped)) {
+          invalid = true;
+          return "stop";
+        }
+        writes.push(mapped);
+      }
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      ts.isIdentifier(node.operand) &&
+      lowerer.checker.getSymbolAtLocation(node.operand) === symbol
+    ) {
+      invalid = true;
+      return "stop";
+    }
+    if (
+      ts.isIdentifier(node) &&
+      node !== decl.name &&
+      lowerer.checker.getSymbolAtLocation(node) === symbol &&
+      !isPlainAssignmentTarget(node)
+    ) {
+      reads.push(node);
+    }
+    return undefined;
+  });
+  const first = writes[0];
+  if (invalid || first === undefined || !writes.every((write) => typeEquals(write, first))) return null;
+  return reads.every((read) => {
+    const mapped = lowerer.mapTypeOf(lowerer.typeOf(read));
+    return mapped !== null && typeEquals(mapped, first);
+  }) ? first : null;
+}
+
 export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isLet: boolean): IrStmt | null {
     // --provenance-sources: an elided pure-annotated dead const emits
     // nothing (collectGlobals registered no global by the same test —
@@ -3461,6 +3659,9 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
       // immediately (the type covers the unassigned state), so they
       // initialize to the interned undefined arm like an omitted optional.
       let type = lowerer.irTypeOf(decl.name);
+      if (type.kind === "dyn" && isLet && isJsSourceFile(decl.getSourceFile())) {
+        type = inferredEvolvingLetType(lowerer, decl) ?? type;
+      }
       // `var v: void;` / `let x: undefined;` — a unit-only binding rides
       // the unit-only union (its undefined arm is the unassigned state,
       // which is also the only state).
@@ -3531,6 +3732,14 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
       (lowerer.dynamic && init.type.kind === "dyn" && jsvalFlavoredType(lowerer.mapTypeOf(lowerer.typeOf(decl.name)) ?? DYN) ? DYN : null) ??
       (bindingTainted ? null : lowerer.mapTypeOf(lowerer.typeOf(decl.name))) ??
       (init.type.kind === "dyn" ? DYN : null);
+    if (
+      lowerer.implicitParamTypes !== null &&
+      init.type.kind === "dyn" &&
+      isJsSourceFile(decl.getSourceFile()) &&
+      npmStaticPackageOfPath(decl.getSourceFile().fileName) !== null
+    ) {
+      type = DYN;
+    }
     // A JS `let x = {}`: TS's empty-object-literal type admits ANY later
     // non-nullish assignment (`envs = {}`, later `envs =
     // Object.fromEntries(...)` — tsc accepts every such write, since
@@ -3542,6 +3751,11 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
       const shape = lowerer.shapes.get(type.shapeId);
       if (shape && shape.fields.length === 0 && !shape.indexValue && !shape.tuple) type = DYN;
     }
+    const returnedEmptyArrayType = npmStaticReturnedEmptyArrayType(lowerer, decl);
+    if (returnedEmptyArrayType !== null) {
+      type = returnedEmptyArrayType;
+      init = lowerer.lowerExprExpecting(decl.initializer, returnedEmptyArrayType);
+    }
     // A JS `const leaked = [];` (the evolving-array idiom — test/common's
     // leak ledger): tsc types the binding by its LATER pushes, but this
     // frontend answers the declaration name with the uninhabited never[],
@@ -3551,7 +3765,11 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // checked-dynamic instead (the `let x = {}` stance, and lower-modules'
     // file-scope evolving-array rule): pushes ride the dyn array, typed
     // exits dynCheck.
-    if ((type === null || type.kind === "array") && isJsSourceFile(decl.getSourceFile())) {
+    if (
+      returnedEmptyArrayType === null &&
+      (type === null || type.kind === "array") &&
+      isJsSourceFile(decl.getSourceFile())
+    ) {
       let initExpr: ts.Expression = decl.initializer;
       while (ts.isParenthesizedExpression(initExpr)) initExpr = initExpr.expression;
       if (ts.isArrayLiteralExpression(initExpr) && initExpr.elements.length === 0) {
@@ -3617,15 +3835,16 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // their tuple record likewise). Const only — an evolving-`any`
     // `let` may be reassigned a different shape later; genuine `any`
     // only — every other unmappable keeps its own diagnostic.
+    const checkerAny = (lowerer.typeOf(decl.name).flags & ts.TypeFlags.Any) !== 0;
     if (
-      type === null && !isLet &&
-      ((lowerer.typeOf(decl.name).flags & ts.TypeFlags.Any) !== 0 ||
+      (type === null || (type.kind === "dyn" && checkerAny)) && !isLet &&
+      (checkerAny ||
         (lowerer.checkerAnyArray(decl.name) && lowerer.isArrayValueType(init.type)) ||
         // JS declarations carry no annotations: an unmappable inferred
         // type (a union with a fence-folded arm — the typeof-'bigint'
         // dual-mode ternary) adopts the initializer's static type, the
         // same rule genuine `any` consts take.
-        isJsSourceFile(decl.getSourceFile())) &&
+        (type === null && isJsSourceFile(decl.getSourceFile()))) &&
       init.type.kind !== "void" && init.type.kind !== "caught" && init.type.kind !== "jsval" &&
       !isUnitType(init.type)
     ) {
@@ -3639,6 +3858,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
       if (js) type = js;
     }
     if (!type) lowerer.badType(decl.name, lowerer.typeOf(decl.name));
+    let settledType: IrType = type;
     const arithmeticType = decl.initializer ? lowerer.runtimeOptionalArithmeticTypes.get(decl.initializer) : undefined;
     const isStringArithmeticUnion = (t: IrType): boolean => {
       if (t.kind !== "union") return false;
@@ -3647,33 +3867,38 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
         arms.some((a) => a.kind === "f64") && arms.some((a) => a.kind === "string");
     };
     const runtimeStringArithmetic =
-      type?.kind === "string" &&
+      settledType.kind === "string" &&
       ((arithmeticType && typeEquals(arithmeticType, init.type)) || isStringArithmeticUnion(init.type));
     if (runtimeStringArithmetic) {
-      type = init.type;
+      settledType = init.type;
     }
-    type = lowerer.runtimeOptionalBindingType(decl.name, type);
+    const optionalSelfWriteType = isLet
+      ? npmStaticOptionalSelfWriteType(lowerer, decl, settledType)
+      : null;
+    settledType = lowerer.runtimeOptionalBindingType(decl.name, settledType);
+    if (optionalSelfWriteType !== null) settledType = optionalSelfWriteType;
+    if (returnedEmptyArrayType !== null) settledType = returnedEmptyArrayType;
     // `const x: void = undefined` / `let y: undefined = undefined`: the
     // unit-only union — the initializer's unit literal wraps into its arm
     // like any optional completion. Non-literal void initializers (a
     // void CALL's result) keep their fence at the coercion below.
-    if (type.kind === "void" && isUnitOnlyTsType(lowerer.typeOf(decl.name))) {
-      type = unitOnlyUnion(lowerer.unions);
+    if (settledType.kind === "void" && isUnitOnlyTsType(lowerer.typeOf(decl.name))) {
+      settledType = unitOnlyUnion(lowerer.unions);
     }
-    if (type.kind === "void") lowerer.badType(decl.name, lowerer.typeOf(decl.name));
+    if (settledType.kind === "void") lowerer.badType(decl.name, lowerer.typeOf(decl.name));
     // A PACKAGE promise stored in a local stays an island HANDLE — the
     // engine's promise has no static promise value to coerce into. Awaits
     // and .catch/.finally chains on the local bridge per use site (each
     // bridge is an independent observer of the same settlement).
-    if (init.type.kind === "jsval" && type.kind === "promise") type = JSVAL;
+    if (init.type.kind === "jsval" && settledType.kind === "promise") settledType = JSVAL;
     // An island value under an `any[]`-declared LOCAL spelling stays an
     // island HANDLE too (the runtime-world rule): the jsval-element-array
     // exit is a CALL-boundary conversion (the loadPlugins param ABI) —
     // converting a local would strand the engine's own prototypes
     // (join/map/... on a native handle-element array), where the handle
     // routes every use engine-side.
-    if (init.type.kind === "jsval" && type.kind === "array" && type.elem.kind === "jsval") {
-      type = JSVAL;
+    if (init.type.kind === "jsval" && settledType.kind === "array" && settledType.elem.kind === "jsval") {
+      settledType = JSVAL;
     }
     // A STATIC array of island HANDLES under an unannotated declared type
     // spelling evolved elements (`const kept = fns.filter(...)` over an
@@ -3687,9 +3912,9 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     if (
       !decl.type &&
       init.type.kind === "array" && init.type.elem.kind === "jsval" &&
-      type.kind === "array" && type.elem.kind !== "jsval"
+      settledType.kind === "array" && settledType.elem.kind !== "jsval"
     ) {
-      type = init.type;
+      settledType = init.type;
     }
     // `const runner = options.runner || defaultRunner`: the checker types
     // the || as the union/merge of two structurally-compatible function
@@ -3699,15 +3924,15 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // when the parameters agree and the declared return either contains
     // the init's return as a union arm or is the opaque spawnRes the
     // adapter converts (nothing coerces INTO either declared form).
-    if (type.kind === "func" && init.type.kind === "func" && !typeEquals(type, init.type)) {
+    if (settledType.kind === "func" && init.type.kind === "func" && !typeEquals(settledType, init.type)) {
       const initFn = init.type;
       const paramsAgree =
-        type.params.length === initFn.params.length &&
-        type.params.every((p, i) => typeEquals(p, initFn.params[i]!));
+        settledType.params.length === initFn.params.length &&
+        settledType.params.every((p, i) => typeEquals(p, initFn.params[i]!));
       const retUnionArm =
-        type.ret.kind === "union" && lowerer.armTag(type.ret.unionId, initFn.ret) >= 0;
-      if (paramsAgree && (retUnionArm || lowerer.spawnResFnAdapterPlan(type, initFn) !== null)) {
-        type = init.type;
+        settledType.ret.kind === "union" && lowerer.armTag(settledType.ret.unionId, initFn.ret) >= 0;
+      if (paramsAgree && (retUnionArm || lowerer.spawnResFnAdapterPlan(settledType, initFn) !== null)) {
+        settledType = init.type;
       }
     }
     // The downstream twin: `const result = runner(cmd, args)` where the
@@ -3716,14 +3941,14 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // can narrow (spawnRes has no discriminant). The VALUE is statically
     // the record arm, so the local adopts it; flows into the union slot
     // re-wrap via the ordinary arm coercion.
-    if (type.kind === "union" && init.type.kind === "record") {
-      const arms = lowerer.unions.get(type.unionId)?.arms ?? [];
+    if (settledType.kind === "union" && init.type.kind === "record") {
+      const arms = lowerer.unions.get(settledType.unionId)?.arms ?? [];
       if (
         arms.length === 2 &&
         arms.some((a) => a.kind === "spawnRes") &&
         arms.some((a) => typeEquals(a, init.type))
       ) {
-        type = init.type;
+        settledType = init.type;
       }
     }
     // `const r: Repo = new MemRepo()` over an all-generic-method
@@ -3731,8 +3956,8 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // (the record shape maps empty and the width copy would drop the
     // class the generic-method calls monomorphize against) — see
     // genericIfaceBindingKeepsClass.
-    if (type.kind === "record" && init.type.kind === "object" && genericIfaceBindingKeepsClass(lowerer, decl, type)) {
-      type = init.type;
+    if (settledType.kind === "record" && init.type.kind === "object" && genericIfaceBindingKeepsClass(lowerer, decl, settledType)) {
+      settledType = init.type;
     }
     // A TDZ box minted DURING this very initializer (a callback inside it
     // captured this const — predeclareForwardCapture's current-statement
@@ -3747,8 +3972,8 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     }
     // Slot coercion: `const r: A | B = bValue;` wraps implicitly; width
     // subtyping (`const p: {a: number} = wider;`) is rejected, not coerced.
-    init = lowerer.coerceInto(decl.initializer, init, type);
-    const local = lowerer.declareLocal(decl.name, decl.name.text, type, isLet);
+    init = lowerer.coerceInto(decl.initializer, init, settledType);
+    const local = lowerer.declareLocal(decl.name, decl.name.text, settledType, isLet);
     if (runtimeStringArithmetic && isStringArithmeticUnion(init.type)) {
       lowerer.runtimeOptionalArithmeticLocals.add(lowerer.runtimeOptionalRootOf(local));
     }
@@ -3838,9 +4063,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     const labels = lowerer.takeLabels();
     const disc = lowerer.lowerExpr(stmt.expression);
     const dk = disc.type.kind;
-    if (dk === "dyn") {
-      lowerer.unsupported("SC1100", stmt.expression, "switch statements on 'unknown' values");
-    }
+    if (dk === "dyn") return lowerDynSwitch(lowerer, stmt, disc);
     if (dk === "union") return lowerUnionSwitch(lowerer, stmt, disc);
     if (dk !== "f64" && dk !== "string" && dk !== "bool") {
       lowerer.unsupported("SC1090", stmt.expression, "switch on non-primitive values");
@@ -3892,7 +4115,6 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
    *   is last).
    * Case bodies share ONE lexical scope, exactly like the real switch. */
   function lowerUnionSwitch(lowerer: Lowerer, stmt: ts.SwitchStatement, disc: IrExpr): IrStmt {
-    const loc = locOf(stmt);
     if (disc.type.kind !== "union") throw new InternalCompilerError("lowerer bug: non-union disc");
     const unionType = disc.type;
     if (!lowerer.eqComparableUnion(unionType.unionId)) {
@@ -3902,12 +4124,59 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
         "switch on a union whose arms do not have static equality",
       );
     }
+    return lowerBranchSwitch(lowerer, stmt, disc, (stableDisc, test, expression) => {
+      const unitTest =
+        test.kind === "unitLit"
+          ? lowerer.lowerUnitComparison(stableDisc, test, false, locOf(expression))
+          : null;
+      return unitTest ?? {
+        kind: "unionEq",
+        unionId: unionType.unionId,
+        negated: false,
+        sameValue: false,
+        left: stableDisc,
+        right: lowerer.coerceInto(expression, test, unionType),
+        type: BOOL,
+        loc: locOf(expression),
+      };
+    });
+  }
+
+/** A checked-dynamic switch whose tests have native strict-equality
+ * answers. Scalar tests use dynScalarEq; null/undefined use dyn kind tests.
+ * Other case values retain the existing unknown-switch fence. */
+function lowerDynSwitch(lowerer: Lowerer, stmt: ts.SwitchStatement, disc: IrExpr): IrStmt {
+  return lowerBranchSwitch(lowerer, stmt, disc, (stableDisc, test, expression) => {
+    if (test.kind === "unitLit") {
+      return { kind: "dynTest", test: test.unit, value: stableDisc, type: BOOL, loc: locOf(expression) };
+    }
+    if (
+      test.type.kind !== "string" && test.type.kind !== "f64" &&
+      test.type.kind !== "bool" && test.type.kind !== "dyn"
+    ) {
+      lowerer.unsupported(
+        "SC1100",
+        expression,
+        "switch case values that cannot compare strictly with 'unknown'",
+      );
+    }
+    return { kind: "dynScalarEq", left: stableDisc, right: test, type: BOOL, loc: locOf(expression) };
+  });
+}
+
+function lowerBranchSwitch(
+  lowerer: Lowerer,
+  stmt: ts.SwitchStatement,
+  disc: IrExpr,
+  compare: (disc: IrExpr, test: IrExpr, expression: ts.Expression) => IrExpr,
+): IrStmt {
+    const loc = locOf(stmt);
     const prefix: IrStmt[] = [];
     let stableDisc = disc;
     if (!isSafeToRepeat(disc)) {
-      const temp = lowerer.declareHiddenLocal("%switch", unionType);
+      const temp = lowerer.declareHiddenLocal("%switch", disc.type);
       prefix.push({ kind: "varDecl", localId: temp.id, init: disc, loc });
-      stableDisc = { kind: "varRef", localId: temp.id, type: unionType, loc };
+      stableDisc = { kind: "varRef", localId: temp.id, type: disc.type, loc };
     }
     const clauses = stmt.caseBlock.clauses;
     // An unlabeled break at a clause's END exits the switch — the chain's
@@ -3985,22 +4254,7 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
           // lacks it (`case null:` on a `number | undefined` — legal TS,
           // never matches; coercing the literal into the union would hit
           // the stranded-arm trap and throw where JS just skips the case).
-          const unitTest =
-            test.kind === "unitLit"
-              ? lowerer.lowerUnitComparison(stableDisc, test, false, locOf(clause.expression))
-              : null;
-          pendingTests.push(
-            unitTest ?? {
-              kind: "unionEq",
-              unionId: unionType.unionId,
-              negated: false,
-              sameValue: false,
-              left: stableDisc,
-              right: lowerer.coerceInto(clause.expression, test, unionType),
-              type: BOOL,
-              loc: locOf(clause.expression),
-            },
-          );
+          pendingTests.push(compare(stableDisc, test, clause.expression));
         }
         const isDefault = ts.isDefaultClause(clause);
         if (clause.statements.length === 0 && !isDefault && i < clauses.length - 1) {

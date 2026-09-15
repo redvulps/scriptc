@@ -6,8 +6,8 @@ import { InternalCompilerError } from "../../errors.js";
  * hierarchy registration. */
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
-import { BOOL, DATE_T, DYN, F64, bytesOf, IrClassDef, IrExpr, IrFunction, IrLocal, IrParam, IrStmt, IrType, JSVAL, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, STRING, SrcLoc, UNDEFINED_T, URL_T, VOID, arrayOf, isSupportedMapKey, isUnitType, typeEquals } from "../../ir/ir.js";
-import { MAX_GENERIC_INSTANCES, generatorMeta, genericCallInstance, implicitAnyParamSymbolsOf, implicitCallInstance, implicitMonoFile, omittedArgFor, type GenericFnInfo, type ParamShape } from "./lower-calls.js";
+import { BOOL, DATE_T, DYN, F64, bytesOf, IrClassDef, IrExpr, IrFunction, IrLocal, IrParam, IrStmt, IrType, JSVAL, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, STRING, SrcLoc, UNDEFINED_T, URL_T, VOID, arrayOf, isSupportedMapKey, isSupportedMapValue, isSupportedSetElem, isUnitType, typeEquals } from "../../ir/ir.js";
+import { MAX_GENERIC_INSTANCES, appendImplicitUndefinedReturn, generatorMeta, genericCallInstance, implicitAnyParamSymbolsOf, implicitCallInstance, implicitMonoFile, omittedArgFor, type GenericFnInfo, type ParamShape } from "./lower-calls.js";
 import { isGenericCallableMemberType, typeKey } from "../type-mapper.js";
 import { cjsClassExprWholeExportOf, isCjsJsFile, isJsSourceFile, isModuleExportsAccess, isNodeTypesPath, locOf } from "../program.js";
 import { PoisonError, dynFallbackType, dynUndefinedExpr, newFnCtx, own } from "./lowerer.js";
@@ -718,6 +718,74 @@ export function collectClassShape(lowerer: Lowerer, decl: ts.ClassDeclaration): 
       }
     }
   }
+
+function inferredEmptyCollectionFieldType(
+  lowerer: Lowerer,
+  decl: ts.ClassLikeDeclaration,
+  field: string,
+  initializer: ts.Expression,
+): IrType | null {
+  if (!ts.isNewExpression(initializer) || (initializer.arguments?.length ?? 0) !== 0 || !ts.isIdentifier(initializer.expression)) return null;
+  const collection = initializer.expression.text;
+  if (collection !== "Map" && collection !== "Set") return null;
+  const symbol = lowerer.checker.getSymbolAtLocation(initializer.expression);
+  if (!lowerer.isStdlibSymbol(symbol)) return null;
+  const mapKeys: IrType[] = [];
+  const mapValues: IrType[] = [];
+  const setElements: IrType[] = [];
+  const mappedArgument = (argument: ts.Expression): IrType | null => {
+    const type = lowerer.checker.getBaseTypeOfLiteralType(lowerer.typeOf(argument));
+    const mapped = lowerer.mapTypeOf(type);
+    if (!mapped || mapped.kind === "dyn" || mapped.kind === "jsval" || mapped.kind === "void" || isUnitType(mapped)) return null;
+    return mapped;
+  };
+  const visit = (node: ts.Node): "skip" | undefined => {
+    if (ts.isFunctionLike(node) && !ts.isArrowFunction(node)) return "skip";
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return undefined;
+    const receiver = node.expression.expression;
+    if (
+      !ts.isPropertyAccessExpression(receiver) ||
+      receiver.expression.kind !== ts.SyntaxKind.ThisKeyword ||
+      receiver.name.text !== field
+    ) {
+      return undefined;
+    }
+    if (collection === "Map" && node.expression.name.text === "set" && node.arguments.length === 2) {
+      const key = mappedArgument(node.arguments[0]!);
+      const value = mappedArgument(node.arguments[1]!);
+      if (key !== null && value !== null && isSupportedMapKey(key) && isSupportedMapValue(value)) {
+        mapKeys.push(key);
+        mapValues.push(value);
+      }
+    }
+    if (
+      collection === "Set" &&
+      (node.expression.name.text === "add" || node.expression.name.text === "has" || node.expression.name.text === "delete") &&
+      node.arguments.length === 1
+    ) {
+      const element = mappedArgument(node.arguments[0]!);
+      if (element !== null && isSupportedSetElem(element)) setElements.push(element);
+    }
+    return undefined;
+  };
+  for (const member of decl.members) {
+    const body = ts.isConstructorDeclaration(member) || ts.isMethodDeclaration(member) || ts.isAccessor(member)
+      ? member.body
+      : undefined;
+    if (body !== undefined) ts.walkPreorder(body, visit);
+  }
+  const unique = (types: readonly IrType[]): IrType | null => {
+    const first = types[0];
+    return first !== undefined && types.every((type) => typeEquals(type, first)) ? first : null;
+  };
+  if (collection === "Map") {
+    const key = unique(mapKeys);
+    const value = unique(mapValues);
+    return key !== null && value !== null ? { kind: "map", key, value } : null;
+  }
+  const element = unique(setElements);
+  return element !== null ? { kind: "set", elem: element } : null;
+}
 
 export function collectClassShapeInner(lowerer: Lowerer, decl: ts.ClassLikeDeclaration, jsNameOverride?: string,
     inst?: { family: ClassInfo; name: string; bindings: Map<ts.Symbol, IrType>; typeArgsText: string; ordinal: number },
@@ -2052,6 +2120,7 @@ export function collectClassShapeInner(lowerer: Lowerer, decl: ts.ClassLikeDecla
               }
               const sym = lowerer.checker.getSymbolAtLocation(assign);
               const t = sym ? lowerer.checker.getTypeOfSymbol(sym) : undefined;
+              const rhs = ((stmt as ts.ExpressionStatement).expression as ts.BinaryExpression).right;
               // Implicit-any fields (assigned from UNTYPED ctor params —
               // countdown.js's `this.limit = limit`) take the JS checked-
               // dynamic fallback like every JS binding: the slot holds a dyn
@@ -2059,6 +2128,9 @@ export function collectClassShapeInner(lowerer: Lowerer, decl: ts.ClassLikeDecla
               // TS-annotated `unknown` fields keep their fence (KEEP NARROW
               // applies where an annotation could say better).
               let type = t ? (lowerer.mapTypeOf(t) ?? dynFallbackType(lowerer, assign, t)) : null;
+              if (type?.kind === "dyn") {
+                type = inferredEmptyCollectionFieldType(lowerer, decl, name, rhs) ?? type;
+              }
               if (!type || type.kind === "void") lowerer.badType(assign, t ?? lowerer.typeOf(assign));
               // A JSDoc claim the BODY contradicts (`@type {Command}`
               // assigned `undefined` — the lazy-init idiom): the
@@ -2068,7 +2140,7 @@ export function collectClassShapeInner(lowerer: Lowerer, decl: ts.ClassLikeDecla
               // Trust-but-verify: the claim never silently narrows the
               // runtime value.
               {
-                const rhsT = lowerer.typeOf(((stmt as ts.ExpressionStatement).expression as ts.BinaryExpression).right);
+                const rhsT = lowerer.typeOf(rhs);
                 const assignsUndef = (rhsT.flags & ts.TypeFlags.Undefined) !== 0;
                 const admitsUndef =
                   type.kind === "dyn" ||
@@ -4112,6 +4184,7 @@ export function lowerClassMembers(lowerer: Lowerer, info: ClassInfo): IrFunction
       const declared = lowerer.declareParams(fnLike.parameters, sig.params);
       params.push(...declared.params);
       const body = [...declared.prologue, ...lowerer.lowerStmts(fnLike.body.statements)];
+      appendImplicitUndefinedReturn(lowerer, body, bodyReturn, locOf(fnLike));
       const fn: IrFunction = {
         name: `%${className}.${mName}`,
         params,
@@ -4157,6 +4230,7 @@ export function lowerClassMembers(lowerer: Lowerer, info: ClassInfo): IrFunction
       );
       const declared = lowerer.declareParams(entry.member.parameters, entry.params);
       const body = [...declared.prologue, ...lowerer.lowerStmts(entry.member.body.statements)];
+      appendImplicitUndefinedReturn(lowerer, body, bodyReturn, locOf(entry.member));
       const fn: IrFunction = {
         name: `%${info.def.name}.static:${name}`,
         params: declared.params,
@@ -4715,6 +4789,20 @@ function lowerProgramClassNew(lowerer: Lowerer, expr: ts.NewExpression, declared
   };
 }
 
+function assignedThisFieldType(lowerer: Lowerer, expr: ts.NewExpression): IrType | null {
+  const parent = expr.parent;
+  if (
+    !ts.isBinaryExpression(parent) ||
+    parent.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+    parent.right !== expr ||
+    !ts.isPropertyAccessExpression(parent.left) ||
+    parent.left.expression.kind !== ts.SyntaxKind.ThisKeyword
+  ) {
+    return null;
+  }
+  return lowerer.currentClass?.fields.get(parent.left.name.text) ?? null;
+}
+
 export function lowerNew(lowerer: Lowerer, expr: ts.NewExpression): IrExpr {
     const loc = locOf(expr);
     // `new X(...)` where X is a package-declared class, in a static build:
@@ -5161,6 +5249,8 @@ export function lowerNew(lowerer: Lowerer, expr: ts.NewExpression): IrExpr {
             : null;
         let tsType = lowerer.typeOf(expr);
         let mapped = lowerer.mapTypeOf(tsType);
+        const fieldType = assignedThisFieldType(lowerer, expr);
+        if (mapped?.kind !== "map" && fieldType?.kind === "map") mapped = fieldType;
         // JavaScript's `new Map()` has no type-argument syntax: the no-arg
         // constructor overload pins Map<any, any> whatever the JSDoc says
         // (`@type` on the declaration types the VARIABLE, not this
@@ -5255,7 +5345,9 @@ export function lowerNew(lowerer: Lowerer, expr: ts.NewExpression): IrExpr {
       }
       if (symbol?.name === "Set" && lowerer.isStdlibSymbol(symbol)) {
         const tsType = lowerer.typeOf(expr);
-        const mapped = lowerer.mapTypeOf(tsType);
+        let mapped = lowerer.mapTypeOf(tsType);
+        const fieldType = assignedThisFieldType(lowerer, expr);
+        if (mapped?.kind !== "set" && fieldType?.kind === "set") mapped = fieldType;
         if (mapped?.kind === "set" && (expr.arguments?.length ?? 0) === 1) {
           const argNode = expr.arguments![0]!;
           // An array LITERAL seed builds element-wise (its contextual type

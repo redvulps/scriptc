@@ -53,8 +53,8 @@ import {
 import { isNodeModulesPath, nearestInvalidPackageJsonPath, nearestPackageType, nearestPkgJsonPath, projectDtsRuntimeSibling, resolveBareModule, resolveProjectModule, resolveTypeDirective, setProjectPathMappings, setProjectRealm } from "./resolve.js";
 import { probeNodeImportRefusal, probeNodeRequireRefusal } from "./npm.js";
 import { isNpmStaticPackage, npmStaticActive, npmStaticFsShadow, npmStaticPackageOfPath, reportNpmStaticOffender, setNpmStaticDeclarationOverloads, setNpmStaticPackages } from "./npm-static.js";
-import { npmStaticDeclarationReexports, npmStaticRuntimeClassTargets, parseNpmStaticDeclarationOverloads } from "./npm-static-declarations.js";
-import type { NpmStaticDeclarationOverloads, NpmStaticOverloadSignature } from "./npm-static-declarations.js";
+import { npmStaticDeclarationReexports, npmStaticRuntimeClassTargets, parseNpmStaticDeclarationOverloads, parseNpmStaticDeclarationProperties } from "./npm-static-declarations.js";
+import type { NpmStaticDeclarationOverloads, NpmStaticDeclarationProperties, NpmStaticOverloadSignature } from "./npm-static-declarations.js";
 import { provenanceEntryFor, provenancePaths } from "./provenance-registry.js";
 import { cjsLexerVisibleNames } from "./cjs-lexer.js";
 import {
@@ -286,11 +286,13 @@ function runtimeReexportTarget(fromFile: string, specifier: string): string | nu
   return target === undefined ? null : (trackedRealpath(target) ?? target);
 }
 
-/** Loads an opted package's own declaration entry and its relative barrel
+/** Visits an opted package's own declaration entry and relative barrel
  * closure. This is intentionally narrower than TypeScript module
  * resolution: bare edges name other packages and never inherit trust. */
-function npmStaticDeclarationOverloadsOf(entryPath: string): NpmStaticDeclarationOverloads {
-  const classes = new Map<string, Map<string, readonly NpmStaticOverloadSignature[]>>();
+function visitNpmStaticDeclarationClosure(
+  entryPath: string,
+  onSource: (path: string, source: string) => void,
+): void {
   const seen = new Set<string>();
   const packageJson = nearestPkgJsonPath(entryPath);
   const packageRoot = (packageJson === null ? dirname(entryPath) : dirname(packageJson)).split("\\").join("/");
@@ -302,6 +304,18 @@ function npmStaticDeclarationOverloadsOf(entryPath: string): NpmStaticDeclaratio
     seen.add(path);
     const source = trackedReadFile(path);
     if (source === null) return;
+    onSource(path, source);
+    for (const specifier of npmStaticDeclarationReexports(path, source)) {
+      const target = declarationReexportTarget(path, specifier);
+      if (target !== null) visit(target);
+    }
+  };
+  visit(entryPath);
+}
+
+function npmStaticDeclarationOverloadsOf(entryPath: string): NpmStaticDeclarationOverloads {
+  const classes = new Map<string, Map<string, readonly NpmStaticOverloadSignature[]>>();
+  visitNpmStaticDeclarationClosure(entryPath, (path, source) => {
     for (const [className, methods] of parseNpmStaticDeclarationOverloads(path, source)) {
       const target = classes.get(className) ?? new Map<string, readonly NpmStaticOverloadSignature[]>();
       classes.set(className, target);
@@ -309,12 +323,21 @@ function npmStaticDeclarationOverloadsOf(entryPath: string): NpmStaticDeclaratio
         if (!target.has(methodName)) target.set(methodName, signatures);
       }
     }
-    for (const specifier of npmStaticDeclarationReexports(path, source)) {
-      const target = declarationReexportTarget(path, specifier);
-      if (target !== null) visit(target);
+  });
+  return classes;
+}
+
+function npmStaticDeclarationPropertiesOf(entryPath: string): NpmStaticDeclarationProperties {
+  const classes = new Map<string, Map<string, string>>();
+  visitNpmStaticDeclarationClosure(entryPath, (path, source) => {
+    for (const [className, properties] of parseNpmStaticDeclarationProperties(path, source)) {
+      const target = classes.get(className) ?? new Map<string, string>();
+      classes.set(className, target);
+      for (const [propertyName, type] of properties) {
+        if (!target.has(propertyName)) target.set(propertyName, type);
+      }
     }
-  };
-  visit(entryPath);
+  });
   return classes;
 }
 
@@ -523,6 +546,7 @@ export function loadProgram(
   // entry to one exact implementation file; it never contributes values
   // or executable module edges.
   const declarationOverloads = new Map<string, NpmStaticDeclarationOverloads>();
+  const declarationProperties = new Map<string, NpmStaticDeclarationProperties>();
   for (const pkg of npmStaticPackages) {
     const resolved = resolveBareModule(entryPath, pkg, "types-only");
     if (
@@ -533,15 +557,18 @@ export function loadProgram(
       continue;
     }
     const overloads = npmStaticDeclarationOverloadsOf(resolved.typesFile);
-    if (overloads.size === 0) continue;
+    const properties = npmStaticDeclarationPropertiesOf(resolved.typesFile);
+    const classNames = new Set([...overloads.keys(), ...properties.keys()]);
+    if (classNames.size === 0) continue;
     const runtime = resolveBareModule(entryPath, pkg, "js-only");
     if (runtime === null || !isJsSourceFileName(runtime.typesFile)) continue;
     const runtimeSource = trackedReadFile(runtime.typesFile);
     if (runtimeSource === null) continue;
-    const targets = npmStaticRuntimeClassTargets(runtime.typesFile, runtimeSource, new Set(overloads.keys()));
+    const targets = npmStaticRuntimeClassTargets(runtime.typesFile, runtimeSource, classNames);
     for (const [className, specifier] of targets) {
       const methods = overloads.get(className);
-      if (methods === undefined) continue;
+      const fields = properties.get(className);
+      if (methods === undefined && fields === undefined) continue;
       const target = specifier === null ? runtime.typesFile : runtimeReexportTarget(runtime.typesFile, specifier);
       if (target === null) continue;
       const targetPackage = npmPackageNameOf(target);
@@ -549,13 +576,20 @@ export function loadProgram(
       const insideWorkspace = runtime.workspaceDir !== undefined &&
         targetNorm.startsWith(runtime.workspaceDir.split("\\").join("/") + "/");
       if (targetPackage !== pkg && !insideWorkspace) continue;
-      const byClass = new Map(declarationOverloads.get(targetNorm) ?? []);
-      byClass.set(className, methods);
-      declarationOverloads.set(targetNorm, byClass);
+      if (methods !== undefined) {
+        const byClass = new Map(declarationOverloads.get(targetNorm) ?? []);
+        byClass.set(className, methods);
+        declarationOverloads.set(targetNorm, byClass);
+      }
+      if (fields !== undefined) {
+        const byClass = new Map(declarationProperties.get(targetNorm) ?? []);
+        byClass.set(className, fields);
+        declarationProperties.set(targetNorm, byClass);
+      }
     }
   }
   setNpmStaticPackages(npmStaticPackages);
-  setNpmStaticDeclarationOverloads(declarationOverloads);
+  setNpmStaticDeclarationOverloads(declarationOverloads, declarationProperties);
   // Workspace-package registrations reset per load (same discipline as the
   // npm-static set), then the opted-in names are probed UP FRONT: a
   // workspace-linked opt-in resolves to files whose realpaths carry no

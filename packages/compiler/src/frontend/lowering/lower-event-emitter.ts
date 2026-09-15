@@ -75,6 +75,8 @@ interface EventSig {
    * the event's runtime bucket may hold originals of MIXED signatures —
    * so listeners()/rawListeners() have no one honest element type. */
   dynListener: boolean;
+  /** At least one literal-name registration exists for this event. */
+  hasListener: boolean;
 }
 
 /** The program-wide event-signature table, built lazily on the first
@@ -88,13 +90,13 @@ function emitterEvents(lowerer: Lowerer): Map<string, EventSig> {
   const table = new Map<string, EventSig>();
   const sigOf = (name: string): EventSig => {
     let sig = table.get(name);
-    if (!sig) table.set(name, (sig = { tuple: [], fromEmit: false, conflict: null, dynListener: false }));
+    if (!sig) table.set(name, (sig = { tuple: [], fromEmit: false, conflict: null, dynListener: false, hasListener: false }));
     return sig;
   };
   // The two forced tuples (see the header comment).
-  table.set("error", { tuple: [{ kind: "object", className: "%Error" }], fromEmit: true, conflict: null, dynListener: false });
-  table.set("newListener", { tuple: [STRING], fromEmit: true, conflict: null, dynListener: false });
-  table.set("removeListener", { tuple: [STRING], fromEmit: true, conflict: null, dynListener: false });
+  table.set("error", { tuple: [{ kind: "object", className: "%Error" }], fromEmit: true, conflict: null, dynListener: false, hasListener: false });
+  table.set("newListener", { tuple: [STRING], fromEmit: true, conflict: null, dynListener: false, hasListener: false });
+  table.set("removeListener", { tuple: [STRING], fromEmit: true, conflict: null, dynListener: false, hasListener: false });
 
   const fmt = (t: IrType): string => lowerer.fmt(t);
   const mergeEmit = (name: string, args: (IrType | null)[]): void => {
@@ -133,6 +135,7 @@ function emitterEvents(lowerer: Lowerer): Map<string, EventSig> {
     if (params.some((p) => p === null)) return;
     const prefix = params as IrType[];
     const sig = sigOf(name);
+    sig.hasListener = true;
     if (sig.conflict) return;
     if (sig.fromEmit) {
       if (prefix.length > sig.tuple.length) {
@@ -197,7 +200,9 @@ function emitterEvents(lowerer: Lowerer): Map<string, EventSig> {
           // tuple position, and positions past the tuple read the boxed
           // undefined (exactly JS's extra-parameter semantics).
           if (cbT?.kind === "dyn" || (cbT?.kind === "func" && cbT.params.some((p) => p.kind === "dyn"))) {
-            sigOf(name).dynListener = true;
+            const sig = sigOf(name);
+            sig.hasListener = true;
+            sig.dynListener = true;
           } else if (cbT?.kind === "func") {
             mergeListener(name, cbT.params);
           }
@@ -223,6 +228,33 @@ function eventNameOf(lowerer: Lowerer, member: string, arg: ts.Expression): stri
     arg,
     "event names must be compile-time string literals (each event's argument tuple is unified statically; symbol names have no lowering)",
   );
+}
+
+function staticStringPrefixOf(lowerer: Lowerer, node: ts.Expression, seen = new Set<ts.Symbol>()): string | null {
+  let expression = node;
+  while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+  if (ts.isStringLiteralLike(expression)) return expression.text;
+  if (ts.isTemplateExpression(expression)) return expression.head.text;
+  if (ts.isIdentifier(expression)) {
+    const symbol = lowerer.resolveValueSymbol(expression);
+    if (!symbol || seen.has(symbol)) return null;
+    seen.add(symbol);
+    const declaration = lowerer.checker.valueDeclarationOf(symbol);
+    if (
+      declaration && ts.isVariableDeclaration(declaration) && declaration.initializer &&
+      (ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const) !== 0
+    ) {
+      return staticStringPrefixOf(lowerer, declaration.initializer, seen);
+    }
+    return null;
+  }
+  if (
+    ts.isBinaryExpression(expression) &&
+    expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    return staticStringPrefixOf(lowerer, expression.left, seen);
+  }
+  return null;
 }
 /** The event's unified tuple, with conflicts reported at this site. */
 function tupleOf(lowerer: Lowerer, table: Map<string, EventSig>, name: string, blame: ts.Node): IrType[] {
@@ -687,6 +719,25 @@ export function lowerEmitterMethodCall(lowerer: Lowerer, call: ts.CallExpression
   if (member === "emit") {
     if (args.length === 0) {
       lowerer.noLowering("emit without an event name", call);
+    }
+    const nameType = lowerer.typeOf(args[0]!);
+    if (!nameType.isStringLiteralType()) {
+      const prefix = staticStringPrefixOf(lowerer, args[0]!);
+      const mayBeObserved = prefix === null || [...table].some(
+        ([candidate, sig]) => (candidate === "error" || sig.hasListener) && candidate.startsWith(prefix),
+      );
+      if (!mayBeObserved) {
+        const receiver = lowerReceiver();
+        const dynamicName = lowerer.lowerExprExpecting(args[0]!, STRING);
+        const payload = args.slice(1).map((arg) => lowerer.lowerExpr(arg));
+        return {
+          kind: "seqExpr",
+          stmts: [receiver, dynamicName, ...payload].map((expr) => ({ kind: "exprStmt" as const, expr, loc: expr.loc })),
+          result: boolLit(false, loc),
+          type: BOOL,
+          loc,
+        };
+      }
     }
     const name = eventNameOf(lowerer, member, args[0]!);
     const receiver = lowerReceiver();

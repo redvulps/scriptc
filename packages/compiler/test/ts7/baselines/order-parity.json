@@ -6100,6 +6100,78 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2864-array-class-method-receivers.ts": {
+   "order": [
+    "<repo>/tests/corpus/2864-array-class-method-receivers.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2865-cjs-process-alias.cjs": {
+   "order": [
+    "<repo>/tests/corpus/2865-cjs-process-alias.cjs"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2866-dyn-switch.ts": {
+   "order": [
+    "<repo>/tests/corpus/2866-dyn-switch.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2867-array-shift-length.js": {
+   "order": [
+    "<repo>/tests/corpus/2867-array-shift-length.js"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2868-empty-record-promise-presence.js": {
+   "order": [
+    "<repo>/tests/corpus/2868-empty-record-promise-presence.js"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2869-nullish-mixed-lazy.ts": {
+   "order": [
+    "<repo>/tests/corpus/2869-nullish-mixed-lazy.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2870-and-dropped-truthy-arm.ts": {
+   "order": [
+    "<repo>/tests/corpus/2870-and-dropped-truthy-arm.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2871-optional-promise-to-unknown.ts": {
+   "order": [
+    "<repo>/tests/corpus/2871-optional-promise-to-unknown.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2872-unobserved-dynamic-event.ts": {
+   "order": [
+    "<repo>/tests/corpus/2872-unobserved-dynamic-event.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2873-optional-receiver-loop-lifetime.js": {
+   "order": [
+    "<repo>/tests/corpus/2873-optional-receiver-loop-lifetime.js"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2874-nullable-callback-field-cycle.js": {
+   "order": [
+    "<repo>/tests/corpus/2874-nullable-callback-field-cycle.js"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2875-evolving-let-read-before-write.js": {
+   "order": [
+    "<repo>/tests/corpus/2875-evolving-let-read-before-write.js"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

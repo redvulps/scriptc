@@ -10,11 +10,11 @@ import { dirname, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Lowerer } from "./lowerer.js";
 import { wasiGuestPath } from "../../wasi-paths.js";
-import { BOOL, CAUGHT, DYN, DYN_HANDLE_KINDS, F64, IrExpr, IrFunction, IrJsOp, IrLocal, IrRecordShape, IrStmt, IrType, JSVAL, NULL_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_ERROR_CLASSES, SEARCH_PARAMS_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canAdaptDynFuncTo, canBoxFuncIntoDyn, funcOf, isJsonSafeType, isUnitType, jsOpResultKind, shapeHasAccessorSlots, typeEquals, typeKey, unionFuncSetArmsOk } from "../../ir/ir.js";
+import { BOOL, CAUGHT, DYN, DYN_HANDLE_KINDS, F64, IrExpr, IrFunction, IrJsOp, IrLocal, IrRecordShape, IrStmt, IrType, JSVAL, NULL_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_ERROR_CLASSES, SEARCH_PARAMS_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canAdaptDynFuncTo, canBoxFuncIntoDyn, funcOf, isJsonSafeType, isSupportedArrayElem, isUnitType, jsOpResultKind, shapeHasAccessorSlots, typeEquals, typeKey, unionFuncSetArmsOk } from "../../ir/ir.js";
 import { cjsClassExprWholeExportOf, cjsExportAssignmentOf, cjsExportDiscardReason, isCjsExportTableLiteral, isCjsJsFile, isJsSourceFile, isModuleExportsAccess, isNodeEsmFile, locOf } from "../program.js";
 import { ARRAY_METHODS, builtinConstLit, builtinFenceHintOf, builtinModuleConstOf, builtinModulesArrayLit, builtinModuleFnOf, CompoundOp, ISLAND_SURFACE, isChildSurfaceMember, MAP_METHODS, NARROW_FIRST, SET_METHODS, STR_METHODS, UNSUPPORTED_EXPR, sideEffectFreeOptionValue, stdlibGlobalNameOf } from "./surfaces.js";
 import { UNSUPPORTED, blockedBindingUseDiag, requiresDynamicPackageDiag, unsupportedDiag } from "../../diagnostics/diagnostic.js";
-import { PoisonError, jsFuncNameOf, neverTaintedJsType, nodeThrowExpr, own } from "./lowerer.js";
+import { PoisonError, dynUndefinedExpr, jsFuncNameOf, neverTaintedJsType, nodeThrowExpr, own } from "./lowerer.js";
 import { lowerNpmStaticSafeIndexRead, lowerSafeIndexRead, strCharsCall } from "./lower-containers.js";
 import { arrayValueStore } from "./array-values.js";
 import { npmStaticPackageOfPath } from "../npm-static.js";
@@ -598,6 +598,14 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       return { kind: "jsOp", op: "arrLit", args, type: JSVAL, loc };
     }
     if (ts.isTypeOfExpression(expr)) {
+      if (ts.isPropertyAccessExpression(expr.expression)) {
+        const presence = lowerPromiseThenPresence(
+          lowerer,
+          expr.expression,
+          { kind: "strLit", value: "function", type: STRING, loc },
+        );
+        if (presence !== null) return presence;
+      }
       // `typeof queueMicrotask` / `typeof DOMException` on a STDLIB global
       // whose declared type is callable or constructable: folds to
       // "function" BEFORE the operand lowers — the identity-token story
@@ -1405,6 +1413,10 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       // compile-time string.
       if (isRequireMainFilename(lowerer, expr)) {
         return { kind: "strLit", value: lowerer.entry.fileName, type: STRING, loc };
+      }
+      if (expr.questionDotToken && expr.name.text === "electron") {
+        const processProperty = lowerer.lowerProcessProperty(expr);
+        if (processProperty) return processProperty;
       }
       // Optional chaining `a?.b`: the guard lowers here (a tag test around
       // the plain property lowering below); the handled marker keeps this
@@ -2809,6 +2821,42 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       const right = lowerer.lowerExprExpecting(expr.right, type);
       return { kind: "nullish", left, right, type, loc };
     }
+    if (type.kind !== "union" && rest.length > 1 && rest.some((arm) => typeEquals(arm, type))) {
+      const helper = lowerer.narrowedArmHelper(left.type.unionId, type, loc);
+      if (helper !== null) {
+        const stmts: IrStmt[] = [];
+        let stable = left;
+        if (!isSafeToRepeat(left)) {
+          const local = lowerer.declareHiddenLocal("%nullish", left.type);
+          stmts.push({ kind: "varDecl", localId: local.id, init: left, loc });
+          stable = varRef(local.id, left.type, loc);
+        }
+        const unitTags = def.arms
+          .map((arm, tag) => ({ arm, tag }))
+          .filter(({ arm }) => isUnitType(arm))
+          .map(({ tag }) => tag);
+        let isNullish: IrExpr = { kind: "unionIsTag", unionId: left.type.unionId, tag: unitTags[0]!, negated: false, value: stable, type: BOOL, loc };
+        for (const tag of unitTags.slice(1)) {
+          isNullish = {
+            kind: "logical",
+            op: "||",
+            left: isNullish,
+            right: { kind: "unionIsTag", unionId: left.type.unionId, tag, negated: false, value: stable, type: BOOL, loc },
+            type: BOOL,
+            loc,
+          };
+        }
+        const result: IrExpr = {
+          kind: "ternary",
+          cond: isNullish,
+          then: lowerer.lowerExprExpecting(expr.right, type),
+          else_: { kind: "call", callee: helper, args: [stable], type, loc },
+          type,
+          loc,
+        };
+        return stmts.length === 0 ? result : { kind: "seqExpr", stmts, result, type, loc };
+      }
+    }
     // The RETAGGED shape — the default changes the result union (`s ??
     // null` over `string | undefined` answers `null | string`): every
     // non-unit arm of the left has a home in the result, so an interned
@@ -2819,6 +2867,69 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
     if (type.kind === "union") {
       const leftT = left.type;
       const armPairs = rest.map((a) => ({ arm: a, src: lowerer.armTag(leftT.unionId, a), dst: lowerer.armTag(type.unionId, a) }));
+      if (rest.length > 0 && armPairs.every((pair) => pair.src >= 0 && pair.dst >= 0)) {
+        const stmts: IrStmt[] = [];
+        let stable = left;
+        if (!isSafeToRepeat(left)) {
+          const local = lowerer.declareHiddenLocal("%nullish", leftT);
+          stmts.push({ kind: "varDecl", localId: local.id, init: left, loc });
+          stable = varRef(local.id, leftT, loc);
+        }
+        const unitTags = def.arms
+          .map((arm, tag) => ({ arm, tag }))
+          .filter(({ arm }) => isUnitType(arm))
+          .map(({ tag }) => tag);
+        let isNullish: IrExpr = {
+          kind: "unionIsTag",
+          unionId: leftT.unionId,
+          tag: unitTags[0]!,
+          negated: false,
+          value: stable,
+          type: BOOL,
+          loc,
+        };
+        for (const tag of unitTags.slice(1)) {
+          isNullish = {
+            kind: "logical",
+            op: "||",
+            left: isNullish,
+            right: { kind: "unionIsTag", unionId: leftT.unionId, tag, negated: false, value: stable, type: BOOL, loc },
+            type: BOOL,
+            loc,
+          };
+        }
+        let present: IrExpr | null = null;
+        for (let i = armPairs.length - 1; i >= 0; i--) {
+          const pair = armPairs[i]!;
+          const wrapped: IrExpr = {
+            kind: "unionWrap",
+            unionId: type.unionId,
+            tag: pair.dst,
+            value: { kind: "unionNarrow", unionId: leftT.unionId, tag: pair.src, value: stable, type: pair.arm, loc },
+            type,
+            loc,
+          };
+          present = present === null
+            ? wrapped
+            : {
+                kind: "ternary",
+                cond: { kind: "unionIsTag", unionId: leftT.unionId, tag: pair.src, negated: false, value: stable, type: BOOL, loc },
+                then: wrapped,
+                else_: present,
+                type,
+                loc,
+              };
+        }
+        const result: IrExpr = {
+          kind: "ternary",
+          cond: isNullish,
+          then: lowerer.lowerExprExpecting(expr.right, type),
+          else_: present!,
+          type,
+          loc,
+        };
+        return stmts.length === 0 ? result : { kind: "seqExpr", stmts, result, type, loc };
+      }
       if (armPairs.every((p) => p.src >= 0 && p.dst >= 0)) {
         const right = lowerer.lowerExprExpecting(expr.right, type);
         if (isSafeToDiscard(right)) {
@@ -2902,6 +3013,14 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
   export function lowerCondition(lowerer: Lowerer, expr: ts.Expression): IrExpr {
     let e: ts.Expression = expr;
     while (ts.isParenthesizedExpression(e)) e = e.expression;
+    if (ts.isPropertyAccessExpression(e)) {
+      const presence = lowerPromiseThenPresence(
+        lowerer,
+        e,
+        { kind: "boolLit", value: true, type: BOOL, loc: locOf(e) },
+      );
+      if (presence !== null) return presence;
+    }
     if (ts.isBinaryExpression(e)) {
       const op = e.operatorToken.kind;
       if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken) {
@@ -2933,6 +3052,46 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
     }
     return lowerer.ensureBool(lowerAbsenceProbe(lowerer, expr) ?? lowerer.lowerExpr(expr), expr);
   }
+
+function lowerPromiseThenPresence(
+  lowerer: Lowerer,
+  access: ts.PropertyAccessExpression,
+  result: IrExpr,
+): IrExpr | null {
+  if (access.name.text !== "then") return null;
+  const mapped = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+  const promiseType = mapped?.kind === "promise"
+    ? mapped
+    : mapped?.kind === "union"
+      ? (() => {
+          const arms = lowerer.unions.get(mapped.unionId)?.arms ?? [];
+          const promises = arms.filter((arm): arm is IrType & { kind: "promise" } => arm.kind === "promise");
+          return promises.length === 1 && arms.every((arm) => arm.kind === "promise" || isUnitType(arm))
+            ? promises[0]!
+            : null;
+        })()
+      : null;
+  if (promiseType === null) return null;
+  let receiver = lowerer.lowerExpr(access.expression);
+  if (receiver.type.kind === "union") {
+    const optional = lowerer.runtimeOptionalPropertyReceiver(access.expression, receiver, promiseType, access.name.text);
+    if (optional !== null) receiver = optional;
+    else {
+      const helper = lowerer.narrowedArmHelper(receiver.type.unionId, promiseType, receiver.loc);
+      if (helper === null) return null;
+      receiver = { kind: "call", callee: helper, args: [receiver], type: promiseType, loc: receiver.loc };
+    }
+  }
+  if (receiver.type.kind !== "promise") return null;
+  if (isSafeToDiscard(receiver)) return result;
+  return {
+    kind: "seqExpr",
+    stmts: [{ kind: "exprStmt", expr: receiver, loc: receiver.loc }],
+    result,
+    type: result.type,
+    loc: result.loc,
+  };
+}
 
   function runtimeOptionalLocalOf(lowerer: Lowerer, node: ts.Expression): IrLocal | null {
     let expr = node;
@@ -3508,6 +3667,31 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
           );
           if (arms.length === 1) mapped = arms[0]!;
         }
+      }
+    }
+    // An array literal inside an npm-static implicit-any instance can
+    // inherit the checker's poisoned any[] context even after the
+    // active binding gives every element one concrete lowering. Recover a
+    // static array only when every spelled element lowers to the same
+    // supported type. An explicit checked-dynamic destination still owns
+    // the later slot coercion; heterogeneous literals, holes, and spreads
+    // keep the checked-dynamic fallback below.
+    if (
+      lowerer.implicitParamTypes !== null &&
+      npmStaticPackageOfPath(expr.getSourceFile().fileName) !== null &&
+      (mapped === null || mapped.kind === "dyn" ||
+        (mapped.kind === "array" && mapped.elem.kind === "dyn")) &&
+      expr.elements.length > 0 &&
+      expr.elements.every((element) => !ts.isSpreadElement(element) && !ts.isOmittedExpression(element))
+    ) {
+      const elements = expr.elements.map((element) => tryLowerExpression(lowerer, element));
+      const first = elements[0];
+      if (
+        first !== undefined && first !== null &&
+        isSupportedArrayElem(first.type) &&
+        elements.every((element) => element !== null && typeEquals(element.type, first.type))
+      ) {
+        mapped = arrayOf(first.type);
       }
     }
     // An EMPTY literal under a CONST ASSERTION whose type queries panicked
@@ -4116,6 +4300,22 @@ export function lowerOptionalNumber(
       const value = lowerer.lowerExpr(expr.expression);
       if (value.type.kind === "union") {
         const key = lowerer.lowerExpr(expr.argumentExpression);
+        if (key.type.kind === "f64") {
+          const def = lowerer.unions.get(value.type.unionId);
+          const presentArms = def?.arms.filter((arm) => !isUnitType(arm)) ?? [];
+          if (presentArms.length === 1 && presentArms[0]?.kind === "string") {
+            const property = runtimeOptionalElementKey(expr.argumentExpression);
+            const receiver = property === null ? null : lowerer.runtimeOptionalPropertyReceiver(
+              expr.expression,
+              value,
+              STRING,
+              property,
+            );
+            if (receiver !== null) {
+              return { kind: "strIntrinsic", method: "charAt", receiver, args: [key], type: STRING, loc: locOf(expr) };
+            }
+          }
+        }
         if (key.type.kind === "string") {
           const lit = ts.isStringLiteral(expr.argumentExpression)
             ? expr.argumentExpression.text
@@ -4433,6 +4633,19 @@ export function lowerOptionalNumber(
     key = lowerRecordPropertyKey(lowerer, key, keyNode);
     if (key.type.kind !== "string") {
       lowerer.unsupported("SC1090", keyNode, "indexing records with non-string or non-number keys");
+    }
+    if (shape.fields.length === 0 && shape.indexValue === undefined) {
+      const result = dynUndefinedExpr(loc);
+      return {
+        kind: "seqExpr",
+        stmts: [
+          { kind: "exprStmt", expr: obj, loc },
+          { kind: "exprStmt", expr: key, loc },
+        ],
+        result,
+        type: DYN,
+        loc,
+      };
     }
     // The DECLARED result type of the access — the index signature's value
     // type (armed with undefined under noUncheckedIndexedAccess), or the
@@ -5739,8 +5952,80 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
         // Everything else (`u && flag`, whose value would need a wider
         // re-tagged union) stays fenced — in CONDITION position those
         // shapes lower through lowerCondition's bool descent instead.
-        const target = lowerer.mapTypeOf(lowerer.typeOf(expr));
+        let target = lowerer.mapTypeOf(lowerer.typeOf(expr));
+        // A broad-JSDoc npm-static body can leave the CHECKER result `any`
+        // even after declaration-backed specialization has recovered both
+        // operands (`helpOption && args.find(...)` in commander). When the
+        // left consists only of always-truthy references and falsy units,
+        // the static result is exactly the right operand plus those units.
+        if (
+          target === null &&
+          lowerer.implicitParamTypes !== null &&
+          npmStaticPackageOfPath(expr.getSourceFile().fileName) !== null &&
+          (lowerer.typeOf(expr).flags & ts.TypeFlags.Any) !== 0 &&
+          left.type.kind === "union"
+        ) {
+          const leftArms = lowerer.unions.get(left.type.unionId)?.arms;
+          const rightArms = right.type.kind === "union"
+            ? lowerer.unions.get(right.type.unionId)?.arms
+            : [right.type];
+          const rightIsStatic = rightArms?.every(
+            (arm) => arm.kind !== "dyn" && arm.kind !== "caught" && arm.kind !== "jsval" && arm.kind !== "void",
+          ) ?? false;
+          if (
+            leftArms && rightArms && rightIsStatic &&
+            leftArms.some(isUnitType) &&
+            leftArms.every((arm) => isUnitType(arm) || REF_TRUTHY_KINDS.has(arm.kind))
+          ) {
+            const byKey = new Map<string, IrType>();
+            for (const arm of [...rightArms, ...leftArms.filter(isUnitType)]) {
+              byKey.set(typeKey(arm), arm);
+            }
+            const arms = [...byKey.values()].sort((a, b) => (typeKey(a) < typeKey(b) ? -1 : 1));
+            if (arms.length > 1) {
+              target = { kind: "union", unionId: lowerer.unions.intern(arms) };
+            }
+          }
+        }
         if (target?.kind === "union") {
+          // `&&` whose left does NOT fit the result union: the checker
+          // built that result by DROPPING left arms which are always
+          // truthy (`Option | undefined && string | undefined` answers
+          // `string | undefined`, not `Option | string | undefined`).
+          // Evaluate the left once, test it in its own union, and retag it
+          // only on the falsy path. Any stranded reference arms are
+          // unreachable there because every JS object is truthy.
+          if (op === ts.SyntaxKind.AmpersandAmpersandToken && left.type.kind === "union" && !typeEquals(left.type, target)) {
+            const def = lowerer.unions.get(left.type.unionId);
+            const trappable = new Set<number>();
+            def?.arms.forEach((arm, tag) => {
+              if (lowerer.armTag(target.unionId, arm) < 0 && REF_TRUTHY_KINDS.has(arm.kind)) {
+                trappable.add(tag);
+              }
+            });
+            const retag = trappable.size === 0
+              ? null
+              : lowerer.unionRetagHelper(left.type.unionId, target.unionId, loc, trappable);
+            if (retag) {
+              lowerer.requireTruthyUnion(left.type.unionId, expr);
+              const stmts: IrStmt[] = [];
+              let stable: IrExpr = left;
+              if (!isSafeToRepeat(left)) {
+                const local = lowerer.declareHiddenLocal("%and", left.type);
+                stmts.push({ kind: "varDecl", localId: local.id, init: left, loc });
+                stable = varRef(local.id, left.type, loc);
+              }
+              const result: IrExpr = {
+                kind: "ternary",
+                cond: lowerer.ensureBool(stable, expr.left),
+                then: lowerer.coerceInto(expr.right, right, target),
+                else_: { kind: "call", callee: retag, args: [stable], type: target, loc },
+                type: target,
+                loc,
+              };
+              return stmts.length === 0 ? result : { kind: "seqExpr", stmts, result, type: target, loc };
+            }
+          }
           // `||` whose left does NOT fit the result union: the checker built
           // that result by DROPPING the left's falsy arms (`process.env.X ||
           // null` is `string | null`, `|| 3000` is `string | number` — the
@@ -5748,9 +6033,7 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
           // the shared shape below does, retags an arm the test is about to
           // rule out and throws where Node yields the default. Single-eval
           // instead: test the left in its OWN union and retag only on the
-          // truthy side, where the dropped arms are unreachable. `&&` keeps
-          // the eager shape — there the falsy left IS the result, so the
-          // checker keeps those arms in the target and they must coerce.
+          // truthy side, where the dropped arms are unreachable.
           if (op === ts.SyntaxKind.BarBarToken && left.type.kind === "union" && !typeEquals(left.type, target)) {
             const retag = lowerer.unionRetagHelper(left.type.unionId, target.unionId, loc);
             if (retag) {
@@ -8300,6 +8583,43 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
     const def = lowerer.unions.get(value.type.unionId);
     if (!def) throw new InternalCompilerError(`lowerer bug: unknown union ${value.type.unionId}`);
     const field = expr.name.text;
+    if (field === "length") {
+      const presentArms = def.arms.filter((arm) => !isUnitType(arm));
+      const present = presentArms.length === 1 ? presentArms[0]! : null;
+      if (present?.kind === "string" || present?.kind === "array") {
+        const receiver = lowerer.runtimeOptionalPropertyReceiver(
+          expr.expression,
+          value,
+          present,
+          field,
+        );
+        if (receiver !== null) {
+          return present.kind === "string"
+            ? { kind: "strIntrinsic", method: "length", receiver, args: [], type: F64, loc: locOf(expr) }
+            : { kind: "arrIntrinsic", method: "length", receiver, args: [], type: F64, loc: locOf(expr) };
+        }
+      }
+    }
+    const nonUnitArms = def.arms.filter((arm) => !isUnitType(arm));
+    if (nonUnitArms.length === 1 && nonUnitArms[0]?.kind === "object") {
+      const objectType = nonUnitArms[0];
+      const fieldType = lowerer.classes.get(objectType.className)?.fields.get(field);
+      if (fieldType !== undefined) {
+        let receiver = lowerer.runtimeOptionalPropertyReceiver(
+          expr.expression,
+          value,
+          objectType,
+          field,
+        );
+        if (receiver === null) {
+          const helper = lowerer.narrowedArmHelper(value.type.unionId, objectType, locOf(expr.expression));
+          if (helper !== null) receiver = { kind: "call", callee: helper, args: [value], type: objectType, loc: locOf(expr.expression) };
+        }
+        if (receiver !== null) {
+          return { kind: "fieldGet", obj: receiver, className: objectType.className, field, type: fieldType, loc: locOf(expr) };
+        }
+      }
+    }
     let common: IrType | null = null;
     for (const arm of def.arms) {
       let ft: IrType | undefined;

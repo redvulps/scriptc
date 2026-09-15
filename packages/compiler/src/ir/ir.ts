@@ -5721,13 +5721,14 @@ export function canConvertToDyn(
   }
   if (t.kind === "union") {
     const def = getUnion(t.unionId);
-    // JSON-safe arms box as before; BOXABLE FUNCTION arms join them (the
+    // JSON-safe arms box as before; BOXABLE FUNCTION and PROMISE arms join them (the
     // invalid-input probes iterate `[1, null, () => {}, true]` — the
     // union's func arm crosses through the checked-dynamic function
     // boundary exactly like a bare func dynFrom).
     return !!def && def.arms.every((a) =>
       a.kind === "undefinedT" || isJsonSafeType(a, getRecord, getUnion) ||
-      (a.kind === "func" && canBoxFuncIntoDyn(a, getRecord, getUnion)),
+      (a.kind === "func" && canBoxFuncIntoDyn(a, getRecord, getUnion)) ||
+      (a.kind === "promise" && canConvertToDyn(a, getRecord, getUnion)),
     );
   }
   return false;

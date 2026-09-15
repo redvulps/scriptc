@@ -26,6 +26,11 @@ export type NpmStaticDeclarationOverloads = ReadonlyMap<
   ReadonlyMap<string, readonly NpmStaticOverloadSignature[]>
 >;
 
+export type NpmStaticDeclarationProperties = ReadonlyMap<
+  string,
+  ReadonlyMap<string, string>
+>;
+
 export interface NpmStaticOverloadRewrite {
   text: string;
   insertions: readonly { offset: number; length: number }[];
@@ -47,6 +52,7 @@ function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
 
 function safeTypeText(node: ts.TypeNode, sourceFile: ts.SourceFile, className: string): string | null {
   if (SAFE_KEYWORD_TYPES.has(node.kind) || ts.isThisTypeNode(node)) return node.getText(sourceFile);
+  if (ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword) return "null";
   if (ts.isParenthesizedTypeNode(node)) {
     const inner = safeTypeText(node.type, sourceFile, className);
     return inner === null ? null : `(${inner})`;
@@ -54,6 +60,9 @@ function safeTypeText(node: ts.TypeNode, sourceFile: ts.SourceFile, className: s
   if (ts.isArrayTypeNode(node)) {
     const element = safeTypeText(node.elementType, sourceFile, className);
     return element === null ? null : `${element}[]`;
+  }
+  if (ts.isTypeOperatorNode(node) && node.operator === ts.SyntaxKind.ReadonlyKeyword) {
+    return safeTypeText(node.type, sourceFile, className);
   }
   if (ts.isUnionTypeNode(node)) {
     const arms = node.types.map((type) => safeTypeText(type, sourceFile, className));
@@ -133,14 +142,63 @@ export function parseNpmStaticDeclarationOverloads(
     }
     const overloads = new Map<string, readonly NpmStaticOverloadSignature[]>();
     for (const [name, methods] of groups) {
-      if (methods.length < 2) continue;
       const signatures = methods.map((method) => overloadSignature(sourceFile, className, method));
       // A partial set could select the wrong branch. Keep inference when
       // any authored signature is outside the projection's safe grammar.
       if (signatures.some((signature) => signature === null)) continue;
+      if (signatures.length === 1 && !signatures[0]!.parameters.some((parameter) => parameter.optional)) continue;
       overloads.set(name, signatures as NpmStaticOverloadSignature[]);
     }
     if (overloads.size > 0) classes.set(className, overloads);
+  }
+  return classes;
+}
+
+function nullableSelfType(
+  node: ts.TypeNode,
+  sourceFile: ts.SourceFile,
+  className: string,
+): string | null {
+  if (!ts.isUnionTypeNode(node) || node.types.length !== 2) return null;
+  const arms = node.types.map((type) => safeTypeText(type, sourceFile, className));
+  return arms.includes(className) && arms.includes("null") ? `${className} | null` : null;
+}
+
+/** Extracts the first declaration-backed field slice: nullable self links. */
+export function parseNpmStaticDeclarationProperties(
+  declarationPath: string,
+  source: string,
+): NpmStaticDeclarationProperties {
+  const sourceFile = ts.createSourceFile(declarationPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const classes = new Map<string, ReadonlyMap<string, string>>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isClassDeclaration(statement) ||
+      statement.name === undefined ||
+      (statement.typeParameters?.length ?? 0) !== 0 ||
+      !hasModifier(statement, ts.SyntaxKind.ExportKeyword) ||
+      hasModifier(statement, ts.SyntaxKind.DefaultKeyword)
+    ) {
+      continue;
+    }
+    const className = statement.name.text;
+    const properties = new Map<string, string>();
+    for (const member of statement.members) {
+      if (
+        !ts.isPropertyDeclaration(member) ||
+        !ts.isIdentifier(member.name) ||
+        member.type === undefined ||
+        member.questionToken !== undefined ||
+        hasModifier(member, ts.SyntaxKind.StaticKeyword) ||
+        hasModifier(member, ts.SyntaxKind.PrivateKeyword) ||
+        hasModifier(member, ts.SyntaxKind.ProtectedKeyword)
+      ) {
+        continue;
+      }
+      const type = nullableSelfType(member.type, sourceFile, className);
+      if (type !== null) properties.set(member.name.text, type);
+    }
+    if (properties.size > 0) classes.set(className, properties);
   }
   return classes;
 }
@@ -361,6 +419,43 @@ function implementationComment(
   return `/** ${params.join(" ")} @returns {${returns.join(" | ")}} */`;
 }
 
+function directReturn(statement: ts.Statement): ts.ReturnStatement | null {
+  if (ts.isReturnStatement(statement)) return statement;
+  return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0]!)
+    ? statement.statements[0]!
+    : null;
+}
+
+function undefinedParameterTest(expression: ts.Expression, parameter: string): boolean {
+  if (!ts.isBinaryExpression(expression) || expression.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
+  const matches = (left: ts.Expression, right: ts.Expression): boolean =>
+    ts.isIdentifier(left) && left.text === parameter && ts.isIdentifier(right) && right.text === "undefined";
+  return matches(expression.left, expression.right) || matches(expression.right, expression.left);
+}
+
+function overloadArrayBackingField(
+  method: ts.MethodDeclaration,
+  signatures: readonly NpmStaticOverloadSignature[],
+): { field: string; type: string } | null {
+  if (method.body === undefined || method.parameters.length !== 1 || !ts.isIdentifier(method.parameters[0]!.name)) return null;
+  const getters = signatures.filter((signature) => signature.parameters.length === 0 && signature.returnType.endsWith("[]"));
+  if (getters.length !== 1) return null;
+  const parameter = method.parameters[0]!.name.text;
+  for (const statement of method.body.statements) {
+    if (!ts.isIfStatement(statement) || !undefinedParameterTest(statement.expression, parameter)) continue;
+    const returned = directReturn(statement.thenStatement);
+    const expression = returned?.expression;
+    if (
+      expression !== undefined &&
+      ts.isPropertyAccessExpression(expression) &&
+      expression.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
+      return { field: expression.name.text, type: getters[0]!.returnType };
+    }
+  }
+  return null;
+}
+
 /** Injects declaration overload JSDoc into matching exported JS classes. */
 export function applyNpmStaticDeclarationOverloads(
   sourcePath: string,
@@ -375,17 +470,103 @@ export function applyNpmStaticDeclarationOverloads(
     if (!ts.isClassDeclaration(statement) || statement.name === undefined || !exported.has(statement.name.text)) continue;
     const classOverloads = declarations.get(statement.name.text);
     if (classOverloads === undefined) continue;
+    const constructor = statement.members.find(
+      (member): member is ts.ConstructorDeclaration => ts.isConstructorDeclaration(member) && member.body !== undefined,
+    );
+    const projectedFields = new Set<string>();
     for (const member of statement.members) {
       if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name) || member.body === undefined) continue;
       const signatures = classOverloads.get(member.name.text);
       if (signatures === undefined) continue;
+      const backing = overloadArrayBackingField(member, signatures);
+      if (backing !== null && constructor?.body !== undefined && !projectedFields.has(backing.field)) {
+        for (const bodyStatement of constructor.body.statements) {
+          if (!ts.isExpressionStatement(bodyStatement) || !ts.isBinaryExpression(bodyStatement.expression)) continue;
+          const { left, right, operatorToken } = bodyStatement.expression;
+          if (
+            operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+            !ts.isArrayLiteralExpression(right) || right.elements.length !== 0 ||
+            !ts.isPropertyAccessExpression(left) ||
+            left.expression.kind !== ts.SyntaxKind.ThisKeyword ||
+            left.name.text !== backing.field
+          ) {
+            continue;
+          }
+          const leading = source.slice(bodyStatement.getFullStart(), bodyStatement.getStart(sourceFile));
+          if (!leading.includes("@type")) {
+            inserts.push({ offset: bodyStatement.getStart(sourceFile), text: `/** @type {${backing.type}} */ ` });
+          }
+          projectedFields.add(backing.field);
+          break;
+        }
+      }
       const jsDocs = (member as ts.MethodDeclaration & { jsDoc?: readonly ts.JSDoc[] }).jsDoc ?? [];
       if (jsDocs.some((doc) => source.slice(doc.pos, doc.end).includes("@overload"))) continue;
+      if (signatures.length === 1) {
+        const implementation = implementationComment(statement.name.text, member, signatures);
+        if (implementation !== null) {
+          const existing = jsDocs.map((doc) => source.slice(doc.pos, doc.end)).join("\n");
+          const missingOptional = signatures[0]!.parameters.some(
+            (parameter) => parameter.optional && !existing.includes(`[${parameter.name}]`),
+          );
+          if (missingOptional) inserts.push({ offset: member.getStart(sourceFile), text: `${implementation} ` });
+        }
+        continue;
+      }
       const implementation = jsDocs.length === 0 ? implementationComment(statement.name.text, member, signatures) : null;
       if (jsDocs.length === 0 && implementation === null) continue;
       const offset = jsDocs[0]?.getStart(sourceFile) ?? member.getStart(sourceFile);
       const text = `${signatures.map(overloadComment).join(" ")} ${implementation === null ? "" : implementation + " "}`;
       inserts.push({ offset, text });
+    }
+  }
+  if (inserts.length === 0) return null;
+  let text = source;
+  for (const insert of [...inserts].sort((a, b) => b.offset - a.offset)) {
+    text = text.slice(0, insert.offset) + insert.text + text.slice(insert.offset);
+  }
+  return {
+    text,
+    insertions: inserts
+      .sort((a, b) => a.offset - b.offset)
+      .map((insert) => ({ offset: insert.offset, length: insert.text.length })),
+  };
+}
+
+/** Injects nullable-self property JSDoc at matching constructor writes. */
+export function applyNpmStaticDeclarationProperties(
+  sourcePath: string,
+  source: string,
+  declarations: NpmStaticDeclarationProperties,
+): NpmStaticOverloadRewrite | null {
+  if (declarations.size === 0) return null;
+  const sourceFile = ts.createSourceFile(sourcePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const exported = exportedClassNames(sourceFile);
+  const inserts: { offset: number; text: string }[] = [];
+  for (const statement of sourceFile.statements) {
+    if (!ts.isClassDeclaration(statement) || statement.name === undefined || !exported.has(statement.name.text)) continue;
+    const properties = declarations.get(statement.name.text);
+    if (properties === undefined) continue;
+    const constructor = statement.members.find(
+      (member): member is ts.ConstructorDeclaration => ts.isConstructorDeclaration(member) && member.body !== undefined,
+    );
+    if (constructor?.body === undefined) continue;
+    for (const bodyStatement of constructor.body.statements) {
+      if (!ts.isExpressionStatement(bodyStatement) || !ts.isBinaryExpression(bodyStatement.expression)) continue;
+      const { left, right, operatorToken } = bodyStatement.expression;
+      if (
+        operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+        right.kind !== ts.SyntaxKind.NullKeyword ||
+        !ts.isPropertyAccessExpression(left) ||
+        left.expression.kind !== ts.SyntaxKind.ThisKeyword
+      ) {
+        continue;
+      }
+      const type = properties.get(left.name.text);
+      if (type === undefined) continue;
+      const leading = source.slice(bodyStatement.getFullStart(), bodyStatement.getStart(sourceFile));
+      if (leading.includes("@type")) continue;
+      inserts.push({ offset: bodyStatement.getStart(sourceFile), text: `/** @type {${type}} */ ` });
     }
   }
   if (inserts.length === 0) return null;

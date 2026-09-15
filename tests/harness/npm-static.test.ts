@@ -2,13 +2,11 @@
  * program modules (no island) — the slice-2 pilot. Three tiers pinned
  * here:
  *
- *   1. GREEN pilots (escape-string-regexp, slash — real packages, vendored
- *      under tests/fixtures/npm-static): fully static builds whose stdout
- *      byte-matches Node across the argv-free programs.
- *   2. HONEST PARTIALS (ms, picocolors, commander): the packages COMPILE
- *      (preflight admits them; the coverage report says "static") but
- *      carry runtime fences on driven paths — the coverage numbers are
- *      pinned so the frontier only moves deliberately.
+ *   1. DRIVEN DIFFERENTIALS (escape-string-regexp, slash, ms, commander):
+ *      fully static builds whose stdout, stderr, and exit status byte-match
+ *      Node for the exercised programs.
+ *   2. COVERAGE FRONTIERS: dormant package paths may retain runtime fences;
+ *      coverage floors keep that broader static frontier moving forward.
  *   3. The FALLBACK contract: a package whose preflight refuses (an
  *      unshimmed-builtin require inside its files) drops back to the
  *      island under --dynamic with a coverage note — never a build
@@ -33,17 +31,18 @@ const sanitize = process.env["SCRIPTC_SAN"] === "1";
 
 interface RunResult {
   stdout: Buffer;
+  stderr: Buffer;
   exitCode: number;
 }
 
 async function runBinary(cmd: string, args: string[]): Promise<RunResult> {
   try {
-    const { stdout } = await execFileAsync(cmd, args, { encoding: "buffer" });
-    return { stdout, exitCode: 0 };
+    const { stdout, stderr } = await execFileAsync(cmd, args, { encoding: "buffer" });
+    return { stdout, stderr, exitCode: 0 };
   } catch (err) {
-    const e = err as { code?: unknown; stdout?: Buffer };
-    if (typeof e.code !== "number" || !Buffer.isBuffer(e.stdout)) throw err;
-    return { stdout: e.stdout, exitCode: e.code };
+    const e = err as { code?: unknown; stdout?: Buffer; stderr?: Buffer };
+    if (typeof e.code !== "number" || !Buffer.isBuffer(e.stdout) || !Buffer.isBuffer(e.stderr)) throw err;
+    return { stdout: e.stdout, stderr: e.stderr, exitCode: e.code };
   }
 }
 
@@ -55,6 +54,7 @@ async function buildStatic(entry: string, npmStatic: string[] | "auto"): Promise
   const inputs = [
     entry,
     ...globSync(join(pilotRoot, "**/node_modules/**/*.{js,mjs,cjs,json,d.ts}")).sort(),
+    ...globSync(join(fixturesRoot, "commander-calc/node_modules/**/*.{js,mjs,cjs,json,d.ts}")).sort(),
     // the bundler-emitted-CJS mini packages (cases 2465-2469, 2556-2557)
     ...globSync(join(fixturesRoot, "npm/node_modules/gt*/**/*.{js,json}")).sort(),
   ];
@@ -177,18 +177,14 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     }
   }, 120_000);
 
-  // Tier 2: commander opts in and COMPILES as program modules — the
-  // coverage floor is pinned (≥85% of ~1200 statements static) so frontier
-  // regressions surface here, while the remaining runtime fences keep the
-  // differential on the island lane (npm.test.ts) for now. Implicit-any
-  // monomorphization moved the driven frontier BEHIND the typed-value →
-  // untyped-param boundary (methods like _registerCommand and local
-  // helpers like knownBy now instantiate per argument types). Safe
-  // package-maintained overload groups preserve getter/setter results such
-  // as `cmd.name()` → string; the next fences include implicit-any FIELD
-  // writes of class instances (`cmd.parent = this`) and wider unknown flows.
-  test("commander compiles static at the pinned coverage floor", () => {
-    const { coverage } = analyze(join(fixturesRoot, "commander-calc/calc-npm-static.ts"), {
+  // Commander is the declaration-backed npm-static vertical slice: its
+  // package declarations preserve overloads and selected field contracts,
+  // while broad JSDoc implementation helpers specialize from reached call
+  // sites. The driven add command is differential; the package-wide floor
+  // separately pins dormant paths that still carry explicit runtime fences.
+  test("commander compiles statically and byte-matches Node", async () => {
+    const entry = join(fixturesRoot, "commander-calc/calc-npm-static.ts");
+    const { coverage } = analyze(entry, {
       npmStatic: ["commander"],
     });
     expect(coverage.npmStatic).toEqual([{ package: "commander", status: "static" }]);
@@ -196,10 +192,24 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     expect(coverage.diagnostics).toHaveLength(0); // builds — fences are runtime
     const total = coverage.stats.statementsTotal + (coverage.unreached?.stats.statementsTotal ?? 0);
     const failed = coverage.stats.statementsFailed + (coverage.unreached?.stats.statementsFailed ?? 0);
-    expect(total).toBeGreaterThan(1000); // the whole package joined the program
-    expect((total - failed) / total).toBeGreaterThanOrEqual(0.85);
-    expect(total - failed).toBeGreaterThanOrEqual(1062);
-    expect(coverage.runtimeFences?.length ?? 0).toBeLessThanOrEqual(115);
+    expect(total).toBeGreaterThan(1200); // the whole package joined the program
+    expect((total - failed) / total).toBeGreaterThanOrEqual(0.93);
+    expect(total - failed).toBeGreaterThanOrEqual(1190);
+    // Two promise-chain locals intentionally remain checked-dynamic: their
+    // first assignment reads the preceding undefined value, so promoting
+    // them to a scalar promise slot would be unsound.
+    expect(coverage.runtimeFences?.length ?? 0).toBeLessThanOrEqual(82);
+
+    const binary = await buildStatic(entry, ["commander"]);
+    const argv = ["add", "20", "22"];
+    const [nodeRes, nativeRes] = await Promise.all([
+      runBinary("node", [entry, ...argv]),
+      runBinary(binary, argv),
+    ]);
+    expect(nodeRes.stdout.toString("utf8")).toBe("42\n");
+    expect(nativeRes.stdout).toEqual(nodeRes.stdout);
+    expect(nativeRes.stderr).toEqual(nodeRes.stderr);
+    expect(nativeRes.exitCode).toBe(nodeRes.exitCode);
   }, 180_000);
 
   // Tier 3: the island fallback — esbundled's chunk requires "net", an
