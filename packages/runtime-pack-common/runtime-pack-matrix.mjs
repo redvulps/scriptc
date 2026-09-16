@@ -11,7 +11,7 @@ const BASE_RUNTIME_SOURCES = [
   "scr_bytes_io.c", "scr_map.c", "scr_closure.c", "scr_ffi.c",
   "scr_object.c", "scr_union.c", "scr_exception.c", "scr_error.c",
   "scr_console.c", "scr_lib.c", "scr_path.c", "scr_url.c", "scr_json.c",
-  "scr_async.c", "scr_child.c", "scr_cycle.c",
+  "scr_async.c", "scr_crypto_async.c", "scr_child.c", "scr_cycle.c",
 ];
 
 const OPTIONAL = [

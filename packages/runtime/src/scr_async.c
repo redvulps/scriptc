@@ -1952,6 +1952,74 @@ void scr_fs_rename_thunk0(ScrClosure *cb, ScrError *err) {
   ((void (*)(ScrClosure *))cb->fn)(cb);
 }
 
+/* Callback-style crypto completions. The operation validates and computes
+ * before enqueueing; delivery is a later macrotask, never synchronous with
+ * the API call. The queue owns both references and transfers the Buffer to
+ * the emitted callback adapter. */
+typedef struct ScrCryptoBytesOp {
+  ScrBytes *value;
+  ScrClosure *cb;
+  ScrCryptoBytesFn fn;
+  struct ScrCryptoBytesOp *next;
+} ScrCryptoBytesOp;
+
+static ScrCryptoBytesOp *scr_crypto_bytes_head = NULL;
+static ScrCryptoBytesOp **scr_crypto_bytes_tail = &scr_crypto_bytes_head;
+static size_t scr_crypto_bytes_pending_count = 0;
+static bool scr_crypto_bytes_cleanup_registered = false;
+
+static void scr_crypto_bytes_shutdown(void) {
+  while (scr_crypto_bytes_head != NULL) {
+    ScrCryptoBytesOp *op = scr_crypto_bytes_head;
+    scr_crypto_bytes_head = op->next;
+    scr_bytes_release(op->value);
+    scr_closure_release(op->cb);
+    free(op);
+  }
+  scr_crypto_bytes_tail = &scr_crypto_bytes_head;
+  scr_crypto_bytes_pending_count = 0;
+}
+
+static bool scr_crypto_bytes_pending(void) {
+  return scr_crypto_bytes_pending_count != 0;
+}
+
+static bool scr_crypto_bytes_dispatch(void) {
+  ScrCryptoBytesOp *op = scr_crypto_bytes_head;
+  if (op == NULL) return false;
+  scr_crypto_bytes_head = op->next;
+  if (scr_crypto_bytes_head == NULL) scr_crypto_bytes_tail = &scr_crypto_bytes_head;
+  scr_crypto_bytes_pending_count--;
+  op->fn(op->cb, op->value); /* adapter consumes value */
+  scr_closure_release(op->cb);
+  free(op);
+  return true;
+}
+
+void scr_crypto_defer_bytes(ScrBytes *value, ScrClosure *cb, ScrCryptoBytesFn fn) {
+  if (!scr_crypto_bytes_cleanup_registered) {
+    if (atexit(scr_crypto_bytes_shutdown) != 0) {
+      scr_bytes_release(value);
+      scr_closure_release(cb);
+      scr_trap("scriptc: could not register crypto callback cleanup\n");
+    }
+    scr_crypto_bytes_cleanup_registered = true;
+  }
+  ScrCryptoBytesOp *op = malloc(sizeof *op);
+  if (!op) {
+    scr_bytes_release(value);
+    scr_closure_release(cb);
+    scr_trap("scriptc: out of memory\n");
+  }
+  op->value = value;
+  op->cb = cb;
+  op->fn = fn;
+  op->next = NULL;
+  *scr_crypto_bytes_tail = op;
+  scr_crypto_bytes_tail = &op->next;
+  scr_crypto_bytes_pending_count++;
+}
+
 /* ── node:timers/promises ────────────────────────────────────────────
  * The promisified pair: a PENDING void promise a one-shot heap timer
  * (setTimeout) or the immediate queue (setImmediate) fulfills — the
@@ -2330,6 +2398,11 @@ bool scr_loop_run(ScrPromise *top_level) {
       if (scr_exc_pending()) return false;
       if (dispatched) continue;
     }
+    if (scr_crypto_bytes_pending()) {
+      bool dispatched = scr_crypto_bytes_dispatch();
+      if (scr_exc_pending()) return false;
+      if (dispatched) continue;
+    }
     /* Foreign native callbacks are macrotasks. Deliver one, then restart at
      * the microtask checkpoint before considering the next queued post. */
     if (scr_ffi_dispatch_fn != NULL && scr_ffi_dispatch_fn()) {
@@ -2405,7 +2478,7 @@ bool scr_loop_run(ScrPromise *top_level) {
           (scr_dgram_pending_fn != NULL && scr_dgram_pending_fn()) ||
           (scr_watch_pending_fn != NULL && scr_watch_pending_fn()) ||
           (scr_ffi_pending_fn != NULL && scr_ffi_pending_fn()) ||
-          scr_fs_renames_pending();
+          scr_fs_renames_pending() || scr_crypto_bytes_pending();
       if (held) {
         scr_children_poll();
         if (scr_exc_pending()) return false; /* uncaught throw in a listener */
@@ -2426,13 +2499,14 @@ bool scr_loop_run(ScrPromise *top_level) {
     bool watch = scr_watch_pending_fn != NULL && scr_watch_pending_fn();
     bool ffi = scr_ffi_pending_fn != NULL && scr_ffi_pending_fn();
     bool renames = scr_fs_renames_pending();
+    bool crypto = scr_crypto_bytes_pending();
     /* Timer liveness counts only REF'd timers: an unref'd timer stays in
      * the heap (and fires if the loop runs on for other reasons) but does
      * not by itself keep the process alive — Node's unref semantics.
      * Children follow the same rule: an unref'd child is still REAPED
      * while the loop runs (kids drives the sweeps and sleeps above) but
      * only reffed ones keep the process alive. */
-    if (scr_reffed_timers == 0 && scr_reffed_immediates == 0 && !scr_children_reffed_pending() && !io && !events && !net && !dgram && !watch && !ffi && !renames) break;
+    if (scr_reffed_timers == 0 && scr_reffed_immediates == 0 && !scr_children_reffed_pending() && !io && !events && !net && !dgram && !watch && !ffi && !renames && !crypto) break;
     /* Sleep to the earliest deadline, then run every due timer (each may
      * enqueue microtasks, which the next iteration drains first). Who
      * sleeps depends on what is pending:

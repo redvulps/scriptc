@@ -291,9 +291,9 @@
       "apiEntries": 145,
       "static": {
         "supported": 0,
-        "partial": 3,
-        "refused": 35,
-        "not-implemented": 107,
+        "partial": 18,
+        "refused": 30,
+        "not-implemented": 97,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -1419,8 +1419,8 @@
       "apiEntries": 148,
       "static": {
         "supported": 0,
-        "partial": 2,
-        "refused": 9,
+        "partial": 11,
+        "refused": 0,
         "not-implemented": 137,
         "by-design": 0,
         "unreviewed": 0,
@@ -23199,7 +23199,9 @@
         "tests": [
           "tests/corpus/1358-crypto-random.ts",
           "tests/corpus/1534-crypto-hash-chain.ts",
-          "tests/corpus/2556-crypto-introspection.ts"
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
         ]
       },
       "dynamic": {
@@ -23796,8 +23798,12 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.createHash"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.createHash",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -23826,8 +23832,12 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.createHmac"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.createHmac",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24438,8 +24448,12 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.hash",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24522,8 +24536,12 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.pbkdf2"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.pbkdf2",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24552,8 +24570,12 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.pbkdf2Sync"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.pbkdf2Sync",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24695,7 +24717,9 @@
         "tests": [
           "tests/corpus/1358-crypto-random.ts",
           "tests/corpus/1534-crypto-hash-chain.ts",
-          "tests/corpus/2556-crypto-introspection.ts"
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
         ]
       },
       "dynamic": {
@@ -24755,8 +24779,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.randomFillSync",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24785,8 +24813,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.randomInt",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -24820,7 +24852,9 @@
         "tests": [
           "tests/corpus/1358-crypto-random.ts",
           "tests/corpus/1534-crypto-hash-chain.ts",
-          "tests/corpus/2556-crypto-introspection.ts"
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
         ]
       },
       "dynamic": {
@@ -25015,8 +25049,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.timingSafeEqual",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26431,8 +26469,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:Hash",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26461,8 +26503,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:hash.copy",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26491,8 +26537,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:hash.digest",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26521,8 +26571,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:hash.update",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26551,8 +26605,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:Hmac",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26581,8 +26639,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:hmac.digest",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -26611,8 +26673,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:crypto"
+        "status": "partial",
+        "evidence": "compiler-dedicated:hmac.update",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -28309,8 +28375,12 @@
       "anchor": "dep0009-cryptopbkdf2-without-digest",
       "nodeStability": null,
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.pbkdf2"
+        "status": "partial",
+        "evidence": "compiler-dedicated:crypto.pbkdf2",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "not-applicable",
@@ -32032,8 +32102,12 @@
       "anchor": "dep0179-hash-constructor",
       "nodeStability": null,
       "static": {
-        "status": "not-applicable",
-        "evidence": "compiler-chapter-policy:deprecations"
+        "status": "partial",
+        "evidence": "compiler-dedicated:Hash",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "not-applicable",
@@ -32076,8 +32150,12 @@
       "anchor": "dep0181-hmac-constructor",
       "nodeStability": null,
       "static": {
-        "status": "not-applicable",
-        "evidence": "compiler-chapter-policy:deprecations"
+        "status": "partial",
+        "evidence": "compiler-dedicated:Hmac",
+        "tests": [
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "not-applicable",
@@ -115649,7 +115727,9 @@
         "tests": [
           "tests/corpus/1358-crypto-random.ts",
           "tests/corpus/1534-crypto-hash-chain.ts",
-          "tests/corpus/2556-crypto-introspection.ts"
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
         ]
       },
       "dynamic": {
@@ -117380,8 +117460,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -117869,8 +117956,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118007,8 +118101,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118118,8 +118219,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118229,8 +118337,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118745,8 +118860,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118883,8 +119005,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -118967,8 +119096,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -119105,8 +119241,15 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.crypto.hash"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.crypto.hash",
+        "tests": [
+          "tests/corpus/1358-crypto-random.ts",
+          "tests/corpus/1534-crypto-hash-chain.ts",
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -119440,7 +119583,9 @@
         "tests": [
           "tests/corpus/1358-crypto-random.ts",
           "tests/corpus/1534-crypto-hash-chain.ts",
-          "tests/corpus/2556-crypto-introspection.ts"
+          "tests/corpus/2556-crypto-introspection.ts",
+          "tests/corpus/2890-crypto-static-utility.ts",
+          "tests/harness/npm-static.test.ts"
         ]
       },
       "dynamic": {

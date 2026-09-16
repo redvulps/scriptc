@@ -6199,6 +6199,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2890-crypto-static-utility.ts": {
+   "order": [
+    "<repo>/tests/corpus/2890-crypto-static-utility.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

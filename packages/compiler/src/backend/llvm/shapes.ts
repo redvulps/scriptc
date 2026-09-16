@@ -336,7 +336,7 @@ export function boxNewCall(host: ShapeHost, t: IrType): string {
     t.kind === "generator" ||
     t.kind === "netServer" || t.kind === "netSocket" || t.kind === "dgramSocket" ||
     t.kind === "httpReq" || t.kind === "httpRes" || t.kind === "httpClientReq" ||
-    t.kind === "secureCtx" || t.kind === "testCtx" ||
+    t.kind === "secureCtx" || t.kind === "cryptoHash" || t.kind === "cryptoHmac" || t.kind === "testCtx" ||
     // Island handles: the box carries scr_jsval_retain_v/release_v and
     // no trace — the same stance as jsval array elements.
     t.kind === "jsval" ||

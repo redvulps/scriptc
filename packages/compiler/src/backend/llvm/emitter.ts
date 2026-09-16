@@ -95,7 +95,7 @@ import { emitIntrinsicExpr, emitSerializationExpr, emitAsyncExpr } from "./expr-
 import { emitJsInteropExpr, emitExpr } from "./expr-dispatch.js";
 import { emitJsMarshal, emitJsOp, emitJsExit, islandAdapter, islandTypedAdapter } from "./expr-island.js";
 import { dynKind, raceAdapterFor, genResultThunkFor, childExitThunkFor, childExitSignalThunkFor, childDataThunkFor, emitterFixedAdapter, wrapEmitterListener, unwrapNullableClosure, closeBindThunkFor, closeOverrideWrapFor } from "./expr-callbacks.js";
-import { streamDataAdapter, streamDoneFnFor, fsRenameThunkFor, streamCbThunkFor } from "./expr-stream-callbacks.js";
+import { streamDataAdapter, streamDoneFnFor, cryptoBytesThunkFor, fsRenameThunkFor, streamCbThunkFor } from "./expr-stream-callbacks.js";
 import { resolveThunkFor, tagInSet, arrPush, emitArrayCopyLoop, emitStrIntrinsic, emitArrIntrinsic, wrapNullable, emitMapNew, mapSet, emitMapLikeIntrinsic, emitSetNew } from "./expr-containers.js";
 import { emitBytesReceiver, emitIntegerLoopIndex, emitBytesIndex, emitBytesData, emitBytesLength, emitBytesGet, emitBytesU32, emitBytesSet, emitBytesIntrinsic } from "./expr-bytes.js";
 import { emitRegexIntrinsic, emitRecordKeyGet, keyedRecordReadInto } from "./expr-records.js";
@@ -2480,7 +2480,8 @@ class LlEmitter {
       case "array": case "record": case "object": case "classval": case "func":
       case "map": case "set": case "symbol": case "regex": case "promise": case "bytes":
       case "url": case "searchParams": case "stats": case "fileHandle": case "spawnRes":
-      case "child": case "childStream": case "generator": case "fsWatcher": {
+      case "child": case "childStream": case "generator": case "fsWatcher":
+      case "cryptoHash": case "cryptoHmac": {
         if (unionArm) return "true";
         const truthy = B.tmp();
         B.line(`${truthy} = icmp ne ptr ${valueName}, null`);
@@ -4216,6 +4217,10 @@ class LlEmitter {
 
   private fsRenameThunkFor(cbT: IrType & { kind: "func" }): string {
     return fsRenameThunkFor(this.expressionContext(), cbT);
+  }
+
+  private cryptoBytesThunkFor(cbT: IrType & { kind: "func" }): string {
+    return cryptoBytesThunkFor(this.expressionContext(), cbT);
   }
 
   private streamCbThunkFor(kind: "r" | "w" | "f" | "d" | "t" | "l" | "e", cbT: IrType): string {

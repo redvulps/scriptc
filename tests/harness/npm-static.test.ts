@@ -46,6 +46,16 @@ async function runBinary(cmd: string, args: string[]): Promise<RunResult> {
   }
 }
 
+function comparableStderr(stderr: Buffer): Buffer {
+  if (!sanitize) return stderr;
+  const kept = stderr.toString("utf8").split("\n").filter(
+    (line) =>
+      !line.startsWith("scriptc RC audit skipped:") &&
+      !/^==\d+==WARNING: ASan doesn't fully support makecontext\/swapcontext/.test(line),
+  );
+  return Buffer.from(kept.join("\n"), "utf8");
+}
+
 /** Compile one pilot statically (no --dynamic — the whole point) with the
  * named packages opted in; cache-keyed over the program and the vendored
  * packages. */
@@ -55,6 +65,7 @@ async function buildStatic(entry: string, npmStatic: string[] | "auto"): Promise
     entry,
     ...globSync(join(pilotRoot, "**/node_modules/**/*.{js,mjs,cjs,json,d.ts}")).sort(),
     ...globSync(join(fixturesRoot, "commander-calc/node_modules/**/*.{js,mjs,cjs,json,d.ts}")).sort(),
+    ...globSync(join(fixturesRoot, "npm/node_modules/cryptozoo/**/*.{js,mjs,cjs,json,d.ts}")).sort(),
     // the bundler-emitted-CJS mini packages (cases 2465-2469, 2556-2557)
     ...globSync(join(fixturesRoot, "npm/node_modules/gt*/**/*.{js,json}")).sort(),
   ];
@@ -210,7 +221,26 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     ]);
     expect(nodeRes.stdout.toString("utf8")).toBe("42\n");
     expect(nativeRes.stdout).toEqual(nodeRes.stdout);
-    expect(nativeRes.stderr).toEqual(nodeRes.stderr);
+    expect(comparableStderr(nativeRes.stderr)).toEqual(nodeRes.stderr);
+    expect(nativeRes.exitCode).toBe(nodeRes.exitCode);
+  }, 180_000);
+
+  test("the crypto utility package compiles fully statically and byte-matches Node", async () => {
+    const entry = join(fixturesRoot, "npm/cases/crypto-shims/main.ts");
+    const { coverage } = analyze(entry, { npmStatic: ["cryptozoo"] });
+    expect(coverage.npmStatic).toEqual([{ package: "cryptozoo", status: "static" }]);
+    expect(coverage.preflightFailed).toBe(false);
+    expect(coverage.diagnostics).toHaveLength(0);
+    expect(coverage.runtimeFences ?? []).toHaveLength(0);
+    expect(coverage.stats.statementsFailed).toBe(0);
+
+    const binary = await buildStatic(entry, ["cryptozoo"]);
+    const [nodeRes, nativeRes] = await Promise.all([
+      runBinary("node", [entry]),
+      runBinary(binary, []),
+    ]);
+    expect(nativeRes.stdout).toEqual(nodeRes.stdout);
+    expect(comparableStderr(nativeRes.stderr)).toEqual(nodeRes.stderr);
     expect(nativeRes.exitCode).toBe(nodeRes.exitCode);
   }, 180_000);
 

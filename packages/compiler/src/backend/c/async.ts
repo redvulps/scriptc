@@ -559,6 +559,60 @@ function emitArgPackAndTrampolinePrologue(
     return sym;
   }
 
+/** Callback adapter for randomBytes/pbkdf2. The runtime transfers one
+ * owned Buffer; the adapter materializes the callback's Error | null (or
+ * checked-dynamic null) first argument and either transfers or boxes the
+ * Buffer according to the program-specific callback signature. */
+  export function cryptoBytesThunkFor(emitter: CEmitter, cbT: IrType): string {
+    if (cbT.kind !== "func" || cbT.params.length > 2) {
+      throw new InternalCompilerError("emitter bug: crypto bytes callback shape");
+    }
+    const key = `crypto:${typeKey(cbT)}`;
+    let sym = emitter.fsRenameThunks.get(key);
+    if (sym) return sym;
+    sym = `sc_cryptobytes_${emitter.fsRenameThunks.size}`;
+    emitter.fsRenameThunks.set(key, sym);
+    emitter.walkerProtos.push(`static void ${sym}(ScrClosure *sc_cb, ScrBytes *sc_value);`);
+    const lines = [`static void ${sym}(ScrClosure *sc_cb, ScrBytes *sc_value) {`];
+    const callTypes = ["ScrClosure *"];
+    const callArgs = ["sc_cb"];
+    const error = cbT.params[0];
+    if (error !== undefined) {
+      if (error.kind === "dyn") {
+        lines.push(`  ScrDyn *sc_error = scr_dyn_new_null();`);
+        callTypes.push("ScrDyn *");
+      } else if (error.kind === "union") {
+        const def = emitter.unionsById.get(error.unionId);
+        const nullTag = def ? def.arms.findIndex((arm) => arm.kind === "nullT") : -1;
+        if (nullTag < 0) throw new InternalCompilerError("emitter bug: crypto callback error union lacks null");
+        lines.push(`  ScrUnion *sc_error = ${emitter.unitInstanceRef(error.unionId, nullTag)};`);
+        callTypes.push("ScrUnion *");
+      } else {
+        throw new InternalCompilerError("emitter bug: crypto callback error param");
+      }
+      callArgs.push("sc_error");
+    }
+    const value = cbT.params[1];
+    if (value === undefined) {
+      lines.push(`  scr_bytes_release(sc_value);`);
+    } else if (value.kind === "dyn") {
+      lines.push(`  ScrDyn *sc_result = scr_dyn_new_bytes_copy(sc_value);`, `  scr_bytes_release(sc_value);`);
+      callTypes.push("ScrDyn *");
+      callArgs.push("sc_result");
+    } else if (value.kind === "bytes" && value.elem === "u8") {
+      callTypes.push("ScrBytes *");
+      callArgs.push("sc_value");
+    } else {
+      throw new InternalCompilerError("emitter bug: crypto callback value param");
+    }
+    lines.push(
+      `  ((void (*)(${callTypes.join(", ")}))sc_cb->fn)(${callArgs.join(", ")});`,
+      `}`,
+    );
+    emitter.walkerDefs.push(...lines);
+    return sym;
+  }
+
 /** Interned CONNECT-listener adapter for a UNION socket slot — the h2
    * compat listener (`(req, resOrSocket: Http2ServerResponse | net.Socket)
    * => void`): the runtime fires (cb, req, sock, head) like an upgrade;

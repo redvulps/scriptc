@@ -78,6 +78,9 @@ export function cType(t: IrType): string {
       return "ScrHttpClientReq *";
     case "secureCtx":
       return "ScrSecureCtx *";
+    case "cryptoHash":
+    case "cryptoHmac":
+      return "ScrCryptoHash *";
     case "fsWatcher":
       return "ScrWatcher *";
     case "childStream":

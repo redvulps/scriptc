@@ -79,7 +79,7 @@ function stableTestMemo<T>(
   return pending;
 }
 
-export const EXECUTABLE_RUNTIME_SOURCES = ["scr_number.c", "scr_string.c", "scr_array.c", "scr_bytes.c", "scr_bytes_io.c", "scr_map.c", "scr_closure.c", "scr_ffi.c", "scr_object.c", "scr_union.c", "scr_exception.c", "scr_error.c", "scr_console.c", "scr_lib.c", "scr_path.c", "scr_url.c", "scr_json.c", "scr_async.c", "scr_child.c", "scr_cycle.c"] as const;
+export const EXECUTABLE_RUNTIME_SOURCES = ["scr_number.c", "scr_string.c", "scr_array.c", "scr_bytes.c", "scr_bytes_io.c", "scr_map.c", "scr_closure.c", "scr_ffi.c", "scr_object.c", "scr_union.c", "scr_exception.c", "scr_error.c", "scr_console.c", "scr_lib.c", "scr_path.c", "scr_url.c", "scr_json.c", "scr_async.c", "scr_crypto_async.c", "scr_child.c", "scr_cycle.c"] as const;
 
 /**
  * Per-executable section-elimination recipe. This belongs beside the native
@@ -972,7 +972,7 @@ export function cacheTargetIdentity(
  * fiber/loop and child-process units, plus the library-mode TU. */
 const LIB_RUNTIME_SOURCES = [
   ...EXECUTABLE_RUNTIME_SOURCES.filter(
-    (f) => f !== "scr_async.c" && f !== "scr_child.c" && f !== "scr_ffi.c",
+    (f) => f !== "scr_async.c" && f !== "scr_crypto_async.c" && f !== "scr_child.c" && f !== "scr_ffi.c",
   ),
   "scr_library.c",
 ];

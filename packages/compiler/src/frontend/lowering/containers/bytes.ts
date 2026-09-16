@@ -910,6 +910,33 @@ const DV_SETTERS: Record<string, { method: IrBytesIntrinsicMethod; le: boolean }
    * `Buffer.concat(list)`, `Buffer.isBuffer(x)` — on THE stdlib Buffer
    * global (name + provenance; fallback and @types/node alike). Null when
    * the callee isn't a Buffer-static access. */
+function knownBufferProducer(lowerer: Lowerer, source: ts.Expression, seen = new Set<ts.Symbol>()): boolean {
+  let node = source;
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertion(node)) node = node.expression;
+  if (ts.isIdentifier(node)) {
+    const symbol = lowerer.checker.getSymbolAtLocation(node);
+    if (!symbol || seen.has(symbol)) return false;
+    seen.add(symbol);
+    return lowerer.checker.declarationsOf(symbol).some((decl) =>
+      ts.isVariableDeclaration(decl) &&
+      ts.isVariableDeclarationList(decl.parent) &&
+      (decl.parent.flags & ts.NodeFlags.Const) !== 0 &&
+      decl.initializer !== undefined &&
+      knownBufferProducer(lowerer, decl.initializer, seen));
+  }
+  if (!ts.isCallExpression(node)) return false;
+  const callee = node.expression;
+  const bi = ts.isIdentifier(callee)
+    ? lowerer.builtinImportOf(callee)
+    : ts.isPropertyAccessExpression(callee)
+      ? lowerer.builtinMemberOf(callee)
+      : null;
+  if (bi?.module === "crypto" && (bi.member === "randomBytes" || bi.member === "pbkdf2Sync")) return true;
+  if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== "digest" || node.arguments.length !== 0) return false;
+  const type = lowerer.mapTypeOf(lowerer.typeOf(callee.expression));
+  return type?.kind === "cryptoHash" || type?.kind === "cryptoHmac";
+}
+
 export function lowerBufferStaticCall(lowerer: Lowerer, call: ts.CallExpression,
   access: ts.PropertyAccessExpression,): IrExpr | null {
   if (call.questionDotToken || access.questionDotToken) return null;
@@ -1065,11 +1092,25 @@ export function lowerBufferStaticCall(lowerer: Lowerer, call: ts.CallExpression,
     // The type-predicate narrowing test. Lowered where it DECIDES
     // something: a union-typed argument with a Buffer arm becomes a
     // runtime tag test (tsc's narrowing then types the branches, the
-    // discriminated-union machinery). Statically-decided arguments are
-    // fenced — the answer is a constant, and the operand's evaluation
-    // would have to be discarded.
+    // discriminated-union machinery). Statically-decided arguments stay
+    // fenced except for standard-library calls (and const aliases of
+    // them) proven to return a real Buffer; those preserve evaluation and
+    // fold true even though Buffer and Uint8Array share one IR storage.
     if (args.length === 1 && !ts.isSpreadElement(args[0]!)) {
+      const source = args[0]!;
       const v = lowerer.lowerExpr(args[0]!);
+      // The bytes IR intentionally unifies Buffer and Uint8Array storage,
+      // but these standard-library producers are known to return a real
+      // Node Buffer. Preserve source evaluation and fold the predicate.
+      if (knownBufferProducer(lowerer, source)) {
+        return {
+          kind: "seqExpr",
+          stmts: [{ kind: "exprStmt", expr: v, loc: v.loc }],
+          result: { kind: "boolLit", value: true, type: BOOL, loc },
+          type: BOOL,
+          loc,
+        };
+      }
       if (v.type.kind === "union") {
         const def = lowerer.unions.get(v.type.unionId);
         const tag = def ? def.arms.findIndex((a) => a.kind === "bytes" && a.elem === "u8") : -1;

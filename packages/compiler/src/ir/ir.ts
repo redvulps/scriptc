@@ -209,6 +209,13 @@ export type IrType =
    * as a Map VALUE (the per-hostname context cache) like child; fenced out
    * of array elements and JSON like the other opaque handles. */
   | { kind: "secureCtx" }
+  /** A node:crypto Hash or Hmac handle (scr_lib.c): heap, refcounted,
+   * MUTABLE until digest(), then permanently finalized. The two TypeScript
+   * surfaces share one runtime representation but stay distinct IR kinds so
+   * Hash.copy() cannot accidentally appear on Hmac values. The incremental
+   * digest state owns no script values and cannot participate in a cycle. */
+  | { kind: "cryptoHash" }
+  | { kind: "cryptoHmac" }
   /** Heap, refcounted closure. `rest` marks a VARIADIC JS function (a
    * `...args` rest parameter, or a zero-param function body reading
    * `arguments` — test/common's mustCall wrapper): the lifted function
@@ -327,6 +334,8 @@ const POINTER_HANDLE_KINDS = [
   "httpRes",
   "httpClientReq",
   "secureCtx",
+  "cryptoHash",
+  "cryptoHmac",
   "fsWatcher",
   "childStream",
 ] as const satisfies readonly IrType["kind"][];
@@ -409,6 +418,8 @@ export const RUNTIME_RC_STEMS: Record<IrType["kind"], string> = {
   procStream: "",
   fsWatcher: "scr_watcher",
   secureCtx: "scr_secure_ctx",
+  cryptoHash: "scr_crypto_hash",
+  cryptoHmac: "scr_crypto_hash",
   func: "scr_closure",
   object: "",
   classval: "scr_classobj",
@@ -447,7 +458,7 @@ export const REF_TRUTHY_KINDS: ReadonlySet<string> = new Set([
   "symbol",
   "date", "array", "map", "set", "regex", "url", "searchParams", "stats", "fileHandle", "spawnRes", "child",
   "netServer", "netSocket", "http2Session", "http2Stream", "dgramSocket", "testCtx", "httpReq", "httpRes", "httpClientReq",
-  "secureCtx", "fsWatcher", "childStream", "procStream", "bytes", "func", "object", "record", "promise",
+  "secureCtx", "cryptoHash", "cryptoHmac", "fsWatcher", "childStream", "procStream", "bytes", "func", "object", "record", "promise",
   // A generator object is a JS object: always truthy.
   "generator",
   // A class object is a JS object (constructors are functions): always truthy.
@@ -477,6 +488,8 @@ export const HTTPREQ_T: IrType = { kind: "httpReq" };
 export const HTTPRES_T: IrType = { kind: "httpRes" };
 export const HTTPCLIENTREQ_T: IrType = { kind: "httpClientReq" };
 export const SECURECTX_T: IrType = { kind: "secureCtx" };
+export const CRYPTOHASH_T: IrType = { kind: "cryptoHash" };
+export const CRYPTOHMAC_T: IrType = { kind: "cryptoHmac" };
 export const FSWATCHER_T: IrType = { kind: "fsWatcher" };
 export const CHILDSTREAM_T: IrType = { kind: "childStream" };
 export const PROCSTREAM_T: IrType = { kind: "procStream" };
@@ -3032,20 +3045,39 @@ export type IrLibFn =
    * these are in the may-throw seed. readFile is utf8-fenced like
    * readFileSync. The non-interleaving divergence is documented in
    * SEMANTICS.md. */
-  /** node:crypto, the string-producing slice: randomUUID (never throws)
-   * and the COMPOSED randomBytes(n).toString("hex"|"base64") — one
-   * libCall, the Buffer never escapes (bare randomBytes is fenced).
-   * randomBytesToString THROWS Node's RangeError on out-of-range sizes. */
+  /** node:crypto randomness: randomUUID plus randomBytes as either a real
+   * Buffer or the fused randomBytes(n).toString("hex"|"base64") path.
+   * The size-taking forms throw Node's RangeError on invalid values. */
   | "crypto.randomUUID"
   | "crypto.randomBytesToString"
-  /** The COMPOSED hash chain createHash(alg).update(data).digest(enc)
-   * fused into one call — the Hash handle never materializes. Args are
-   * (alg, data, enc); alg is "sha256" | "sha1" and enc "hex" | "base64",
-   * both compile-time literals (frontend-fenced). Strings hash their
-   * UTF-8 bytes (Node's default input encoding); the bytes form hashes a
-   * Buffer/typed array's bytes. Pure; never throw. */
+  /** The fused createHash(alg).update(data).digest(enc) fast path and the
+   * one-shot crypto.hash implementation. First-class Hash/Hmac handles use
+   * the entries below; all paths share the incremental runtime core. */
   | "crypto.hashDigestStr"
   | "crypto.hashDigestBytes"
+  /** First-class static Hash/Hmac handles. Constructors validate the
+   * runtime algorithm string (md5/sha1/sha256); update returns the same
+   * handle by retained identity, copy snapshots Hash state, and digest
+   * finalizes the handle and returns either a Buffer or encoded string. */
+  | "crypto.hashNew"
+  | "crypto.hmacNewStr"
+  | "crypto.hmacNewBytes"
+  | "crypto.hashUpdateStr"
+  | "crypto.hashUpdateBytes"
+  | "crypto.hmacUpdateStr"
+  | "crypto.hmacUpdateBytes"
+  | "crypto.hashCopy"
+  | "crypto.hashDigestString"
+  | "crypto.hashDigestBuffer"
+  | "crypto.hmacDigestString"
+  | "crypto.hmacDigestBuffer"
+  | "crypto.timingSafeEqual"
+  | "crypto.randomFill"
+  | "crypto.randomFillRest"
+  | "crypto.randomInt"
+  | "crypto.pbkdf2"
+  | "crypto.randomBytesCb"
+  | "crypto.pbkdf2Cb"
   /** crypto.randomBytes(n) → a real u8 Buffer (+1). THROWS Node's
    * RangeError on out-of-range sizes, exactly like the composed
    * randomBytesToString (which keeps its one-libCall lowering — the two
@@ -7319,6 +7351,27 @@ export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
   "fs.statSync",
   "crypto.randomBytesToString",
   "crypto.randomBytes",
+  "crypto.hashDigestStr",
+  "crypto.hashDigestBytes",
+  "crypto.hashNew",
+  "crypto.hmacNewStr",
+  "crypto.hmacNewBytes",
+  "crypto.hashUpdateStr",
+  "crypto.hashUpdateBytes",
+  "crypto.hmacUpdateStr",
+  "crypto.hmacUpdateBytes",
+  "crypto.hashCopy",
+  "crypto.hashDigestString",
+  "crypto.hashDigestBuffer",
+  "crypto.hmacDigestString",
+  "crypto.hmacDigestBuffer",
+  "crypto.timingSafeEqual",
+  "crypto.randomFill",
+  "crypto.randomFillRest",
+  "crypto.randomInt",
+  "crypto.pbkdf2",
+  "crypto.randomBytesCb",
+  "crypto.pbkdf2Cb",
   "buffer.concat",
   "buffer.concatLen",
   // The checked-dynamic compare/equals validators: Node's argument

@@ -7,9 +7,9 @@
     "tierItemCount": 6671,
     "tiers": {
       "static": {
-        "replace-refusal": 73,
-        "verify-gap": 2756,
-        "audit-partial": 391,
+        "replace-refusal": 59,
+        "verify-gap": 2746,
+        "audit-partial": 415,
         "classify": 2,
         "implement": 81
       },
@@ -9175,12 +9175,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.createHash",
-          "tests": []
+          "source": "compiler-dedicated:crypto.createHash",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -9210,12 +9213,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.createHmac",
-          "tests": []
+          "source": "compiler-dedicated:crypto.createHmac",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -9948,12 +9954,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "compiler-dedicated:crypto.hash",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -10049,12 +10058,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.pbkdf2",
-          "tests": []
+          "source": "compiler-dedicated:crypto.pbkdf2",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -10084,12 +10096,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.pbkdf2Sync",
-          "tests": []
+          "source": "compiler-dedicated:crypto.pbkdf2Sync",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -10259,7 +10274,9 @@
           "tests": [
             "tests/corpus/1358-crypto-random.ts",
             "tests/corpus/1534-crypto-hash-chain.ts",
-            "tests/corpus/2556-crypto-introspection.ts"
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
           ]
         },
         "dynamic": {
@@ -10325,12 +10342,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:crypto.randomFillSync",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -10360,12 +10380,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:crypto.randomInt",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -10403,7 +10426,9 @@
           "tests": [
             "tests/corpus/1358-crypto-random.ts",
             "tests/corpus/1534-crypto-hash-chain.ts",
-            "tests/corpus/2556-crypto-introspection.ts"
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
           ]
         },
         "dynamic": {
@@ -10634,12 +10659,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:crypto.timingSafeEqual",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -11962,12 +11990,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:Hash",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -11997,12 +12028,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:hash.copy",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -12032,12 +12066,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:hash.digest",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -12067,12 +12104,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:hash.update",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -12102,12 +12142,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:Hmac",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -12137,12 +12180,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:hmac.digest",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -12172,12 +12218,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:crypto",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-dedicated:hmac.update",
+          "tests": [
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -99006,12 +99055,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -99602,12 +99657,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -99769,12 +99830,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -99903,12 +99970,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -100037,12 +100110,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -100666,12 +100745,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -100833,12 +100918,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -100934,12 +101025,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -101101,12 +101198,18 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.crypto.hash",
-          "tests": []
+          "source": "surface-manifest:node-builtin.crypto.hash",
+          "tests": [
+            "tests/corpus/1358-crypto-random.ts",
+            "tests/corpus/1534-crypto-hash-chain.ts",
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -101509,7 +101612,9 @@
           "tests": [
             "tests/corpus/1358-crypto-random.ts",
             "tests/corpus/1534-crypto-hash-chain.ts",
-            "tests/corpus/2556-crypto-introspection.ts"
+            "tests/corpus/2556-crypto-introspection.ts",
+            "tests/corpus/2890-crypto-static-utility.ts",
+            "tests/harness/npm-static.test.ts"
           ]
         },
         "dynamic": {

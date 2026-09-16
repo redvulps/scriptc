@@ -1377,23 +1377,31 @@ declare module "node:url" {
   export * from "url";
 }
 
-/* node:crypto: randomUUID(), and randomBytes returning a REAL Buffer —
- * the composed randomBytes(n).toString("hex" | "base64") still lowers as
- * one fused string-producing operation (the Buffer never materializes
- * there); every other use gets an ordinary Buffer value. */
+/* node:crypto: the static hashing/MAC/random/PBKDF2 utility slice. */
 declare module "crypto" {
   export function randomUUID(): string;
   export function randomBytes(size: number): Buffer;
-  /* The lowered Hash surface is exactly the COMPOSED chain
-   * createHash("sha256" | "sha1").update(data).digest("hex" | "base64")
-   * — fused into one call, the Hash handle never materializes (holding
-   * one fences). sha1 exists for the RFC 6455 Sec-WebSocket-Accept
-   * hash. */
   export interface Hash {
-    update(data: string | Uint8Array): Hash;
+    update(data: string | Uint8Array, inputEncoding?: "utf8" | "utf-8" | "hex" | "base64"): Hash;
+    digest(): Buffer;
+    digest(encoding: "hex" | "base64"): string;
+    copy(): Hash;
+  }
+  export interface Hmac {
+    update(data: string | Uint8Array, inputEncoding?: "utf8" | "utf-8" | "hex" | "base64"): Hmac;
+    digest(): Buffer;
     digest(encoding: "hex" | "base64"): string;
   }
   export function createHash(algorithm: string): Hash;
+  export function createHmac(algorithm: string, key: string | Uint8Array): Hmac;
+  export function hash(algorithm: string, data: string | Uint8Array, outputEncoding?: "hex" | "base64"): string;
+  export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
+  export function randomFillSync<T extends Uint8Array>(buffer: T, offset?: number, size?: number): T;
+  export function randomInt(max: number): number;
+  export function randomInt(min: number, max: number): number;
+  export function pbkdf2Sync(password: string | Uint8Array, salt: string | Uint8Array, iterations: number, keylen: number, digest: string): Buffer;
+  export function pbkdf2(password: string | Uint8Array, salt: string | Uint8Array, iterations: number, keylen: number, digest: string, callback: (error: Error | null, derivedKey: Buffer) => void): void;
+  export function randomBytes(size: number, callback: (error: Error | null, buffer: Buffer) => void): void;
   /* The lowered X509Certificate surface is the data-record slice:
    * fingerprint (the SHA-1 of the DER, uppercase colon-separated) and
    * the validFrom/validTo validity window (Node's ASN1_TIME_print

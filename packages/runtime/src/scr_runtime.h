@@ -2716,21 +2716,43 @@ void scr_children_poll(void);
 bool scr_children_wait(double max_wait_ms);
 
 /* ── node:crypto (scr_lib.c) ─────────────────────────────────────────
- * The string-producing slice (Buffers aren't representable): randomUUID
- * (v4, lowercase) and the composed randomBytes(n).toString(enc) — enc is
- * "hex" or "base64" (compiler-fenced). random_string THROWS Node's
- * RangeError on out-of-range sizes; both draw from arc4random_buf. */
+ * Randomness plus the incremental MD5/SHA-1/SHA-256 Hash/Hmac and PBKDF2
+ * utility slice. The composed string-producing paths remain fast paths;
+ * first-class handles and Buffer results use the same digest core. */
 ScrStr *scr_crypto_random_uuid(void);
 ScrStr *scr_crypto_random_string(double n, ScrStr *enc); /* +1, or throws */
-/* The composed createHash(alg).update(data).digest(enc) chain, fused by
- * the compiler (no Hash handle exists). alg is "sha256" | "sha1" and enc
- * "hex" | "base64" — compile-time literals, frontend-fenced (sha1 exists
- * for the RFC 6455 Sec-WebSocket-Accept hash). Strings hash their UTF-8
- * bytes (Node's default input encoding; ScrStr storage IS utf8), the
- * bytes form a Buffer/typed array's raw bytes. Borrowed; +1 string.
- * Never throw. */
+/* The fused createHash chain and crypto.hash. Strings hash their UTF-8
+ * bytes; byte values hash their raw storage. Algorithms outside the
+ * supported runtime set throw "Digest method not supported". */
 ScrStr *scr_crypto_hash_digest_str(ScrStr *alg, ScrStr *data, ScrStr *enc);
 ScrStr *scr_crypto_hash_digest_bytes(ScrStr *alg, ScrBytes *data, ScrStr *enc);
+typedef struct ScrCryptoHash ScrCryptoHash;
+ScrCryptoHash *scr_crypto_hash_new(ScrStr *alg);
+ScrCryptoHash *scr_crypto_hmac_new_str(ScrStr *alg, ScrStr *key);
+ScrCryptoHash *scr_crypto_hmac_new_bytes(ScrStr *alg, ScrBytes *key);
+ScrCryptoHash *scr_crypto_hash_retain(ScrCryptoHash *h);
+void scr_crypto_hash_release(ScrCryptoHash *h);
+void *scr_crypto_hash_retain_v(void *p);
+void scr_crypto_hash_release_v(void *p);
+ScrCryptoHash *scr_crypto_hash_update_str(ScrCryptoHash *h, ScrStr *data);
+ScrCryptoHash *scr_crypto_hash_update_bytes(ScrCryptoHash *h, ScrBytes *data);
+ScrCryptoHash *scr_crypto_hash_copy(ScrCryptoHash *h);
+ScrStr *scr_crypto_hash_digest_string(ScrCryptoHash *h, ScrStr *enc);
+ScrBytes *scr_crypto_hash_digest_buffer(ScrCryptoHash *h);
+bool scr_crypto_timing_safe_equal(ScrBytes *left, ScrBytes *right);
+ScrBytes *scr_crypto_random_fill(ScrBytes *bytes, double offset, double size);
+ScrBytes *scr_crypto_random_fill_rest(ScrBytes *bytes, double offset);
+double scr_crypto_random_int(double min, double max);
+ScrBytes *scr_crypto_pbkdf2(ScrBytes *password, ScrBytes *salt,
+                            double iterations, double keylen, ScrStr *digest);
+typedef void (*ScrCryptoBytesFn)(ScrClosure *cb, ScrBytes *value /* moves */);
+void scr_crypto_defer_bytes(ScrBytes *value /* moves */, ScrClosure *cb /* moves */,
+                            ScrCryptoBytesFn fn);
+void scr_crypto_random_bytes_async(double size, ScrClosure *cb /* moves */,
+                                   ScrCryptoBytesFn fn);
+void scr_crypto_pbkdf2_async(ScrBytes *password, ScrBytes *salt,
+                             double iterations, double keylen, ScrStr *digest,
+                             ScrClosure *cb /* moves */, ScrCryptoBytesFn fn);
 /* One-shot raw digest/HMAC by algorithm name ("md5" | "sha1" | "sha256")
  * — the island crypto shim's bridge (scr_island.c host hooks). Digest
  * bytes into out (≥32); returns the digest length, 0 for an unknown

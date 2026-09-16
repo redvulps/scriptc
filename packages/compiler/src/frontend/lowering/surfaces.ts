@@ -7,7 +7,7 @@
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { UNSUPPORTED } from "../../diagnostics/diagnostic.js";
-import { BOOL, BYTES_U8, CHILD_T, DYN, F64, FILEHANDLE_T, IrExpr, IrLibFn, IrStrIntrinsicMethod, IrType, RUNTIME_ERROR_CLASSES, SPAWNRES_T, STATS_T, STRING, URL_T, VOID, arrayOf } from "../../ir/ir.js";
+import { BOOL, BYTES_U8, CHILD_T, CRYPTOHASH_T, CRYPTOHMAC_T, DYN, F64, FILEHANDLE_T, IrExpr, IrLibFn, IrStrIntrinsicMethod, IrType, RUNTIME_ERROR_CLASSES, SPAWNRES_T, STATS_T, STRING, URL_T, VOID, arrayOf } from "../../ir/ir.js";
 import { isNodeTypesPath, requireSpecOf } from "../program.js";
 
 /** Statement-level constructs rejected wholesale, keyed by syntax kind. */
@@ -720,6 +720,17 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     // first and the Buffer never materializes there); this entry covers
     // the bare calls and non-composed uses.
     randomBytes: { fn: "crypto.randomBytes", params: [F64], result: BYTES_U8 },
+    // The crypto utility surface is special-cased for overloads and
+    // string/Buffer splits in lowerCryptoModuleCall. These rows carry the
+    // canonical signatures for manifest projection and fallback dispatch.
+    createHash: { fn: "crypto.hashNew", params: [STRING], result: CRYPTOHASH_T },
+    createHmac: { fn: "crypto.hmacNewStr", params: [STRING, STRING], result: CRYPTOHMAC_T },
+    hash: { fn: "crypto.hashDigestStr", params: [STRING, STRING, STRING], result: STRING },
+    timingSafeEqual: { fn: "crypto.timingSafeEqual", params: [BYTES_U8, BYTES_U8], result: BOOL },
+    randomFillSync: { fn: "crypto.randomFill", params: [BYTES_U8, F64, F64], result: BYTES_U8 },
+    randomInt: { fn: "crypto.randomInt", params: [F64, F64], result: F64 },
+    pbkdf2Sync: { fn: "crypto.pbkdf2", params: [BYTES_U8, BYTES_U8, F64, F64, STRING], result: BYTES_U8 },
+    pbkdf2: { fn: "crypto.pbkdf2Cb", params: [], result: VOID },
   },
   zlib: {
     // Buffer in, Buffer out, Node's default options; string inputs fence
@@ -923,8 +934,12 @@ export const BUILTIN_MODULE_FN_ALIASES: Record<string, Record<string, readonly I
   },
   crypto: {
     // The composed randomBytes(n).toString(enc) chain keeps its one-libCall
-    // lowering (lowerCryptoComposedCall) — same surface, no Buffer.
-    randomBytes: ["crypto.randomBytesToString"],
+    // lowering (lowerCryptoComposedCall), while the callback overload has
+    // its own adapter spelling. Both remain the randomBytes surface.
+    randomBytes: ["crypto.randomBytesToString", "crypto.randomBytesCb"],
+    // Omitting size fills from offset through the rest of the Buffer and
+    // uses a separate runtime entry point for Node's exact bounds checks.
+    randomFillSync: ["crypto.randomFillRest"],
   },
   os: {
     // lowerOsUserInfoCall assembles the record from scalar libCalls.
@@ -1320,15 +1335,6 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
       "const execFileAsync = promisify(execFile) (from node:util), or use execFileSync",
   },
   crypto: {
-    createHash:
-      "the one lowered shape is the composed chain " +
-      'createHash("sha256").update(data).digest("hex") — the Hash handle itself has no lowering',
-    hash:
-      "the one-shot digest has no lowering — the composed chain " +
-      'createHash("sha256").update(data).digest("hex") is the lowered hashing surface',
-    createHmac:
-      "HMAC has no lowering yet — the lowered crypto surface is randomUUID, randomBytes, " +
-      'the createHash("sha256"|"sha1") chain, and the introspection statics',
     ...Object.fromEntries(
       [
         "generateKeyPair", "generateKeyPairSync", "generateKey", "generateKeySync",
@@ -1352,7 +1358,7 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
       ]),
     ),
     ...Object.fromEntries(
-      ["pbkdf2", "pbkdf2Sync", "scrypt", "scryptSync", "hkdf", "hkdfSync"].map((m) => [
+      ["scrypt", "scryptSync", "hkdf", "hkdfSync"].map((m) => [
         m,
         "key-derivation functions have no lowering yet — the lowered crypto surface is " +
           "hashing, randomness, and the introspection statics",

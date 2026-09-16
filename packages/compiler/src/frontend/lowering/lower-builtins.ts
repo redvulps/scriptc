@@ -37,7 +37,7 @@ import { CRYPTO_CIPHERS, CRYPTO_CONSTANTS, CRYPTO_CURVES, CRYPTO_HASHES } from "
 import { generatorMeta, timerStyleCallback } from "./lower-calls.js";
 import { registerHttpClientFnBinding, voidizedCallback } from "./lower-server.js";
 import { pairsSnapshotHelper } from "./pairs-snapshot.js";
-import { BOOL, BYTES_U8, CHILD_T, CHILDSTREAM_T, DYN, F64, FILEHANDLE_T, FSWATCHER_T, PROCSTREAM_T, IrExpr, IrFunction, IrLibFn, IrLocal, IrStmt, IrType, JSVAL, NULL_T, SEARCH_PARAMS_T, SPAWNRES_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, funcOf, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
+import { BOOL, BYTES_U8, CHILD_T, CHILDSTREAM_T, CRYPTOHASH_T, CRYPTOHMAC_T, DYN, F64, FILEHANDLE_T, FSWATCHER_T, PROCSTREAM_T, IrExpr, IrFunction, IrLibFn, IrLocal, IrStmt, IrType, JSVAL, NULL_T, SEARCH_PARAMS_T, SPAWNRES_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, funcOf, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
 import { boolLit, countedFor, numLit, strLit, varRef } from "../../ir/build.js";
 
 function optionalStringTags(lowerer: Lowerer, type: IrType): { stringTag: number; undefinedTag: number } | null {
@@ -4187,9 +4187,9 @@ function lowerOptionalStringifyRoot(lowerer: Lowerer, value: IrExpr, indent: str
 /** The composed crypto pattern: `randomBytes(n).toString(enc)` lowers
    * as ONE string-producing libCall — the Buffer between the two calls
    * never exists at runtime. Only literal "hex"/"base64" encodings lower
-   * (the runtime implements exactly those); everything else — including a
-   * bare randomBytes(n) — fences with the Buffer story. Null when this
-   * isn't a toString on a crypto.randomBytes call. */
+   * (the runtime implements exactly those); wider forms fall through to
+   * the ordinary Buffer lowering. Null when this is not a toString on a
+   * crypto.randomBytes call. */
   export function lowerCryptoComposedCall(lowerer: Lowerer, call: ts.CallExpression,
     access: ts.PropertyAccessExpression,): IrExpr | null {
     if (call.questionDotToken || access.questionDotToken) return null;
@@ -4220,16 +4220,9 @@ function lowerOptionalStringifyRoot(lowerer: Lowerer, value: IrExpr, indent: str
     return { kind: "libCall", fn: "crypto.randomBytesToString", args: [size, enc], type: STRING, loc };
   }
 
-/** The composed hash chain — `createHash("sha256").update(data).digest("hex")`
-   * — fused into ONE libCall: the Hash handle never materializes (no Hash
-   * type exists in the value model), exactly the randomBytesToString
-   * stance. Both import spellings reach here (the named `createHash(...)`
-   * and the namespace `crypto.createHash(...)`). Once the chain is
-   * recognized, the narrow forms FENCE with pointed hints instead of
-   * falling to the generic member fence: sha256 is the lowered algorithm,
-   * one string- or Buffer-typed update, hex digests. Null when the callee
-   * isn't this chain at all (other Hash-typed code lands on the ordinary
-   * Hash.<member> fences). */
+/** Fast path for the exact single-update hash chain. Wider algorithms,
+   * stored handles, multiple updates, Buffer digests, and input encodings
+   * fall through to the first-class Hash lowering below. */
   function lowerHashDigestChain(lowerer: Lowerer, call: ts.CallExpression,
     access: ts.PropertyAccessExpression,): IrExpr | null {
     const updateCall = access.expression;
@@ -4253,28 +4246,13 @@ function lowerOptionalStringifyRoot(lowerer: Lowerer, value: IrExpr, indent: str
     if (!bi || bi.module !== "crypto" || bi.member !== "createHash") return null;
     const loc = locOf(call);
     const algT = chCall.arguments.length === 1 ? lowerer.typeOf(chCall.arguments[0]!) : undefined;
-    if (!algT?.isStringLiteralType() || (algT.value !== "sha256" && algT.value !== "sha1")) {
-      lowerer.noLowering(
-        "createHash with this algorithm",
-        chCall,
-        'sha256 and sha1 are the lowered algorithms: createHash("sha256") ' +
-          "(sha1 exists for the RFC 6455 Sec-WebSocket-Accept hash)",
-      );
-    }
+    if (!algT?.isStringLiteralType() || (algT.value !== "sha256" && algT.value !== "sha1")) return null;
     if (updateCall.arguments.length !== 1) {
-      lowerer.noLowering(
-        `Hash.update with ${updateCall.arguments.length} arguments`,
-        updateCall,
-        "one string or Buffer argument is the lowered update (input encodings have no lowering)",
-      );
+      return null;
     }
     const encT = call.arguments.length === 1 ? lowerer.typeOf(call.arguments[0]!) : undefined;
     if (!encT?.isStringLiteralType() || (encT.value !== "hex" && encT.value !== "base64")) {
-      lowerer.noLowering(
-        "Hash.digest with this encoding",
-        call,
-        'hex and base64 are the lowered digests: .digest("hex") (the bare Buffer digest has no lowering)',
-      );
+      return null;
     }
     // alg and enc are proven literals (fenced above), so lowering them
     // out of source position observes nothing; the data lowers between
@@ -4295,28 +4273,204 @@ function lowerOptionalStringifyRoot(lowerer: Lowerer, value: IrExpr, indent: str
       const enc = lowerer.lowerExprExpecting(call.arguments[0]!, STRING);
       return { kind: "libCall", fn: "crypto.hashDigestStr", args: [alg, data, enc], type: STRING, loc };
     }
-    lowerer.noLowering(
-      `Hash.update of '${dataIr ? lowerer.fmt(dataIr) : lowerer.checker.typeToString(lowerer.typeOf(dataNode))}' values`,
-      dataNode,
-      "string and Buffer/Uint8Array inputs are the lowered update forms",
-    );
+    return null;
   }
 
-/** The node:crypto introspection statics — build-time constants of the
-   * compiled runtime, baked at the call site (the http2.constants stance
-   * extended to calls): getFips() answers 0 (no FIPS provider can ever
-   * load into a compiled binary — Node's own answer for a non-FIPS
-   * build), and getCiphers()/getHashes()/getCurves() answer Node v24's
-   * name lists as fresh string[] literals. The lists are INTROSPECTION
-   * data (Node's contract is "names the provider recognizes"); the
-   * operations behind the names keep their per-member fences — a program
-   * that probes the list and then constructs a cipher fences at the
-   * construction site, never here. Null for other members (the dispatch
-   * keeps trying). */
+function cryptoEncoding(lowerer: Lowerer, node: ts.Expression, use: string): IrExpr {
+  const type = lowerer.typeOf(node);
+  if (!type.isStringLiteralType() || (type.value !== "hex" && type.value !== "base64")) {
+    lowerer.noLowering(`${use} with this encoding`, node, 'the lowered output encodings are "hex" and "base64"');
+  }
+  return lowerer.lowerExprExpecting(node, STRING);
+}
+
+function cryptoAlgorithm(lowerer: Lowerer, node: ts.Expression, use: string): IrExpr {
+  const type = lowerer.typeOf(node);
+  if (type.isStringLiteralType() && !["md5", "sha1", "sha256"].includes(type.value.toLowerCase())) {
+    lowerer.noLowering(
+      `${use} with algorithm '${type.value}'`,
+      node,
+      "md5, sha1, and sha256 are the lowered digest algorithms",
+    );
+  }
+  return lowerer.lowerExprExpecting(node, STRING);
+}
+
+function cryptoInputBytes(lowerer: Lowerer, node: ts.Expression, loc: SrcLoc): IrExpr {
+  const value = lowerer.lowerExpr(node);
+  if (value.type.kind === "bytes" && value.type.elem === "u8") return value;
+  if (value.type.kind === "string") {
+    return {
+      kind: "libCall",
+      fn: "buffer.fromStr",
+      args: [value, { kind: "strLit", value: "utf8", type: STRING, loc }],
+      type: BYTES_U8,
+      loc,
+    };
+  }
+  lowerer.noLowering(
+    `crypto byte input of '${lowerer.fmt(value.type)}' values`,
+    node,
+    "string and Buffer/Uint8Array values are supported",
+  );
+}
+
+function cryptoBytesCallback(lowerer: Lowerer, node: ts.Expression): IrExpr {
+  let callback = lowerer.lowerExpr(node);
+  if (callback.type.kind === "dyn") {
+    callback = { kind: "dynCheck", value: callback, type: funcOf([DYN, DYN], VOID), loc: locOf(node) };
+  }
+  if (callback.type.kind !== "func" || callback.type.params.length > 2) {
+    lowerer.unsupported("SC1090", node, "crypto callbacks must accept at most (error, buffer)");
+  }
+  const error = callback.type.params[0];
+  if (error !== undefined && error.kind !== "dyn") {
+    if (error.kind !== "union") {
+      lowerer.unsupported("SC1090", node, "crypto callback error parameters must be Error | null");
+    }
+    const def = lowerer.unions.get(error.unionId);
+    const valid = !!def &&
+      def.arms.some((arm) => arm.kind === "nullT") &&
+      def.arms.some((arm) => arm.kind === "object" && arm.className === "%Error") &&
+      def.arms.every((arm) => arm.kind === "nullT" || arm.kind === "undefinedT" || (arm.kind === "object" && arm.className === "%Error"));
+    if (!valid) lowerer.unsupported("SC1090", node, "crypto callback error parameters must be Error | null");
+  }
+  const value = callback.type.params[1];
+  if (value !== undefined && value.kind !== "dyn" && !(value.kind === "bytes" && value.elem === "u8")) {
+    lowerer.unsupported("SC1090", node, "crypto callback result parameters must be Buffer/Uint8Array values");
+  }
+  return voidizedCallback(lowerer, callback, locOf(node));
+}
+
+/** The node:crypto utility and introspection statics. Hash/Hmac are real
+   * native handles; one-shot hashing, constant-time equality, random-fill/
+   * integer, and PBKDF2 share the same runtime primitives as the island.
+   * The name lists remain build-time constants. */
   export function lowerCryptoModuleCall(lowerer: Lowerer, expr: ts.CallExpression,
     bi: { module: string; member: string },
     loc: SrcLoc,): IrExpr | null {
     if (bi.module !== "crypto") return null;
+    const args = expr.arguments;
+    if (args.some(ts.isSpreadElement)) {
+      lowerer.noLowering(`crypto.${bi.member} with spread arguments`, expr);
+    }
+    if (bi.member === "randomBytes") {
+      if (args.length === 1) return null;
+      if (args.length !== 2) {
+        lowerer.noLowering(`crypto.randomBytes with ${args.length} arguments`, expr, "randomBytes(size) and randomBytes(size, callback) are supported");
+      }
+      return {
+        kind: "libCall",
+        fn: "crypto.randomBytesCb",
+        args: [lowerer.lowerExprExpecting(args[0]!, F64), cryptoBytesCallback(lowerer, args[1]!)],
+        type: VOID,
+        loc,
+      };
+    }
+    if (bi.member === "pbkdf2") {
+      if (args.length !== 6) {
+        lowerer.noLowering(`crypto.pbkdf2 with ${args.length} arguments`, expr, "pbkdf2(password, salt, iterations, keylen, digest, callback) is supported");
+      }
+      return {
+        kind: "libCall",
+        fn: "crypto.pbkdf2Cb",
+        args: [
+          cryptoInputBytes(lowerer, args[0]!, locOf(args[0]!)),
+          cryptoInputBytes(lowerer, args[1]!, locOf(args[1]!)),
+          lowerer.lowerExprExpecting(args[2]!, F64),
+          lowerer.lowerExprExpecting(args[3]!, F64),
+          cryptoAlgorithm(lowerer, args[4]!, "crypto.pbkdf2"),
+          cryptoBytesCallback(lowerer, args[5]!),
+        ],
+        type: VOID,
+        loc,
+      };
+    }
+    if (bi.member === "createHash") {
+      if (args.length !== 1) {
+        lowerer.noLowering(`crypto.createHash with ${args.length} arguments`, expr, "createHash(algorithm) is supported; options are not yet lowered");
+      }
+      return { kind: "libCall", fn: "crypto.hashNew", args: [cryptoAlgorithm(lowerer, args[0]!, "crypto.createHash")], type: CRYPTOHASH_T, loc };
+    }
+    if (bi.member === "createHmac") {
+      if (args.length !== 2) {
+        lowerer.noLowering(`crypto.createHmac with ${args.length} arguments`, expr, "createHmac(algorithm, stringOrBufferKey) is supported; options and KeyObject keys are not yet lowered");
+      }
+      const algorithm = cryptoAlgorithm(lowerer, args[0]!, "crypto.createHmac");
+      const key = lowerer.lowerExpr(args[1]!);
+      if (key.type.kind === "string") {
+        return { kind: "libCall", fn: "crypto.hmacNewStr", args: [algorithm, key], type: CRYPTOHMAC_T, loc };
+      }
+      if (key.type.kind === "bytes" && key.type.elem === "u8") {
+        return { kind: "libCall", fn: "crypto.hmacNewBytes", args: [algorithm, key], type: CRYPTOHMAC_T, loc };
+      }
+      lowerer.noLowering(`crypto.createHmac with a '${lowerer.fmt(key.type)}' key`, args[1]!, "string and Buffer/Uint8Array keys are supported");
+    }
+    if (bi.member === "hash") {
+      if (args.length < 2 || args.length > 3) {
+        lowerer.noLowering(`crypto.hash with ${args.length} arguments`, expr, "hash(algorithm, stringOrBuffer[, \"hex\" | \"base64\"]) is supported");
+      }
+      const algorithm = cryptoAlgorithm(lowerer, args[0]!, "crypto.hash");
+      const data = lowerer.lowerExpr(args[1]!);
+      const encoding = args[2]
+        ? cryptoEncoding(lowerer, args[2]!, "crypto.hash")
+        : ({ kind: "strLit", value: "hex", type: STRING, loc } satisfies IrExpr);
+      if (data.type.kind === "string") {
+        return { kind: "libCall", fn: "crypto.hashDigestStr", args: [algorithm, data, encoding], type: STRING, loc };
+      }
+      if (data.type.kind === "bytes" && data.type.elem === "u8") {
+        return { kind: "libCall", fn: "crypto.hashDigestBytes", args: [algorithm, data, encoding], type: STRING, loc };
+      }
+      lowerer.noLowering(`crypto.hash of '${lowerer.fmt(data.type)}' data`, args[1]!, "string and Buffer/Uint8Array data are supported");
+    }
+    if (bi.member === "timingSafeEqual") {
+      if (args.length !== 2) lowerer.noLowering(`crypto.timingSafeEqual with ${args.length} arguments`, expr);
+      return {
+        kind: "libCall",
+        fn: "crypto.timingSafeEqual",
+        args: [lowerer.lowerExprExpecting(args[0]!, BYTES_U8), lowerer.lowerExprExpecting(args[1]!, BYTES_U8)],
+        type: BOOL,
+        loc,
+      };
+    }
+    if (bi.member === "randomFillSync") {
+      if (args.length < 1 || args.length > 3) {
+        lowerer.noLowering(`crypto.randomFillSync with ${args.length} arguments`, expr, "randomFillSync(buffer[, offset[, size]]) is supported");
+      }
+      const buffer = lowerer.lowerExprExpecting(args[0]!, BYTES_U8);
+      const offset = args[1]
+        ? lowerer.lowerExprExpecting(args[1]!, F64)
+        : ({ kind: "numLit", value: 0, type: F64, loc } satisfies IrExpr);
+      if (args[2]) {
+        const size = lowerer.lowerExprExpecting(args[2]!, F64);
+        return { kind: "libCall", fn: "crypto.randomFill", args: [buffer, offset, size], type: BYTES_U8, loc };
+      }
+      return { kind: "libCall", fn: "crypto.randomFillRest", args: [buffer, offset], type: BYTES_U8, loc };
+    }
+    if (bi.member === "randomInt") {
+      if (args.length !== 1 && args.length !== 2) {
+        lowerer.noLowering(`crypto.randomInt with ${args.length} arguments`, expr, "the synchronous randomInt(max) and randomInt(min, max) forms are supported");
+      }
+      const min = args.length === 1
+        ? ({ kind: "numLit", value: 0, type: F64, loc } satisfies IrExpr)
+        : lowerer.lowerExprExpecting(args[0]!, F64);
+      const max = lowerer.lowerExprExpecting(args[args.length - 1]!, F64);
+      return { kind: "libCall", fn: "crypto.randomInt", args: [min, max], type: F64, loc };
+    }
+    if (bi.member === "pbkdf2Sync") {
+      if (args.length !== 5) {
+        lowerer.noLowering(`crypto.pbkdf2Sync with ${args.length} arguments`, expr, "pbkdf2Sync(password, salt, iterations, keylen, digest) is supported");
+      }
+      const password = cryptoInputBytes(lowerer, args[0]!, locOf(args[0]!));
+      const salt = cryptoInputBytes(lowerer, args[1]!, locOf(args[1]!));
+      return {
+        kind: "libCall",
+        fn: "crypto.pbkdf2",
+        args: [password, salt, lowerer.lowerExprExpecting(args[2]!, F64), lowerer.lowerExprExpecting(args[3]!, F64), cryptoAlgorithm(lowerer, args[4]!, "crypto.pbkdf2Sync")],
+        type: BYTES_U8,
+        loc,
+      };
+    }
     const LISTS: Record<string, readonly string[] | undefined> = {
       getCiphers: CRYPTO_CIPHERS,
       getHashes: CRYPTO_HASHES,
@@ -4999,6 +5153,88 @@ function lowerOptionalStringSearchParams(lowerer: Lowerer, init: IrExpr, loc: Sr
       `Stats.${name}`,
       call,
       "isFile(), isDirectory(), isSymbolicLink(), size, blocks, nlink, atimeMs, and mtimeMs are the supported Stats members",
+      lowerer.checker.getSymbolAtLocation(access.name),
+    );
+  }
+
+/** Calls on native crypto.Hash/Hmac handles. The handle survives locals,
+   * aliases, loops, and returns; update() retains and returns the receiver,
+   * digest() finalizes it, and Hash.copy() snapshots the incremental state. */
+  export function lowerCryptoHashMethodCall(lowerer: Lowerer, call: ts.CallExpression,
+    access: ts.PropertyAccessExpression,): IrExpr | null {
+    if (call.questionDotToken || access.questionDotToken) return null;
+    const receiverType = lowerer.mapTypeOf(lowerer.typeOf(access.expression));
+    if (receiverType?.kind !== "cryptoHash" && receiverType?.kind !== "cryptoHmac") return null;
+    if (!lowerer.isStdlibMember(access)) return null;
+    const name = access.name.text;
+    const loc = locOf(call);
+    const receiver = (): IrExpr => lowerer.lowerExprExpecting(access.expression, receiverType);
+    if (name === "update") {
+      if (call.arguments.length < 1 || call.arguments.length > 2 || call.arguments.some(ts.isSpreadElement)) {
+        lowerer.noLowering(`${receiverType.kind === "cryptoHash" ? "Hash" : "Hmac"}.update with ${call.arguments.length} arguments`, call, "update(stringOrBuffer[, inputEncoding]) is supported");
+      }
+      const dataNode = call.arguments[0]!;
+      const data = lowerer.lowerExpr(dataNode);
+      const prefix = receiverType.kind === "cryptoHash" ? "crypto.hashUpdate" : "crypto.hmacUpdate";
+      if (data.type.kind === "bytes" && data.type.elem === "u8") {
+        if (call.arguments.length !== 1) {
+          lowerer.noLowering("Hash/Hmac.update with an encoding for Buffer data", call.arguments[1]!, "input encodings apply only to string data");
+        }
+        return { kind: "libCall", fn: `${prefix}Bytes` as IrLibFn, args: [receiver(), data], type: receiverType, loc };
+      }
+      if (data.type.kind === "string") {
+        const encodingNode = call.arguments[1];
+        if (encodingNode === undefined) {
+          return { kind: "libCall", fn: `${prefix}Str` as IrLibFn, args: [receiver(), data], type: receiverType, loc };
+        }
+        const encodingType = lowerer.typeOf(encodingNode);
+        if (!encodingType.isStringLiteralType() || !["utf8", "utf-8", "hex", "base64"].includes(encodingType.value)) {
+          lowerer.noLowering("Hash/Hmac.update with this input encoding", encodingNode, 'utf8, hex, and base64 string inputs are supported');
+        }
+        if (encodingType.value === "utf8" || encodingType.value === "utf-8") {
+          lowerer.lowerExprExpecting(encodingNode, STRING);
+          return { kind: "libCall", fn: `${prefix}Str` as IrLibFn, args: [receiver(), data], type: receiverType, loc };
+        }
+        const encoded: IrExpr = {
+          kind: "libCall",
+          fn: "buffer.fromStr",
+          args: [data, lowerer.lowerExprExpecting(encodingNode, STRING)],
+          type: BYTES_U8,
+          loc,
+        };
+        return { kind: "libCall", fn: `${prefix}Bytes` as IrLibFn, args: [receiver(), encoded], type: receiverType, loc };
+      }
+      lowerer.noLowering(`Hash/Hmac.update of '${lowerer.fmt(data.type)}' values`, dataNode, "string and Buffer/Uint8Array inputs are supported");
+    }
+    if (name === "digest") {
+      if (call.arguments.length > 1 || call.arguments.some(ts.isSpreadElement)) {
+        lowerer.noLowering(`${receiverType.kind === "cryptoHash" ? "Hash" : "Hmac"}.digest with ${call.arguments.length} arguments`, call, 'digest() and digest("hex" | "base64") are supported');
+      }
+      if (call.arguments.length === 0) {
+        return {
+          kind: "libCall",
+          fn: receiverType.kind === "cryptoHash" ? "crypto.hashDigestBuffer" : "crypto.hmacDigestBuffer",
+          args: [receiver()],
+          type: BYTES_U8,
+          loc,
+        };
+      }
+      return {
+        kind: "libCall",
+        fn: receiverType.kind === "cryptoHash" ? "crypto.hashDigestString" : "crypto.hmacDigestString",
+        args: [receiver(), cryptoEncoding(lowerer, call.arguments[0]!, `${receiverType.kind === "cryptoHash" ? "Hash" : "Hmac"}.digest`)],
+        type: STRING,
+        loc,
+      };
+    }
+    if (name === "copy" && receiverType.kind === "cryptoHash") {
+      if (call.arguments.length !== 0) lowerer.noLowering(`Hash.copy with ${call.arguments.length} arguments`, call, "copy() without options is supported");
+      return { kind: "libCall", fn: "crypto.hashCopy", args: [receiver()], type: CRYPTOHASH_T, loc };
+    }
+    lowerer.noLowering(
+      `${receiverType.kind === "cryptoHash" ? "Hash" : "Hmac"}.${name}`,
+      call,
+      receiverType.kind === "cryptoHash" ? "update(), digest(), and copy() are supported" : "update() and digest() are supported",
       lowerer.checker.getSymbolAtLocation(access.name),
     );
   }

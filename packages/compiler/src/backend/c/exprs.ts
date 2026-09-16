@@ -5246,7 +5246,7 @@ function emitUtilLibCall(state: LibCallState): Temp {
 }
 
 function emitCryptoBytesLibCall(state: LibCallState): Temp {
-  const { e, arg, finish } = state;
+  const { e, emitter, args, arg, finish } = state;
   const fn = e.fn;
   switch (fn) {
           case "crypto.x509Fingerprint":
@@ -5281,6 +5281,53 @@ function emitCryptoBytesLibCall(state: LibCallState): Temp {
             return finish(`scr_crypto_hash_digest_str(${arg(0)}, ${arg(1)}, ${arg(2)})`);
           case "crypto.hashDigestBytes":
             return finish(`scr_crypto_hash_digest_bytes(${arg(0)}, ${arg(1)}, ${arg(2)})`);
+          case "crypto.hashNew":
+            return finish(`scr_crypto_hash_new(${arg(0)})`);
+          case "crypto.hmacNewStr":
+            return finish(`scr_crypto_hmac_new_str(${arg(0)}, ${arg(1)})`);
+          case "crypto.hmacNewBytes":
+            return finish(`scr_crypto_hmac_new_bytes(${arg(0)}, ${arg(1)})`);
+          case "crypto.hashUpdateStr":
+          case "crypto.hmacUpdateStr":
+            return finish(`scr_crypto_hash_update_str(${arg(0)}, ${arg(1)})`);
+          case "crypto.hashUpdateBytes":
+          case "crypto.hmacUpdateBytes":
+            return finish(`scr_crypto_hash_update_bytes(${arg(0)}, ${arg(1)})`);
+          case "crypto.hashCopy":
+            return finish(`scr_crypto_hash_copy(${arg(0)})`);
+          case "crypto.hashDigestString":
+          case "crypto.hmacDigestString":
+            return finish(`scr_crypto_hash_digest_string(${arg(0)}, ${arg(1)})`);
+          case "crypto.hashDigestBuffer":
+          case "crypto.hmacDigestBuffer":
+            return finish(`scr_crypto_hash_digest_buffer(${arg(0)})`);
+          case "crypto.timingSafeEqual":
+            return finish(`scr_crypto_timing_safe_equal(${arg(0)}, ${arg(1)})`);
+          case "crypto.randomFill":
+            return finish(`scr_crypto_random_fill(${arg(0)}, ${arg(1)}, ${arg(2)})`);
+          case "crypto.randomFillRest":
+            return finish(`scr_crypto_random_fill_rest(${arg(0)}, ${arg(1)})`);
+          case "crypto.randomInt":
+            return finish(`scr_crypto_random_int(${arg(0)}, ${arg(1)})`);
+          case "crypto.pbkdf2":
+            return finish(`scr_crypto_pbkdf2(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)})`);
+          case "crypto.randomBytesCb":
+          case "crypto.pbkdf2Cb": {
+            emitter.usesTimers = true;
+            const cbIndex = fn === "crypto.randomBytesCb" ? 1 : 5;
+            const cbT = e.args[cbIndex]!.type;
+            if (cbT.kind !== "func") throw new InternalCompilerError("emitter bug: crypto callback not a func");
+            const callback = args[cbIndex]!;
+            emitter.moveTemp(callback);
+            const adapter = emitter.cryptoBytesThunkFor(cbT);
+            if (fn === "crypto.randomBytesCb") {
+              emitter.line(`scr_crypto_random_bytes_async(${arg(0)}, ${callback.name}, &${adapter});${emitter.srcComment(e.loc)}`);
+            } else {
+              emitter.line(`scr_crypto_pbkdf2_async(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${callback.name}, &${adapter});${emitter.srcComment(e.loc)}`);
+            }
+            if (MAY_THROW_LIB_FNS.has(fn)) emitter.emitPendingCheck();
+            return { name: "", type: e.type };
+          }
           // The Buffer statics (scr_bytes.c): fromStr decodes Node-
           // leniently (never throws), concat copies its borrowed list.
           case "buffer.fromStr":
