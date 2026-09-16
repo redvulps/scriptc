@@ -6211,6 +6211,48 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2892-windows-console-unicode.ts": {
+   "order": [
+    "<repo>/tests/corpus/2892-windows-console-unicode.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2893-child-stdin-duplex.ts": {
+   "order": [
+    "<repo>/tests/corpus/2893-child-stdin-duplex.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2894-child-stdin-backpressure.ts": {
+   "order": [
+    "<repo>/tests/corpus/2894-child-stdin-backpressure.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2895-child-stdin-write-after-end.ts": {
+   "order": [
+    "<repo>/tests/corpus/2895-child-stdin-write-after-end.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2896-child-stdin-write-after-finish.ts": {
+   "order": [
+    "<repo>/tests/corpus/2896-child-stdin-write-after-finish.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2897-child-stdin-destroy.ts": {
+   "order": [
+    "<repo>/tests/corpus/2897-child-stdin-destroy.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2898-child-stdin-spawn-failure.ts": {
+   "order": [
+    "<repo>/tests/corpus/2898-child-stdin-spawn-failure.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
@@ -8934,6 +8976,18 @@
   "<repo>/tests/fixtures/node-types/argv-env.ts": {
    "order": [
     "<repo>/tests/fixtures/node-types/argv-env.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/fixtures/node-types/child-stdin-fences.ts": {
+   "order": [
+    "<repo>/tests/fixtures/node-types/child-stdin-fences.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/fixtures/node-types/child-stdin.ts": {
+   "order": [
+    "<repo>/tests/fixtures/node-types/child-stdin.ts"
    ],
    "diags": []
   },

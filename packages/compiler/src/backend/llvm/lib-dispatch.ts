@@ -226,6 +226,7 @@ export function emitLibCall(host: LlvmEmitterContext, e: LibCallExpr): LlValue {
       case "cp":
       case "spawnRes":
       case "child":
+      case "writer":
       case "procStream":
         return host.emitChildProcessLibCall(e);
       case "tp":

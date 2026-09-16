@@ -18,7 +18,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "./ir.js";
-import { arrayOf, BOOL, BYTES_U8, bytesOf, canAdaptDynFuncTo, canConvertToDyn, canExitIslandToType, canMarshalIntoIsland, canMarshalTypedFuncIntoIsland, CHILD_T, CHILDSTREAM_T, CRYPTOHASH_T, CRYPTOHMAC_T, DATE_T, DGRAMSOCK_T, DYN, DYN_HANDLE_KINDS, F64, ffiClassType, ffiSourceParamTypes, FILEHANDLE_T, FSWATCHER_T, HTTP2SESSION_T, HTTP2STREAM_T, HTTPCLIENTREQ_T, HTTPREQ_T, HTTPRES_T, islandPromisePayloadTag, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isJsonSafeType, isJsonStringifySafeType, isRefCounted, isSupportedArrayElem, isSupportedIndexValue, isSupportedMapKey, isSupportedMapValue, isSupportedSetElem, isUnitType, jsOpResultKind, JSVAL, NETSERVER_T, NETSOCKET_T, PROCSTREAM_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, SEARCH_PARAMS_T, SECURECTX_T, shapeHasAccessorSlots, SPAWNRES_T, STATS_T, STRING, SYMBOL_T, TESTCTX_T, typeEquals, typeKey, unionFuncSetArmsOk, URL_T, VOID } from "./ir.js";
+import { arrayOf, BOOL, BYTES_U8, bytesOf, canAdaptDynFuncTo, canConvertToDyn, canExitIslandToType, canMarshalIntoIsland, canMarshalTypedFuncIntoIsland, CHILD_T, CHILDSTREAM_T, CHILDWRITER_T, CRYPTOHASH_T, CRYPTOHMAC_T, DATE_T, DGRAMSOCK_T, DYN, DYN_HANDLE_KINDS, F64, ffiClassType, ffiSourceParamTypes, FILEHANDLE_T, FSWATCHER_T, HTTP2SESSION_T, HTTP2STREAM_T, HTTPCLIENTREQ_T, HTTPREQ_T, HTTPRES_T, islandPromisePayloadTag, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isJsonSafeType, isJsonStringifySafeType, isRefCounted, isSupportedArrayElem, isSupportedIndexValue, isSupportedMapKey, isSupportedMapValue, isSupportedSetElem, isUnitType, jsOpResultKind, JSVAL, NETSERVER_T, NETSOCKET_T, PROCSTREAM_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, SEARCH_PARAMS_T, SECURECTX_T, shapeHasAccessorSlots, SPAWNRES_T, STATS_T, STRING, SYMBOL_T, TESTCTX_T, typeEquals, typeKey, unionFuncSetArmsOk, URL_T, VOID } from "./ir.js";
 
 /** Per-method signature for strIntrinsic: `argTypes` lists every argument
  * position (optional ones included); `minArgs` is how many may be omitted
@@ -729,11 +729,20 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
   // case checks the arms — the child.pid pattern with a ref arm).
   "child.stdout": { argTypes: [CHILD_T], result: VOID },
   "child.stderr": { argTypes: [CHILD_T], result: VOID },
+  "child.stdin": { argTypes: [CHILD_T], result: VOID },
   // Listener registrations: callback func shapes are program-dependent
   // (zero-param / Buffer / Buffer-armed union) — the slots pin arity,
   // the stream receiver, and the once-flag.
   "stream.onData": { argTypes: [CHILDSTREAM_T, null, BOOL], result: VOID },
   "stream.onEnd": { argTypes: [CHILDSTREAM_T, null, BOOL], result: VOID },
+  "writer.writeString": { argTypes: [CHILDWRITER_T, STRING], result: BOOL },
+  "writer.writeBytes": { argTypes: [CHILDWRITER_T, BYTES_U8], result: BOOL },
+  "writer.end": { argTypes: [CHILDWRITER_T], result: VOID },
+  "writer.destroy": { argTypes: [CHILDWRITER_T], result: VOID },
+  "writer.writable": { argTypes: [CHILDWRITER_T], result: BOOL },
+  "writer.onDrain": { argTypes: [CHILDWRITER_T, null, BOOL], result: VOID },
+  "writer.onFinish": { argTypes: [CHILDWRITER_T, null, BOOL], result: VOID },
+  "writer.onError": { argTypes: [CHILDWRITER_T, null, BOOL], result: VOID },
   "procStream.write": { argTypes: [PROCSTREAM_T, STRING], result: BOOL },
   "child.killed": { argTypes: [CHILD_T], result: BOOL },
   "child.kill": { argTypes: [CHILD_T, STRING], result: BOOL },
@@ -4352,6 +4361,17 @@ function validateFunction(
           }
           break;
         }
+        if (e.fn === "writer.onDrain" || e.fn === "writer.onFinish" || e.fn === "writer.onError") {
+          const cbT = e.args[1]?.type;
+          const maxParams = e.fn === "writer.onError" ? 1 : 0;
+          let ok = cbT?.kind === "func" && cbT.ret.kind === "void" && cbT.params.length <= maxParams;
+          if (ok && cbT?.kind === "func" && cbT.params.length === 1) {
+            const p = cbT.params[0]!;
+            ok = p.kind === "object" && p.className === "%Error";
+          }
+          if (!ok) err(`libCall ${e.fn} callback shape (frontend must fence)`, e.loc);
+          break;
+        }
         if (e.fn === "process.onExit" || e.fn === "process.offExit" ||
             e.fn === "stdin.onData" || e.fn === "stdin.onError") {
           // The listener: a void closure with no params, or exactly the
@@ -4478,15 +4498,16 @@ function validateFunction(
           }
           break;
         }
-        if (e.fn === "child.stdout" || e.fn === "child.stderr") {
+        if (e.fn === "child.stdin" || e.fn === "child.stdout" || e.fn === "child.stderr") {
           const def = e.type.kind === "union" ? unions.get(e.type.unionId) : undefined;
+          const handleKind = e.fn === "child.stdin" ? "childWriter" : "childStream";
           const ok =
             def &&
             def.arms.length === 2 &&
-            def.arms.some((a) => a.kind === "childStream") &&
+            def.arms.some((a) => a.kind === handleKind) &&
             def.arms.some((a) => a.kind === "nullT");
           if (!ok) {
-            err(`libCall ${e.fn} must return the 'Readable | null' union`, e.loc);
+            err(`libCall ${e.fn} must return the '${e.fn === "child.stdin" ? "Writable" : "Readable"} | null' union`, e.loc);
           }
           break;
         }

@@ -1533,7 +1533,8 @@ declare module "child_process" {
   ): SpawnSyncReturns;
 
   /* The asynchronous slice: spawn with stdio "ignore"/"inherit"/fd/"pipe"
-   * tuples (piped stdout/stderr deliver through child.stdout/stderr) and
+   * tuples (piped stdin is writable through child.stdin; piped stdout/stderr
+   * deliver through child.stdout/stderr) and
    * the two terminal events. "exit" fires once with the exit code, or
    * null when the child died to a signal; "error" fires ONLY when the
    * child could not be spawned at all (Node's split: a spawn failure
@@ -1545,6 +1546,17 @@ declare module "child_process" {
    * quiescence (SEMANTICS.md documents the divergence). An "error"
    * event with no registered listener prints the error and exits 1,
    * exactly the unhandled-'error' EventEmitter behavior. */
+  export interface ChildStdin {
+    readonly writable: boolean;
+    write(chunk: string | Uint8Array): boolean;
+    end(): void;
+    destroy(): void;
+    on(event: "drain" | "finish", listener: () => void): void;
+    on(event: "error", listener: (err: Error) => void): void;
+    once(event: "drain" | "finish", listener: () => void): void;
+    once(event: "error", listener: (err: Error) => void): void;
+  }
+
   export interface ChildProcess extends Disposable {
     /* The exit listener may also take Node's second parameter — the
      * terminating signal's name, null for a normal exit. */
@@ -1566,8 +1578,9 @@ declare module "child_process" {
     kill(signal?: string | number): boolean;
     unref(): void;
     [Symbol.dispose](): void;
-    /* The piped-output streams — non-null exactly when the matching
-     * stdio slot was "pipe" (Node's shape). */
+    /* The piped streams — non-null exactly when the matching stdio slot
+     * was "pipe" (Node's shape). */
+    readonly stdin: ChildStdin | null;
     readonly stdout: NodeJS.ReadableStream | null;
     readonly stderr: NodeJS.ReadableStream | null;
   }
@@ -1578,7 +1591,8 @@ declare module "child_process" {
       /* The 3-tuple form admits number fds in the stdout/stderr slots —
        * openSync results dup2'd into the child (the daemon-log idiom
        * ["ignore", logFd, logFd]) — and "pipe" there too (child.stdout/
-       * child.stderr streams); piped STDIN stays a compile fence. */
+       * child.stderr streams); "pipe" in the stdin slot exposes
+       * child.stdin. */
       stdio: "ignore" | "inherit" | "pipe" | ("ignore" | "inherit" | "pipe" | number)[];
       /* detached gives the child its own session and process group
        * (POSIX_SPAWN_SETSID); env REPLACES the child environment; cwd

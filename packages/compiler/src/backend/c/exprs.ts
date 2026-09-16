@@ -3,7 +3,7 @@ import { InternalCompilerError } from "../../errors.js";
  * expression lands in a fresh C temp, with RC ownership tracked on the
  * emitter's frames (see the discipline comment in emitter core). */
 import type { CEmitter, Temp } from "./c-emitter.js";
-import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isClassOwnEnumerableFieldName, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
+import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, CHILDWRITER_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isClassOwnEnumerableFieldName, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
 import { boxAccess, BYTES_NUM_KIND_C, BYTES_NUM_VAR_C, bytesElemKindC, cDecl, cFnPtrCast, cNumberLiteral, cStringLiteral, cType, DV_GET_KIND_C, DV_SET_KIND_C, elemAccess, mapKeyAccess, mapKeyKindC, mapValKindC, releaseCallC, retainCallC, vAdapters } from "./types.js";
 import { mangleClassNew, mangleClassRetain, mangleClassStruct, mangleField, mangleFnClosure, mangleFunction, mangleGlobal, mangleLocal, mangleRecordClone, mangleRecordNew, mangleRecordStruct, mangleVtStruct } from "../mangle.js";
 import { OVERFLOW_MEMBER } from "./shapes.js";
@@ -5483,25 +5483,57 @@ function emitChildProcessLibCall(state: LibCallState): Temp {
             const absent = emitter.unitInstanceRef(e.type.unionId, unitTag);
             return emitter.newTemp(e.type, `${has}(${arg(0)}) ? ${present} : ${absent}`);
           }
+          case "child.stdin":
           case "child.stdout":
           case "child.stderr": {
-            // `Readable | null` — the child.pid pattern with a REF arm:
-            // the runtime answers a +1 stream handle or NULL (not piped).
+            // `Writable | null` / `Readable | null` — the child.pid
+            // pattern with a REF arm: the runtime answers a +1 stream
+            // handle or NULL (not piped).
             if (e.type.kind !== "union") {
               throw new InternalCompilerError(`emitter bug: ${e.fn} result is not a union`);
             }
             const def = emitter.unionsById.get(e.type.unionId);
-            const streamTag = def ? def.arms.findIndex((a) => a.kind === "childStream") : -1;
+            const writer = e.fn === "child.stdin";
+            const streamTag = def ? def.arms.findIndex((a) => a.kind === (writer ? "childWriter" : "childStream")) : -1;
             const nullTag = def ? def.arms.findIndex((a) => a.kind === "nullT") : -1;
             if (streamTag < 0 || nullTag < 0) {
               throw new InternalCompilerError(`emitter bug: ${e.fn} union lacks its arms`);
             }
-            const get = e.fn === "child.stdout" ? "scr_child_stdout" : "scr_child_stderr";
-            const raw = emitter.newTemp(CHILDSTREAM_T, `${get}(${arg(0)})`);
+            const get = writer ? "scr_child_stdin" : e.fn === "child.stdout" ? "scr_child_stdout" : "scr_child_stderr";
+            const rawType = writer ? CHILDWRITER_T : CHILDSTREAM_T;
+            const raw = emitter.newTemp(rawType, `${get}(${arg(0)})`);
             emitter.moveTemp(raw); // ownership passes into the union arm below
-            const present = `scr_union_new_ref(${streamTag}, ${raw.name}, &scr_child_stream_retain_v, &scr_child_stream_release_v, NULL)`;
+            const stem = writer ? "scr_child_writer" : "scr_child_stream";
+            const present = `scr_union_new_ref(${streamTag}, ${raw.name}, &${stem}_retain_v, &${stem}_release_v, NULL)`;
             const absent = emitter.unitInstanceRef(e.type.unionId, nullTag);
             return emitter.newTemp(e.type, `${raw.name} != NULL ? ${present} : ${absent}`);
+          }
+          case "writer.writeString":
+            return finish(`scr_child_writer_write_string(${arg(0)}, ${arg(1)})`);
+          case "writer.writeBytes":
+            return finish(`scr_child_writer_write_bytes(${arg(0)}, ${arg(1)})`);
+          case "writer.end":
+            return finish(`scr_child_writer_end(${arg(0)})`);
+          case "writer.destroy":
+            return finish(`scr_child_writer_destroy(${arg(0)})`);
+          case "writer.writable":
+            return finish(`scr_child_writer_writable(${arg(0)})`);
+          case "writer.onDrain":
+          case "writer.onFinish": {
+            const cb = args[1]!;
+            emitter.moveTemp(cb);
+            const fnName = fn === "writer.onDrain" ? "scr_child_writer_on_drain" : "scr_child_writer_on_finish";
+            emitter.line(`${fnName}(${arg(0)}, ${cb.name}, ${arg(2)});${emitter.srcComment(e.loc)}`);
+            return { name: "", type: e.type };
+          }
+          case "writer.onError": {
+            const cbT = e.args[1]!.type;
+            if (cbT.kind !== "func") throw new InternalCompilerError("emitter bug: writer.onError callback not a func");
+            const cb = args[1]!;
+            emitter.moveTemp(cb);
+            const adapter = cbT.params.length === 0 ? "scr_child_err_thunk0" : "scr_child_err_thunk_error";
+            emitter.line(`scr_child_writer_on_error(${arg(0)}, ${cb.name}, &${adapter}, ${arg(2)});${emitter.srcComment(e.loc)}`);
+            return { name: "", type: e.type };
           }
           case "procStream.write":
             // The receiver IS the fd scalar; dispatches onto the exact
@@ -8437,6 +8469,7 @@ function emitLibCallExpr(emitter: CEmitter, e: LibCallExpr): Temp {
     case "cp":
     case "spawnRes":
     case "child":
+    case "writer":
     case "procStream":
       return emitChildProcessLibCall(state);
     case "net":

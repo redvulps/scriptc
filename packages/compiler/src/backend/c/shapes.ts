@@ -805,7 +805,7 @@ function emitRecordCloneC(
       t.kind === "httpReq" || t.kind === "httpRes" ||
       t.kind === "httpClientReq" || t.kind === "secureCtx" ||
       t.kind === "cryptoHash" || t.kind === "cryptoHmac" ||
-      t.kind === "fsWatcher" || t.kind === "childStream" ||
+      t.kind === "fsWatcher" || t.kind === "childStream" || t.kind === "childWriter" ||
       // Island handles: the box carries scr_jsval_retain_v/release_v and
       // no trace — the same stance as jsval array elements.
       t.kind === "jsval" ||

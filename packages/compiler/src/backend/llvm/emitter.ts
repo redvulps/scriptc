@@ -2480,7 +2480,7 @@ class LlEmitter {
       case "array": case "record": case "object": case "classval": case "func":
       case "map": case "set": case "symbol": case "regex": case "promise": case "bytes":
       case "url": case "searchParams": case "stats": case "fileHandle": case "spawnRes":
-      case "child": case "childStream": case "generator": case "fsWatcher":
+      case "child": case "childStream": case "childWriter": case "generator": case "fsWatcher":
       case "cryptoHash": case "cryptoHmac": {
         if (unionArm) return "true";
         const truthy = B.tmp();

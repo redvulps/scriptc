@@ -137,20 +137,63 @@ export function emitChildProcessLibCall(host: LlvmEmitterContext, e: LibCallExpr
       B.line(`${raw} = call ptr @scr_spawn_res_error(ptr ${recv.name}) ; +1 or NULL`);
       return host.wrapNullable(raw, raw, { kind: "object", className: "%Error" }, errTag, e.type, undefTag);
     }
-    if (e.fn === "child.stdout" || e.fn === "child.stderr") {
-      // `Readable | null` — the child.pid pattern with a REF arm: the
-      // runtime answers a +1 stream handle or NULL (not piped).
+    if (e.fn === "child.stdin" || e.fn === "child.stdout" || e.fn === "child.stderr") {
+      // `Writable | null` / `Readable | null` — the child.pid pattern
+      // with a REF arm: the runtime answers a +1 handle or NULL.
       if (e.type.kind !== "union") throw new InternalCompilerError(`llvm emitter bug: ${e.fn} result is not a union`);
       const def = host.unionsById.get(e.type.unionId);
-      const streamTag = def ? def.arms.findIndex((a) => a.kind === "childStream") : -1;
+      const writer = e.fn === "child.stdin";
+      const streamTag = def ? def.arms.findIndex((a) => a.kind === (writer ? "childWriter" : "childStream")) : -1;
       const nullTag = def ? def.arms.findIndex((a) => a.kind === "nullT") : -1;
       if (streamTag < 0 || nullTag < 0) throw new InternalCompilerError(`llvm emitter bug: ${e.fn} union lacks its arms`);
-      const get = e.fn === "child.stdout" ? "scr_child_stdout" : "scr_child_stderr";
+      const get = writer ? "scr_child_stdin" : e.fn === "child.stdout" ? "scr_child_stdout" : "scr_child_stderr";
       const recv = host.emitExpr(e.args[0]!);
       host.declare(`declare ptr @${get}(ptr)`);
       const raw = B.tmp();
       B.line(`${raw} = call ptr @${get}(ptr ${recv.name}) ; +1 or NULL`);
       return host.wrapNullable(raw, raw, def!.arms[streamTag]!, streamTag, e.type, nullTag);
+    }
+    if (e.fn === "writer.writeString" || e.fn === "writer.writeBytes") {
+      const writer = host.emitExpr(e.args[0]!);
+      const data = host.emitExpr(e.args[1]!);
+      const sym = e.fn === "writer.writeString" ? "scr_child_writer_write_string" : "scr_child_writer_write_bytes";
+      host.declare(`declare zeroext i1 @${sym}(ptr, ptr)`);
+      const t = B.tmp();
+      B.line(`${t} = call zeroext i1 @${sym}(ptr ${writer.name}, ptr ${data.name})`);
+      return { name: t, type: e.type };
+    }
+    if (e.fn === "writer.end" || e.fn === "writer.destroy") {
+      const writer = host.emitExpr(e.args[0]!);
+      const sym = e.fn === "writer.end" ? "scr_child_writer_end" : "scr_child_writer_destroy";
+      host.declare(`declare void @${sym}(ptr)`);
+      B.line(`call void @${sym}(ptr ${writer.name})`);
+      return { name: "", type: e.type };
+    }
+    if (e.fn === "writer.writable") {
+      const writer = host.emitExpr(e.args[0]!);
+      host.declare(`declare zeroext i1 @scr_child_writer_writable(ptr)`);
+      const t = B.tmp();
+      B.line(`${t} = call zeroext i1 @scr_child_writer_writable(ptr ${writer.name})`);
+      return { name: t, type: e.type };
+    }
+    if (e.fn === "writer.onDrain" || e.fn === "writer.onFinish" || e.fn === "writer.onError") {
+      const writer = host.emitExpr(e.args[0]!);
+      const cbT = e.args[1]!.type;
+      if (cbT.kind !== "func") throw new InternalCompilerError(`llvm emitter bug: ${e.fn} callback not a func`);
+      const cb = host.emitExpr(e.args[1]!);
+      host.moveTemp(cb);
+      const once = host.emitExpr(e.args[2]!);
+      if (e.fn === "writer.onError") {
+        const adapter = cbT.params.length === 0 ? "scr_child_err_thunk0" : "scr_child_err_thunk_error";
+        host.declare(`declare void @${adapter}(ptr, ptr)`);
+        host.declare(`declare void @scr_child_writer_on_error(ptr, ptr, ptr, i1 zeroext)`);
+        B.line(`call void @scr_child_writer_on_error(ptr ${writer.name}, ptr ${cb.name}, ptr @${adapter}, i1 ${once.name})`);
+      } else {
+        const sym = e.fn === "writer.onDrain" ? "scr_child_writer_on_drain" : "scr_child_writer_on_finish";
+        host.declare(`declare void @${sym}(ptr, ptr, i1 zeroext)`);
+        B.line(`call void @${sym}(ptr ${writer.name}, ptr ${cb.name}, i1 ${once.name})`);
+      }
+      return { name: "", type: e.type };
     }
     return host.emitGenericLibCall(e);
   }

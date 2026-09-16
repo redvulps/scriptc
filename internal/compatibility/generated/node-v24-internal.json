@@ -195,9 +195,9 @@
       "apiEntries": 39,
       "static": {
         "supported": 0,
-        "partial": 6,
+        "partial": 7,
         "refused": 1,
-        "not-implemented": 32,
+        "not-implemented": 31,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -1107,9 +1107,9 @@
       "apiEntries": 137,
       "static": {
         "supported": 0,
-        "partial": 33,
+        "partial": 36,
         "refused": 0,
-        "not-implemented": 104,
+        "not-implemented": 101,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -13988,7 +13988,13 @@
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
           "tests/corpus/1565-spawn-pipe-streams.ts",
-          "tests/corpus/2844-node-disposable-resources.ts"
+          "tests/corpus/2844-node-disposable-resources.ts",
+          "tests/corpus/2893-child-stdin-duplex.ts",
+          "tests/corpus/2894-child-stdin-backpressure.ts",
+          "tests/corpus/2895-child-stdin-write-after-end.ts",
+          "tests/corpus/2896-child-stdin-write-after-finish.ts",
+          "tests/corpus/2897-child-stdin-destroy.ts",
+          "tests/corpus/2898-child-stdin-spawn-failure.ts"
         ]
       },
       "dynamic": {
@@ -14952,8 +14958,16 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:child_process"
+        "status": "partial",
+        "evidence": "compiler-feature:child_process.stdin",
+        "tests": [
+          "tests/corpus/2893-child-stdin-duplex.ts",
+          "tests/corpus/2894-child-stdin-backpressure.ts",
+          "tests/corpus/2895-child-stdin-write-after-end.ts",
+          "tests/corpus/2896-child-stdin-write-after-finish.ts",
+          "tests/corpus/2897-child-stdin-destroy.ts",
+          "tests/corpus/2898-child-stdin-spawn-failure.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -93993,7 +94007,11 @@
           "tests/corpus/1688-stream-writable-basics.ts",
           "tests/corpus/1746-stream-for-await.ts",
           "tests/corpus/1814-stream-pipeline.cjs",
-          "tests/corpus/2861-readable-iterator-close.ts"
+          "tests/corpus/2861-readable-iterator-close.ts",
+          "tests/corpus/2893-child-stdin-duplex.ts",
+          "tests/corpus/2894-child-stdin-backpressure.ts",
+          "tests/corpus/2895-child-stdin-write-after-end.ts",
+          "tests/corpus/2897-child-stdin-destroy.ts"
         ]
       },
       "dynamic": {
@@ -95566,8 +95584,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:stream"
+        "status": "partial",
+        "evidence": "compiler-feature:stream.writable.destroy",
+        "tests": [
+          "tests/corpus/2897-child-stdin-destroy.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -95817,8 +95838,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:stream"
+        "status": "partial",
+        "evidence": "compiler-feature:stream.writable",
+        "tests": [
+          "tests/corpus/2893-child-stdin-duplex.ts",
+          "tests/corpus/2895-child-stdin-write-after-end.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -96114,8 +96139,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:stream"
+        "status": "partial",
+        "evidence": "compiler-feature:stream.'drain'",
+        "tests": [
+          "tests/corpus/2894-child-stdin-backpressure.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",

@@ -6824,7 +6824,7 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
       case "netServer": case "netSocket": case "httpReq": case "httpRes":
       case "httpClientReq": case "secureCtx": case "fsWatcher":
       case "cryptoHash": case "cryptoHmac":
-      case "childStream": case "procStream":
+      case "childStream": case "childWriter": case "procStream":
       case "object": case "record": case "promise":
         return "object";
       default:

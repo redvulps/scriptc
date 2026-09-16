@@ -46,11 +46,11 @@ static size_t scr_child_arg_start(ScrStr *cmd, ScrArr *args) {
  *   parent when missing, so winsock and PATH-dependent children keep
  *   working; the child's PATH (its own, or the merged parent's) is what
  *   the executable search walks, like uv_spawn.
- * - stdio is HANDLE inheritance: anonymous pipes for capture and the
- *   child.stdout/stderr streams (PeekNamedPipe polls readiness —
- *   anonymous pipes cannot overlap), NUL for ignore, duplicated std
- *   handles for inherit, _get_osfhandle for the fd form, PIPE_NOWAIT on
- *   the input pipe's write end so the sync feed never blocks.
+ * - stdio is HANDLE inheritance: anonymous pipes for capture and
+ *   child.stdout/stderr (PeekNamedPipe polls readiness), an overlapped
+ *   local named pipe for writable child.stdin, NUL for ignore, duplicated
+ *   std handles for inherit, and _get_osfhandle for the fd form. The sync
+ *   input feed retains its separate PIPE_NOWAIT path.
  * - There are no signals: kill/killSignal for SIGTERM/SIGKILL/SIGINT/
  *   SIGQUIT/SIGHUP is TerminateProcess(handle, 1) with the signal NAME
  *   reported on the result/exit event, libuv's uv_kill emulation (a
@@ -573,6 +573,43 @@ static bool scr_win_pipe(HANDLE *parent_end, HANDLE *child_end, bool child_write
   return true;
 }
 
+/* CreatePipe cannot make the parent end overlapped. A local one-instance
+ * named pipe gives the child an ordinary inheritable read handle and the
+ * parent a non-inheritable FILE_FLAG_OVERLAPPED write handle, so a full
+ * stdin pipe never blocks the JavaScript thread. */
+static LONG scr_win_stdin_pipe_seq = 0;
+static bool scr_win_stdin_pipe(HANDLE *parent_end, HANDLE *child_end) {
+  WCHAR name[128];
+  LONG seq = InterlockedIncrement(&scr_win_stdin_pipe_seq);
+  _snwprintf(name, sizeof name / sizeof name[0],
+             L"\\\\.\\pipe\\scriptc-stdin-%lu-%ld",
+             (unsigned long)GetCurrentProcessId(), (long)seq);
+  name[sizeof name / sizeof name[0] - 1] = L'\0';
+
+  SECURITY_ATTRIBUTES child_sa = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
+  HANDLE rd = CreateNamedPipeW(
+      name, PIPE_ACCESS_INBOUND,
+      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+      1, 65536, 65536, 0, &child_sa);
+  if (rd == INVALID_HANDLE_VALUE) return false;
+
+  HANDLE wr = CreateFileW(name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                          FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+  if (wr == INVALID_HANDLE_VALUE) {
+    CloseHandle(rd);
+    return false;
+  }
+  if (!ConnectNamedPipe(rd, NULL) && GetLastError() != ERROR_PIPE_CONNECTED) {
+    CloseHandle(wr);
+    CloseHandle(rd);
+    return false;
+  }
+  (void)SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 0);
+  *parent_end = wr;
+  *child_end = rd;
+  return true;
+}
+
 /* ── capture buffers (the POSIX arm's shape) ─────────────────────────── */
 
 typedef struct {
@@ -1085,8 +1122,40 @@ struct ScrChildStream {
   struct ScrChildStream *next; /* the service registry (+1) */
 };
 
+struct ScrChildWriter {
+  size_t rc;
+  HANDLE h; /* overlapped parent write end; NULL once settled */
+  HANDLE event;
+  OVERLAPPED ov;
+  bool write_pending;
+  DWORD pending_len;
+  bool writable;
+  bool ending;
+  bool finished;
+  bool destroyed;
+  bool need_drain;
+  bool drain_pending;
+  bool finish_pending;
+  bool error_pending;
+  uint8_t *buf;
+  size_t off, len, cap;
+  ScrStr *err_msg;
+  const char *err_code; /* static storage */
+  ScrChildStreamEndL *drain_ls;
+  size_t n_drain, cap_drain;
+  ScrChildStreamEndL *finish_ls;
+  size_t n_finish, cap_finish;
+  ScrChildErrEntry *err_ls;
+  size_t n_write_err, cap_write_err;
+  struct ScrChildWriter *next; /* the service registry (+1) */
+};
+
 static ScrChildStream *scr_child_streams = NULL;
 static size_t scr_child_streams_watching = 0;
+static ScrChildWriter *scr_child_writers = NULL;
+static bool scr_child_writers_pending(void);
+static void scr_child_writers_service(void);
+static void scr_child_writer_child_settled(ScrChildWriter *w);
 
 struct ScrChild {
   size_t rc;
@@ -1109,6 +1178,7 @@ struct ScrChild {
   size_t n_err, cap_err;
   ScrChildStream *out_stream;
   ScrChildStream *err_stream;
+  ScrChildWriter *in_stream;
   struct ScrChild *next; /* the pending registry */
 };
 
@@ -1142,6 +1212,7 @@ void scr_child_release(ScrChild *c) {
     scr_str_release(c->err_msg);
     scr_child_stream_release(c->out_stream);
     scr_child_stream_release(c->err_stream);
+    scr_child_writer_release(c->in_stream);
     if (c->proc != NULL) CloseHandle(c->proc);
     free(c);
   }
@@ -1359,6 +1430,420 @@ void scr_child_stream_thunk_bytes(ScrClosure *cb, ScrBytes *chunk) {
   ((void (*)(ScrClosure *, ScrBytes *))cb->fn)(cb, scr_bytes_retain(chunk));
 }
 
+/* ── the piped-input writer (overlapped named-pipe writes) ─────────── */
+
+#define SCR_CHILD_WRITER_HWM 16384
+
+static const char *scr_child_writer_err_code = NULL;
+
+static void scr_child_writer_drop_zero_listeners(ScrChildWriter *w) {
+  for (size_t i = 0; i < w->n_drain; i++) scr_closure_release(w->drain_ls[i].cb);
+  for (size_t i = 0; i < w->n_finish; i++) scr_closure_release(w->finish_ls[i].cb);
+  free(w->drain_ls);
+  free(w->finish_ls);
+  w->drain_ls = NULL;
+  w->finish_ls = NULL;
+  w->n_drain = w->cap_drain = 0;
+  w->n_finish = w->cap_finish = 0;
+}
+
+static void scr_child_writer_drop_listeners(ScrChildWriter *w) {
+  scr_child_writer_drop_zero_listeners(w);
+  for (size_t i = 0; i < w->n_write_err; i++) scr_closure_release(w->err_ls[i].cb);
+  free(w->err_ls);
+  w->err_ls = NULL;
+  w->n_write_err = w->cap_write_err = 0;
+}
+
+ScrChildWriter *scr_child_writer_retain(ScrChildWriter *w) {
+  if (w->rc != SIZE_MAX) w->rc++;
+  return w;
+}
+
+static void scr_child_writer_cancel(ScrChildWriter *w) {
+  if (!w->write_pending || w->h == NULL) return;
+  (void)CancelIoEx(w->h, &w->ov);
+  (void)GetOverlappedResult(w->h, &w->ov, &w->pending_len, TRUE);
+  w->write_pending = false;
+}
+
+void scr_child_writer_release(ScrChildWriter *w) {
+  if (!w || w->rc == SIZE_MAX) return;
+  if (--w->rc == 0) {
+    scr_child_writer_cancel(w);
+    if (w->h != NULL) CloseHandle(w->h);
+    if (w->event != NULL) CloseHandle(w->event);
+    free(w->buf);
+    scr_str_release(w->err_msg);
+    scr_child_writer_drop_listeners(w);
+    free(w);
+  }
+}
+
+void *scr_child_writer_retain_v(void *p) {
+  return scr_child_writer_retain((ScrChildWriter *)p);
+}
+void scr_child_writer_release_v(void *p) {
+  scr_child_writer_release((ScrChildWriter *)p);
+}
+
+static ScrChildWriter *scr_child_writer_new(HANDLE h) {
+  ScrChildWriter *w = calloc(1, sizeof *w);
+  if (!w) scr_child_oom();
+  w->rc = 1;
+  w->h = h;
+  w->writable = h != NULL;
+  w->destroyed = h == NULL;
+  if (h != NULL) {
+    w->event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (w->event == NULL) {
+      CloseHandle(h);
+      w->h = NULL;
+      w->writable = false;
+      w->destroyed = true;
+      return w;
+    }
+    w->ov.hEvent = w->event;
+    w->next = scr_child_writers;
+    scr_child_writers = scr_child_writer_retain(w);
+  }
+  return w;
+}
+
+static void scr_child_writer_close(ScrChildWriter *w) {
+  scr_child_writer_cancel(w);
+  if (w->h != NULL) {
+    CloseHandle(w->h);
+    w->h = NULL;
+  }
+  w->writable = false;
+}
+
+static void scr_child_writer_clear_queue(ScrChildWriter *w) {
+  free(w->buf);
+  w->buf = NULL;
+  w->off = w->len = w->cap = 0;
+}
+
+static size_t scr_child_writer_queued(const ScrChildWriter *w) {
+  return w->len - w->off;
+}
+
+static void scr_child_writer_append(ScrChildWriter *w, const void *data, size_t len) {
+  if (len == 0) return;
+  size_t queued = scr_child_writer_queued(w);
+  if (w->off > 0 && w->cap - w->len < len) {
+    memmove(w->buf, w->buf + w->off, queued);
+    w->off = 0;
+    w->len = queued;
+  }
+  if (w->cap - w->len < len) {
+    size_t cap = w->cap ? w->cap : 16384;
+    while (cap - w->len < len) {
+      if (cap > SIZE_MAX / 2) scr_child_oom();
+      cap *= 2;
+    }
+    uint8_t *grown = realloc(w->buf, cap);
+    if (!grown) scr_child_oom();
+    w->buf = grown;
+    w->cap = cap;
+  }
+  memcpy(w->buf + w->len, data, len);
+  w->len += len;
+}
+
+static void scr_child_writer_fail(ScrChildWriter *w, const char *message,
+                                  const char *code) {
+  if (w->error_pending || (w->err_msg != NULL && w->destroyed)) return;
+  scr_child_writer_close(w);
+  scr_child_writer_clear_queue(w);
+  w->ending = false;
+  w->destroyed = true;
+  w->need_drain = false;
+  w->drain_pending = false;
+  w->finish_pending = false;
+  scr_str_release(w->err_msg);
+  w->err_msg = scr_str_new(message, strlen(message));
+  w->err_code = code;
+  w->error_pending = true;
+}
+
+static void scr_child_writer_complete(ScrChildWriter *w) {
+  scr_child_writer_close(w);
+  w->ending = false;
+  w->finish_pending = true;
+}
+
+static bool scr_child_writer_collect_write(ScrChildWriter *w) {
+  if (!w->write_pending) return true;
+  DWORD wrote = 0;
+  if (!GetOverlappedResult(w->h, &w->ov, &wrote, FALSE)) {
+    DWORD err = GetLastError();
+    if (err == ERROR_IO_INCOMPLETE) return false;
+    w->write_pending = false;
+    scr_child_writer_fail(
+        w, (err == ERROR_BROKEN_PIPE || err == ERROR_NO_DATA) ? "write EPIPE" : "write EIO",
+        (err == ERROR_BROKEN_PIPE || err == ERROR_NO_DATA) ? "EPIPE" : "EIO");
+    return false;
+  }
+  w->write_pending = false;
+  if (wrote == 0) {
+    scr_child_writer_fail(w, "write EPIPE", "EPIPE");
+    return false;
+  }
+  w->off += (size_t)wrote;
+  return true;
+}
+
+static void scr_child_writer_pump(ScrChildWriter *w) {
+  if (!scr_child_writer_collect_write(w)) return;
+  while (w->h != NULL && scr_child_writer_queued(w) > 0) {
+    DWORD amount = scr_child_writer_queued(w) > 65536
+                       ? 65536
+                       : (DWORD)scr_child_writer_queued(w);
+    DWORD wrote = 0;
+    ResetEvent(w->event);
+    w->ov.Internal = 0;
+    w->ov.InternalHigh = 0;
+    BOOL ok = WriteFile(w->h, w->buf + w->off, amount, &wrote, &w->ov);
+    if (ok) {
+      if (wrote == 0) {
+        scr_child_writer_fail(w, "write EPIPE", "EPIPE");
+        return;
+      }
+      w->off += (size_t)wrote;
+      continue;
+    }
+    DWORD err = GetLastError();
+    if (err == ERROR_IO_PENDING) {
+      w->write_pending = true;
+      w->pending_len = amount;
+      return;
+    }
+    scr_child_writer_fail(
+        w, (err == ERROR_BROKEN_PIPE || err == ERROR_NO_DATA) ? "write EPIPE" : "write EIO",
+        (err == ERROR_BROKEN_PIPE || err == ERROR_NO_DATA) ? "EPIPE" : "EIO");
+    return;
+  }
+  if (scr_child_writer_queued(w) == 0 && !w->write_pending) {
+    w->off = w->len = 0;
+    if (w->need_drain) {
+      w->need_drain = false;
+      w->drain_pending = true;
+    }
+    if (w->ending) scr_child_writer_complete(w);
+  }
+}
+
+static bool scr_child_writer_write(ScrChildWriter *w, const void *data,
+                                   size_t len) {
+  if (!w->writable) {
+    scr_child_writer_fail(w, "write after end", "ERR_STREAM_WRITE_AFTER_END");
+    return false;
+  }
+  scr_child_writer_append(w, data, len);
+  /* libuv's overlapped pipe reports backpressure from the queued amount
+   * before submission. WriteFile may complete eagerly; keep Node's 16 KiB
+   * decision and schedule drain once the runtime queue empties. */
+  bool ok = scr_child_writer_queued(w) < SCR_CHILD_WRITER_HWM;
+  if (!ok) w->need_drain = true;
+  scr_child_writer_pump(w);
+  if (w->error_pending) return false;
+  return ok;
+}
+
+bool scr_child_writer_write_string(ScrChildWriter *w, const ScrStr *data) {
+  return scr_child_writer_write(w, data->data, data->len);
+}
+
+bool scr_child_writer_write_bytes(ScrChildWriter *w, const ScrBytes *data) {
+  return scr_child_writer_write(w, data->data, data->len);
+}
+
+void scr_child_writer_end(ScrChildWriter *w) {
+  if (w->ending || w->finish_pending || w->finished || w->destroyed) return;
+  w->writable = false;
+  w->ending = true;
+  scr_child_writer_pump(w);
+}
+
+void scr_child_writer_destroy(ScrChildWriter *w) {
+  if (w->finished || (w->destroyed && !w->error_pending)) return;
+  scr_child_writer_close(w);
+  scr_child_writer_clear_queue(w);
+  w->ending = false;
+  w->destroyed = true;
+  w->need_drain = false;
+  w->drain_pending = false;
+  w->finish_pending = false;
+  w->error_pending = false;
+  scr_str_release(w->err_msg);
+  w->err_msg = NULL;
+  scr_child_writer_drop_listeners(w);
+}
+
+bool scr_child_writer_writable(ScrChildWriter *w) { return w->writable; }
+
+static void scr_child_writer_add_zero(ScrChildStreamEndL **ls, size_t *n,
+                                      size_t *cap, ScrClosure *cb, bool once) {
+  if (*n == *cap) {
+    *cap = *cap ? *cap * 2 : 2;
+    *ls = realloc(*ls, *cap * sizeof **ls);
+    if (!*ls) scr_child_oom();
+  }
+  (*ls)[*n] = (ScrChildStreamEndL){cb, once};
+  (*n)++;
+}
+
+void scr_child_writer_on_drain(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                               bool once) {
+  if (w->finished || (w->destroyed && !w->drain_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  scr_child_writer_add_zero(&w->drain_ls, &w->n_drain, &w->cap_drain, cb, once);
+}
+
+void scr_child_writer_on_finish(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                                bool once) {
+  if (w->finished || (w->destroyed && !w->finish_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  scr_child_writer_add_zero(&w->finish_ls, &w->n_finish, &w->cap_finish, cb, once);
+}
+
+void scr_child_writer_on_error(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                               ScrChildErrFn fn, bool once) {
+  (void)once;
+  if ((w->destroyed && !w->finished && !w->error_pending) ||
+      (w->err_msg != NULL && !w->error_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  if (w->n_write_err == w->cap_write_err) {
+    w->cap_write_err = w->cap_write_err ? w->cap_write_err * 2 : 2;
+    w->err_ls = realloc(w->err_ls, w->cap_write_err * sizeof *w->err_ls);
+    if (!w->err_ls) scr_child_oom();
+  }
+  w->err_ls[w->n_write_err++] = (ScrChildErrEntry){cb, fn};
+}
+
+static void scr_child_writer_fire_drain(ScrChildWriter *w) {
+  w->drain_pending = false;
+  size_t n = w->n_drain;
+  if (n == 0) return;
+  ScrChildStreamEndL *snap = malloc(n * sizeof *snap);
+  if (!snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->drain_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (snap[i].once) {
+      for (size_t j = 0; j < w->n_drain; j++) {
+        if (w->drain_ls[j].cb != snap[i].cb) continue;
+        scr_closure_release(w->drain_ls[j].cb);
+        memmove(w->drain_ls + j, w->drain_ls + j + 1,
+                (w->n_drain - j - 1) * sizeof *w->drain_ls);
+        w->n_drain--;
+        break;
+      }
+    }
+    if (!scr_exc_pending()) ((void (*)(ScrClosure *))snap[i].cb->fn)(snap[i].cb);
+    scr_closure_release(snap[i].cb);
+  }
+  free(snap);
+}
+
+static void scr_child_writer_fire_finish(ScrChildWriter *w) {
+  w->finish_pending = false;
+  w->finished = true;
+  w->destroyed = true;
+  size_t n = w->n_finish;
+  ScrChildStreamEndL *snap = n ? malloc(n * sizeof *snap) : NULL;
+  if (n && !snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->finish_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (!scr_exc_pending()) ((void (*)(ScrClosure *))snap[i].cb->fn)(snap[i].cb);
+    scr_closure_release(snap[i].cb);
+  }
+  free(snap);
+  scr_child_writer_drop_zero_listeners(w);
+}
+
+static void scr_child_writer_fire_error(ScrChildWriter *w) {
+  w->error_pending = false;
+  if (w->n_write_err == 0) {
+    fflush(stdout);
+    fprintf(stderr, "Unhandled 'error' event: Error: %s\n", w->err_msg->data);
+    _Exit(1);
+  }
+  size_t n = w->n_write_err;
+  ScrChildErrEntry *snap = malloc(n * sizeof *snap);
+  if (!snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->err_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  scr_child_writer_err_code = w->err_code;
+  for (size_t i = 0; i < n; i++) {
+    if (!scr_exc_pending()) snap[i].fn(snap[i].cb, w->err_msg);
+    scr_closure_release(snap[i].cb);
+  }
+  scr_child_writer_err_code = NULL;
+  free(snap);
+  scr_child_writer_drop_listeners(w);
+}
+
+static bool scr_child_writer_pending(const ScrChildWriter *w) {
+  return w->write_pending || scr_child_writer_queued(w) > 0 ||
+         w->drain_pending || w->finish_pending || w->error_pending;
+}
+
+static bool scr_child_writers_pending(void) {
+  for (ScrChildWriter *w = scr_child_writers; w; w = w->next) {
+    if (scr_child_writer_pending(w)) return true;
+  }
+  return false;
+}
+
+static void scr_child_writers_service(void) {
+  ScrChildWriter **link = &scr_child_writers;
+  while (*link) {
+    ScrChildWriter *w = *link;
+    if (!w->destroyed && !w->finished) scr_child_writer_pump(w);
+    if (w->error_pending) scr_child_writer_fire_error(w);
+    if (!scr_exc_pending() && w->drain_pending) scr_child_writer_fire_drain(w);
+    if (!scr_exc_pending() && w->finish_pending) scr_child_writer_fire_finish(w);
+    bool done = (w->finished || w->destroyed) && !w->error_pending;
+    if (done) {
+      *link = w->next;
+      w->next = NULL;
+      scr_child_writer_release(w);
+    } else {
+      link = &w->next;
+    }
+    if (scr_exc_pending()) return;
+  }
+}
+
+static void scr_child_writer_child_settled(ScrChildWriter *w) {
+  if (!w || w->finished || w->finish_pending || w->destroyed) return;
+  if (scr_child_writer_queued(w) > 0 || w->write_pending || w->ending) {
+    scr_child_writer_fail(w, "write EPIPE", "EPIPE");
+  } else {
+    scr_child_writer_destroy(w);
+  }
+}
+
+ScrChildWriter *scr_child_stdin(ScrChild *c) {
+  return c->in_stream ? scr_child_writer_retain(c->in_stream) : NULL;
+}
+
 /* ── spawn ───────────────────────────────────────────────────────────── */
 
 ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args) {
@@ -1366,7 +1851,8 @@ ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args) {
 }
 
 /* PER-SLOT stdio modes (the POSIX arm's numbering): in 0 = ignore (NUL),
- * 1 = inherit; out/err 0 = ignore, 1 = inherit, 2 = fd, 3 = pipe. */
+ * 1 = inherit, 3 = pipe; out/err 0 = ignore, 1 = inherit, 2 = fd,
+ * 3 = pipe. */
 ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
                          double out_mode, double err_mode, double out_fd,
                          double err_fd, bool detached, bool has_env,
@@ -1381,16 +1867,18 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
 
   /* Piped slots: the pipe NOW; a pipe failure degrades the slot to NUL
    * and the stream husk answers eof (fd exhaustion — nothing real). */
+  HANDLE in_parent = NULL, in_child = NULL;
   HANDLE out_parent = NULL, out_child = NULL;
   HANDLE err_parent = NULL, err_child = NULL;
-  int out_m = (int)out_mode, err_m = (int)err_mode;
+  int in_m = (int)in_mode, out_m = (int)out_mode, err_m = (int)err_mode;
+  if (in_m == 3 && !scr_win_stdin_pipe(&in_parent, &in_child)) in_m = 0;
   if (out_m == 3 && !scr_win_pipe(&out_parent, &out_child, true)) out_m = 0;
   if (err_m == 3 && !scr_win_pipe(&err_parent, &err_child, true)) err_m = 0;
 
-  HANDLE in_child = (int)in_mode == 1
-                        ? scr_win_dup_inherit(GetStdHandle(STD_INPUT_HANDLE))
-                        : NULL;
-  if (in_child == NULL) in_child = scr_win_nul(false);
+  if (in_child == NULL) {
+    if (in_m == 1) in_child = scr_win_dup_inherit(GetStdHandle(STD_INPUT_HANDLE));
+    if (in_child == NULL) in_child = scr_win_nul(false);
+  }
   if (out_child == NULL) {
     if (out_m == 1) out_child = scr_win_dup_inherit(GetStdHandle(STD_OUTPUT_HANDLE));
     else if (out_m == 2) out_child = scr_win_dup_inherit((HANDLE)_get_osfhandle((int)out_fd));
@@ -1415,10 +1903,9 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
   if (out_child != NULL) CloseHandle(out_child);
   if (err_child != NULL) CloseHandle(err_child);
 
-  /* The parent's pipe read ends become the streams regardless of the
-   * spawn's outcome — a FAILED spawn keeps them with no writer at all,
-   * so a consumer sees immediate EOF and 'end' fires on the turn after
-   * the 'error' event, Node's exact order (the POSIX arm's stance). */
+  /* Parent keeps only its side of each pipe. A failed spawn still exposes
+   * the stream husks until the deferred child error settles them. */
+  if (in_m == 3) c->in_stream = scr_child_writer_new(in_parent);
   if (out_m == 3) c->out_stream = scr_child_stream_new(out_parent);
   if (err_m == 3) c->err_stream = scr_child_stream_new(err_parent);
 
@@ -1513,7 +2000,8 @@ void scr_child_unref(ScrChild *c) {
 }
 
 bool scr_children_reffed_pending(void) {
-  return scr_children_reffed_n > 0 || scr_child_streams_watching > 0;
+  return scr_children_reffed_n > 0 || scr_child_streams_watching > 0 ||
+         scr_child_writers_pending();
 }
 
 void scr_children_teardown(void) {
@@ -1523,6 +2011,13 @@ void scr_children_teardown(void) {
     s->next = NULL;
     scr_child_stream_finish(s, false);
     scr_child_stream_release(s);
+  }
+  while (scr_child_writers != NULL) {
+    ScrChildWriter *w = scr_child_writers;
+    scr_child_writers = w->next;
+    w->next = NULL;
+    scr_child_writer_destroy(w);
+    scr_child_writer_release(w);
   }
   while (scr_children != NULL) {
     ScrChild *c = scr_children;
@@ -1610,6 +2105,8 @@ void scr_child_err_thunk_error(ScrClosure *cb, ScrStr *msg) {
   ScrError *e = scr_error_new(0 /* Error */, msg);
   if (scr_child_err_code != NULL) {
     scr_error_set_code(e, scr_child_err_code);
+  } else if (scr_child_writer_err_code != NULL) {
+    scr_error_set_code(e, scr_child_writer_err_code);
   } else {
     const char *code = scr_err_msg_code(msg);
     if (code != NULL) scr_error_set_code(e, code);
@@ -1620,7 +2117,8 @@ void scr_child_err_thunk_error(ScrClosure *cb, ScrStr *msg) {
 /* ── the loop's half (called from scr_async.c) ───────────────────────── */
 
 bool scr_children_pending(void) {
-  return scr_children != NULL || scr_child_streams_watching > 0;
+  return scr_children != NULL || scr_child_streams_watching > 0 ||
+         scr_child_writers_pending();
 }
 
 bool scr_children_failed_pending(void) {
@@ -1642,7 +2140,8 @@ int scr_children_wake_fd(void) { return -1; }
  * stream needs pumping (pipe readability is poll-only), or the handle
  * table outgrows WaitForMultipleObjects. */
 bool scr_children_wait(double max_wait_ms) {
-  if (scr_children_unwatched > 0 || scr_child_streams_watching > 0) return false;
+  if (scr_children_unwatched > 0 || scr_child_streams_watching > 0 ||
+      scr_child_writers_pending()) return false;
   HANDLE hs[MAXIMUM_WAIT_OBJECTS];
   DWORD n = 0;
   for (ScrChild *c = scr_children; c; c = c->next) {
@@ -1668,6 +2167,10 @@ static void scr_child_settle(ScrChild *c) {
   if (c->state == SCR_CHILD_EXITED) {
     scr_child_stream_drain_now(c->out_stream);
     if (!scr_exc_pending()) scr_child_stream_drain_now(c->err_stream);
+  }
+  if (!scr_exc_pending()) {
+    scr_child_writer_child_settled(c->in_stream);
+    scr_child_writers_service();
   }
   c->settled = true;
   if (scr_exc_pending()) {
@@ -1701,6 +2204,8 @@ static void scr_child_settle(ScrChild *c) {
  * ordering), then every running child answers WaitForSingleObject(h, 0)
  * — the WNOHANG analogue; spawn failures settle on their first pass. */
 void scr_children_poll(void) {
+  scr_child_writers_service();
+  if (scr_exc_pending()) return;
   scr_child_streams_service();
   if (scr_exc_pending()) return;
   ScrChild **link = &scr_children;
@@ -1751,7 +2256,7 @@ void scr_children_poll(void) {
   }
 }
 
-#else /* !_WIN32 — the POSIX implementation, untouched below */
+#else /* !_WIN32 — the POSIX implementation */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2597,10 +3102,38 @@ struct ScrChildStream {
   struct ScrChildStream *next; /* the service registry (+1) */
 };
 
+struct ScrChildWriter {
+  size_t rc;
+  int fd; /* the pipe's nonblocking write end; -1 once settled */
+  bool writable;
+  bool ending;
+  bool finished;
+  bool destroyed;
+  bool need_drain;
+  bool drain_pending;
+  bool finish_pending;
+  bool error_pending;
+  uint8_t *buf;
+  size_t off, len, cap;
+  ScrStr *err_msg;
+  const char *err_code; /* static storage */
+  ScrChildStreamEndL *drain_ls;
+  size_t n_drain, cap_drain;
+  ScrChildStreamEndL *finish_ls;
+  size_t n_finish, cap_finish;
+  ScrChildErrEntry *err_ls;
+  size_t n_write_err, cap_write_err;
+  struct ScrChildWriter *next; /* the service registry (+1) */
+};
+
 static ScrChildStream *scr_child_streams = NULL;
 /* Streams with a live consumer (data listener, not yet EOF): the loop's
  * keep-alive and service predicate. */
 static size_t scr_child_streams_watching = 0;
+static ScrChildWriter *scr_child_writers = NULL;
+static bool scr_child_writers_pending(void);
+static void scr_child_writers_service(void);
+static void scr_child_writer_child_settled(ScrChildWriter *w);
 
 struct ScrChild {
   size_t rc;
@@ -2625,6 +3158,7 @@ struct ScrChild {
    * child.stderr answer — owned (+1 each), NULL when not piped. */
   ScrChildStream *out_stream;
   ScrChildStream *err_stream;
+  ScrChildWriter *in_stream;
   struct ScrChild *next; /* the pending registry */
 };
 
@@ -2735,6 +3269,7 @@ static void scr_child_unwatch(pid_t pid) { (void)pid; }
  * can wake for EVERY pending child — same condition as scr_children_wait.
  * -1 tells the caller to keep the ~1ms reap cap instead. */
 int scr_children_wake_fd(void) {
+  if (scr_child_writers_pending()) return -1;
 #ifdef SCR_HAVE_KQUEUE
   if (scr_child_kq < 0 || scr_children_unwatched > 0) return -1;
   return scr_child_kq;
@@ -2747,6 +3282,7 @@ int scr_children_wake_fd(void) {
 }
 
 bool scr_children_wait(double max_wait_ms) {
+  if (scr_child_writers_pending()) return false;
 #ifdef SCR_HAVE_KQUEUE
   if (scr_child_kq < 0 || scr_children_unwatched > 0) return false;
   if (!(max_wait_ms > 0)) max_wait_ms = 0;
@@ -2793,6 +3329,7 @@ void scr_child_release(ScrChild *c) {
     scr_str_release(c->err_msg);
     scr_child_stream_release(c->out_stream);
     scr_child_stream_release(c->err_stream);
+    scr_child_writer_release(c->in_stream);
     free(c);
   }
 }
@@ -3119,6 +3656,404 @@ void scr_child_stream_thunk_bytes(ScrClosure *cb, ScrBytes *chunk) {
   ((void (*)(ScrClosure *, ScrBytes *))cb->fn)(cb, scr_bytes_retain(chunk));
 }
 
+/* ── the piped-input writer ─────────────────────────────────────────── */
+
+#define SCR_CHILD_WRITER_HWM 65536
+
+static const char *scr_child_writer_err_code = NULL;
+
+static void scr_child_writer_drop_zero_listeners(ScrChildWriter *w) {
+  for (size_t i = 0; i < w->n_drain; i++) scr_closure_release(w->drain_ls[i].cb);
+  for (size_t i = 0; i < w->n_finish; i++) scr_closure_release(w->finish_ls[i].cb);
+  free(w->drain_ls);
+  free(w->finish_ls);
+  w->drain_ls = NULL;
+  w->finish_ls = NULL;
+  w->n_drain = w->cap_drain = 0;
+  w->n_finish = w->cap_finish = 0;
+}
+
+static void scr_child_writer_drop_listeners(ScrChildWriter *w) {
+  scr_child_writer_drop_zero_listeners(w);
+  for (size_t i = 0; i < w->n_write_err; i++) scr_closure_release(w->err_ls[i].cb);
+  free(w->err_ls);
+  w->err_ls = NULL;
+  w->n_write_err = w->cap_write_err = 0;
+}
+
+ScrChildWriter *scr_child_writer_retain(ScrChildWriter *w) {
+  if (w->rc != SIZE_MAX) w->rc++;
+  return w;
+}
+
+void scr_child_writer_release(ScrChildWriter *w) {
+  if (!w || w->rc == SIZE_MAX) return;
+  if (--w->rc == 0) {
+    if (w->fd >= 0) close(w->fd);
+    free(w->buf);
+    scr_str_release(w->err_msg);
+    scr_child_writer_drop_listeners(w);
+    free(w);
+  }
+}
+
+void *scr_child_writer_retain_v(void *p) {
+  return scr_child_writer_retain((ScrChildWriter *)p);
+}
+void scr_child_writer_release_v(void *p) {
+  scr_child_writer_release((ScrChildWriter *)p);
+}
+
+static ScrChildWriter *scr_child_writer_new(int fd) {
+  ScrChildWriter *w = calloc(1, sizeof *w);
+  if (!w) scr_child_oom();
+  w->rc = 1;
+  w->fd = fd;
+  w->writable = fd >= 0;
+  w->destroyed = fd < 0;
+  if (fd >= 0) {
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+    w->next = scr_child_writers;
+    scr_child_writers = scr_child_writer_retain(w);
+  }
+  return w;
+}
+
+static void scr_child_writer_close(ScrChildWriter *w) {
+  if (w->fd >= 0) {
+    close(w->fd);
+    w->fd = -1;
+  }
+  w->writable = false;
+}
+
+static void scr_child_writer_clear_queue(ScrChildWriter *w) {
+  free(w->buf);
+  w->buf = NULL;
+  w->off = w->len = w->cap = 0;
+}
+
+static size_t scr_child_writer_queued(const ScrChildWriter *w) {
+  return w->len - w->off;
+}
+
+static void scr_child_writer_append(ScrChildWriter *w, const void *data, size_t len) {
+  if (len == 0) return;
+  size_t queued = scr_child_writer_queued(w);
+  if (w->off > 0 && w->cap - w->len < len) {
+    memmove(w->buf, w->buf + w->off, queued);
+    w->off = 0;
+    w->len = queued;
+  }
+  if (w->cap - w->len < len) {
+    size_t cap = w->cap ? w->cap : 16384;
+    while (cap - w->len < len) {
+      if (cap > SIZE_MAX / 2) scr_child_oom();
+      cap *= 2;
+    }
+    uint8_t *grown = realloc(w->buf, cap);
+    if (!grown) scr_child_oom();
+    w->buf = grown;
+    w->cap = cap;
+  }
+  memcpy(w->buf + w->len, data, len);
+  w->len += len;
+}
+
+/* A pipe write must return EPIPE to the stream instead of terminating the
+ * process with SIGPIPE. Block it only around this call and consume only a
+ * signal generated by this write, preserving an already-pending signal. */
+static ssize_t scr_child_writer_write_once(int fd, const void *data, size_t len) {
+#ifdef SIGPIPE
+  sigset_t set, old, pending;
+  sigemptyset(&set);
+  sigaddset(&set, SIGPIPE);
+  if (pthread_sigmask(SIG_BLOCK, &set, &old) == 0) {
+    bool known = sigpending(&pending) == 0;
+    bool had = known && sigismember(&pending, SIGPIPE) == 1;
+    ssize_t n = write(fd, data, len);
+    int write_errno = errno;
+    if (n < 0 && write_errno == EPIPE && known && !had &&
+        sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE) == 1) {
+      int caught = 0;
+      int wait_err;
+      do {
+        wait_err = sigwait(&set, &caught);
+      } while (wait_err == EINTR);
+    }
+    (void)pthread_sigmask(SIG_SETMASK, &old, NULL);
+    errno = write_errno;
+    return n;
+  }
+#endif
+  return write(fd, data, len);
+}
+
+static void scr_child_writer_fail(ScrChildWriter *w, const char *message,
+                                  const char *code) {
+  if (w->error_pending || (w->err_msg != NULL && w->destroyed)) return;
+  scr_child_writer_close(w);
+  scr_child_writer_clear_queue(w);
+  w->ending = false;
+  w->destroyed = true;
+  w->need_drain = false;
+  w->drain_pending = false;
+  w->finish_pending = false;
+  scr_str_release(w->err_msg);
+  w->err_msg = scr_str_new(message, strlen(message));
+  w->err_code = code;
+  w->error_pending = true;
+}
+
+static void scr_child_writer_complete(ScrChildWriter *w) {
+  scr_child_writer_close(w);
+  w->ending = false;
+  w->finish_pending = true;
+}
+
+static void scr_child_writer_pump(ScrChildWriter *w) {
+  while (w->fd >= 0 && scr_child_writer_queued(w) > 0) {
+    ssize_t n = scr_child_writer_write_once(
+        w->fd, w->buf + w->off, scr_child_writer_queued(w));
+    if (n > 0) {
+      w->off += (size_t)n;
+      continue;
+    }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+    if (n < 0 && errno == EPIPE) {
+      scr_child_writer_fail(w, "write EPIPE", "EPIPE");
+    } else {
+      scr_child_writer_fail(w, "write EIO", "EIO");
+    }
+    return;
+  }
+  if (scr_child_writer_queued(w) == 0) {
+    w->off = w->len = 0;
+    if (w->need_drain) {
+      w->need_drain = false;
+      w->drain_pending = true;
+    }
+    if (w->ending) scr_child_writer_complete(w);
+  }
+}
+
+static bool scr_child_writer_write(ScrChildWriter *w, const void *data,
+                                   size_t len) {
+  if (!w->writable) {
+    scr_child_writer_fail(w, "write after end", "ERR_STREAM_WRITE_AFTER_END");
+    return false;
+  }
+  scr_child_writer_append(w, data, len);
+#ifdef __APPLE__
+  /* libuv does not partially try-write an oversized Darwin pipe chunk,
+   * so Node decides backpressure from the queued chunk before submitting
+   * it. The kernel write below is more eager; preserve Node's decision. */
+  bool ok = scr_child_writer_queued(w) <= SCR_CHILD_WRITER_HWM;
+  if (!ok) w->need_drain = true;
+#endif
+  scr_child_writer_pump(w);
+  if (w->error_pending) return false;
+#ifndef __APPLE__
+  bool ok = scr_child_writer_queued(w) < SCR_CHILD_WRITER_HWM;
+  if (!ok) w->need_drain = true;
+#endif
+  return ok;
+}
+
+bool scr_child_writer_write_string(ScrChildWriter *w, const ScrStr *data) {
+  return scr_child_writer_write(w, data->data, data->len);
+}
+
+bool scr_child_writer_write_bytes(ScrChildWriter *w, const ScrBytes *data) {
+  return scr_child_writer_write(w, data->data, data->len);
+}
+
+void scr_child_writer_end(ScrChildWriter *w) {
+  if (w->ending || w->finish_pending || w->finished || w->destroyed) return;
+  w->writable = false;
+  w->ending = true;
+  scr_child_writer_pump(w);
+}
+
+void scr_child_writer_destroy(ScrChildWriter *w) {
+  if (w->finished || (w->destroyed && !w->error_pending)) return;
+  scr_child_writer_close(w);
+  scr_child_writer_clear_queue(w);
+  w->ending = false;
+  w->destroyed = true;
+  w->need_drain = false;
+  w->drain_pending = false;
+  w->finish_pending = false;
+  w->error_pending = false;
+  scr_str_release(w->err_msg);
+  w->err_msg = NULL;
+  scr_child_writer_drop_listeners(w);
+}
+
+bool scr_child_writer_writable(ScrChildWriter *w) { return w->writable; }
+
+static void scr_child_writer_add_zero(ScrChildStreamEndL **ls, size_t *n,
+                                      size_t *cap, ScrClosure *cb, bool once) {
+  if (*n == *cap) {
+    *cap = *cap ? *cap * 2 : 2;
+    *ls = realloc(*ls, *cap * sizeof **ls);
+    if (!*ls) scr_child_oom();
+  }
+  (*ls)[*n] = (ScrChildStreamEndL){cb, once};
+  (*n)++;
+}
+
+void scr_child_writer_on_drain(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                               bool once) {
+  if (w->finished || (w->destroyed && !w->drain_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  scr_child_writer_add_zero(&w->drain_ls, &w->n_drain, &w->cap_drain, cb, once);
+}
+
+void scr_child_writer_on_finish(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                                bool once) {
+  if (w->finished || (w->destroyed && !w->finish_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  scr_child_writer_add_zero(&w->finish_ls, &w->n_finish, &w->cap_finish, cb, once);
+}
+
+void scr_child_writer_on_error(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                               ScrChildErrFn fn, bool once) {
+  (void)once; /* a writer emits at most one terminal error */
+  if ((w->destroyed && !w->finished && !w->error_pending) ||
+      (w->err_msg != NULL && !w->error_pending)) {
+    scr_closure_release(cb);
+    return;
+  }
+  if (w->n_write_err == w->cap_write_err) {
+    w->cap_write_err = w->cap_write_err ? w->cap_write_err * 2 : 2;
+    w->err_ls = realloc(w->err_ls, w->cap_write_err * sizeof *w->err_ls);
+    if (!w->err_ls) scr_child_oom();
+  }
+  w->err_ls[w->n_write_err++] = (ScrChildErrEntry){cb, fn};
+}
+
+static void scr_child_writer_fire_drain(ScrChildWriter *w) {
+  w->drain_pending = false;
+  size_t n = w->n_drain;
+  if (n == 0) return;
+  ScrChildStreamEndL *snap = malloc(n * sizeof *snap);
+  if (!snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->drain_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (snap[i].once) {
+      for (size_t j = 0; j < w->n_drain; j++) {
+        if (w->drain_ls[j].cb != snap[i].cb) continue;
+        scr_closure_release(w->drain_ls[j].cb);
+        memmove(w->drain_ls + j, w->drain_ls + j + 1,
+                (w->n_drain - j - 1) * sizeof *w->drain_ls);
+        w->n_drain--;
+        break;
+      }
+    }
+    if (!scr_exc_pending()) ((void (*)(ScrClosure *))snap[i].cb->fn)(snap[i].cb);
+    scr_closure_release(snap[i].cb);
+  }
+  free(snap);
+}
+
+static void scr_child_writer_fire_finish(ScrChildWriter *w) {
+  w->finish_pending = false;
+  w->finished = true;
+  w->destroyed = true;
+  size_t n = w->n_finish;
+  ScrChildStreamEndL *snap = n ? malloc(n * sizeof *snap) : NULL;
+  if (n && !snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->finish_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (!scr_exc_pending()) ((void (*)(ScrClosure *))snap[i].cb->fn)(snap[i].cb);
+    scr_closure_release(snap[i].cb);
+  }
+  free(snap);
+  scr_child_writer_drop_zero_listeners(w);
+}
+
+static void scr_child_writer_fire_error(ScrChildWriter *w) {
+  w->error_pending = false;
+  if (w->n_write_err == 0) {
+    fflush(stdout);
+    fprintf(stderr, "Unhandled 'error' event: Error: %s\n", w->err_msg->data);
+    _Exit(1);
+  }
+  size_t n = w->n_write_err;
+  ScrChildErrEntry *snap = malloc(n * sizeof *snap);
+  if (!snap) scr_child_oom();
+  for (size_t i = 0; i < n; i++) {
+    snap[i] = w->err_ls[i];
+    scr_closure_retain(snap[i].cb);
+  }
+  scr_child_writer_err_code = w->err_code;
+  for (size_t i = 0; i < n; i++) {
+    if (!scr_exc_pending()) snap[i].fn(snap[i].cb, w->err_msg);
+    scr_closure_release(snap[i].cb);
+  }
+  scr_child_writer_err_code = NULL;
+  free(snap);
+  scr_child_writer_drop_listeners(w);
+}
+
+static bool scr_child_writer_pending(const ScrChildWriter *w) {
+  return scr_child_writer_queued(w) > 0 || w->drain_pending ||
+         w->finish_pending || w->error_pending;
+}
+
+static bool scr_child_writers_pending(void) {
+  for (ScrChildWriter *w = scr_child_writers; w; w = w->next) {
+    if (scr_child_writer_pending(w)) return true;
+  }
+  return false;
+}
+
+static void scr_child_writers_service(void) {
+  ScrChildWriter **link = &scr_child_writers;
+  while (*link) {
+    ScrChildWriter *w = *link;
+    if (!w->destroyed && !w->finished) scr_child_writer_pump(w);
+    if (w->error_pending) scr_child_writer_fire_error(w);
+    if (!scr_exc_pending() && w->drain_pending) scr_child_writer_fire_drain(w);
+    if (!scr_exc_pending() && w->finish_pending) scr_child_writer_fire_finish(w);
+    bool done = (w->finished || w->destroyed) && !w->error_pending;
+    if (done) {
+      *link = w->next;
+      w->next = NULL;
+      scr_child_writer_release(w); /* the registry's reference */
+    } else {
+      link = &w->next;
+    }
+    if (scr_exc_pending()) return;
+  }
+}
+
+static void scr_child_writer_child_settled(ScrChildWriter *w) {
+  if (!w || w->finished || w->finish_pending || w->destroyed) return;
+  if (scr_child_writer_queued(w) > 0 || w->ending) {
+    scr_child_writer_fail(w, "write EPIPE", "EPIPE");
+  } else {
+    scr_child_writer_destroy(w);
+  }
+}
+
+ScrChildWriter *scr_child_stdin(ScrChild *c) {
+  return c->in_stream ? scr_child_writer_retain(c->in_stream) : NULL;
+}
+
 ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args) {
   return scr_spawn_opts(cmd, args, 0, 0, 0, 0, 0, false, false, NULL, NULL);
 }
@@ -3126,9 +4061,9 @@ ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args) {
 /* The options core behind cp.spawn/cp.spawnOpts. PER-SLOT stdio modes:
  * 0 = ignore (/dev/null), 1 = inherit (the parent's fd), 2 = fd (out/err
  * only — out_fd/err_fd dup2 into the child's slot, Node's stdio fd form:
- * the daemon-log idiom ["ignore", logFd, logFd]), 3 = pipe (out/err only
- * — a fresh pipe whose read end becomes the child.stdout/child.stderr
- * stream; see the stream slice's design note). detached gives the
+ * the daemon-log idiom ["ignore", logFd, logFd]), 3 = pipe (fd 0's write
+ * end becomes child.stdin; fd 1/2 read ends become child.stdout/stderr).
+ * detached gives the
  * child its own session (POSIX_SPAWN_SETSID → setsid(2), the libuv
  * implementation of Node's flag). env_pairs, when has_env, REPLACES the
  * child environment ([k,v,...] like the exec core's); cwd (NULL/"" =
@@ -3154,8 +4089,13 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
    * clears the flag on the child's copy — every other descriptor closes
    * at exec). A pipe failure degrades the slot to /dev/null — nothing
    * real hits it (fd exhaustion), and the stream husk answers eof. */
+  int in_pipe[2] = {-1, -1};
   int out_pipe[2] = {-1, -1};
   int err_pipe[2] = {-1, -1};
+  if ((int)in_mode == 3 && pipe(in_pipe) != 0) {
+    in_pipe[0] = in_pipe[1] = -1;
+    in_mode = 0;
+  }
   if ((int)out_mode == 3 && pipe(out_pipe) != 0) {
     out_pipe[0] = out_pipe[1] = -1;
     out_mode = 0;
@@ -3165,6 +4105,7 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
     err_mode = 0;
   }
   for (int i = 0; i < 2; i++) {
+    if (in_pipe[i] >= 0) fcntl(in_pipe[i], F_SETFD, FD_CLOEXEC);
     if (out_pipe[i] >= 0) fcntl(out_pipe[i], F_SETFD, FD_CLOEXEC);
     if (err_pipe[i] >= 0) fcntl(err_pipe[i], F_SETFD, FD_CLOEXEC);
   }
@@ -3173,6 +4114,8 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
   posix_spawn_file_actions_init(&fa);
   if ((int)in_mode == 0) {
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+  } else if ((int)in_mode == 3) {
+    posix_spawn_file_actions_adddup2(&fa, in_pipe[0], 0);
   } /* 1 = inherit: no redirection */
   if ((int)out_mode == 0) {
     posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
@@ -3210,14 +4153,12 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
   free(argv);
   scr_exec_envp_free(envp);
 
-  /* The parent's copies of the write ends close regardless of outcome —
-   * the child (when it spawned) holds the only writer, so EOF arrives
-   * exactly when it exits (or its last inheritor does). A FAILED spawn
-   * keeps its streams too, with no writer at all: a consumer sees
-   * immediate EOF, so 'end' fires on the turn after the 'error' event —
-   * Node's exact order, pinned by corpus. */
+  /* Parent keeps only its side of each pipe. A failed spawn still exposes
+   * the stream husks until the deferred child error settles them. */
+  if (in_pipe[0] >= 0) close(in_pipe[0]);
   if (out_pipe[1] >= 0) close(out_pipe[1]);
   if (err_pipe[1] >= 0) close(err_pipe[1]);
+  if ((int)in_mode == 3) c->in_stream = scr_child_writer_new(in_pipe[1]);
   if ((int)out_mode == 3) c->out_stream = scr_child_stream_new(out_pipe[0]);
   if ((int)err_mode == 3) c->err_stream = scr_child_stream_new(err_pipe[0]);
 
@@ -3329,7 +4270,8 @@ void scr_child_unref(ScrChild *c) {
  * it may outlive the child's own settle when a grandchild holds the
  * write end). */
 bool scr_children_reffed_pending(void) {
-  return scr_children_reffed_n > 0 || scr_child_streams_watching > 0;
+  return scr_children_reffed_n > 0 || scr_child_streams_watching > 0 ||
+         scr_child_writers_pending();
 }
 
 /* Loop-exhaustion teardown (the scr_timers_teardown twin): the loop may
@@ -3346,6 +4288,13 @@ void scr_children_teardown(void) {
     s->next = NULL;
     scr_child_stream_finish(s, false);
     scr_child_stream_release(s);
+  }
+  while (scr_child_writers != NULL) {
+    ScrChildWriter *w = scr_child_writers;
+    scr_child_writers = w->next;
+    w->next = NULL;
+    scr_child_writer_destroy(w);
+    scr_child_writer_release(w);
   }
   while (scr_children != NULL) {
     ScrChild *c = scr_children;
@@ -3458,6 +4407,8 @@ void scr_child_err_thunk_error(ScrClosure *cb, ScrStr *msg) {
   ScrError *e = scr_error_new(0 /* Error */, msg);
   if (scr_child_err_code != NULL) {
     scr_error_set_code(e, scr_child_err_code);
+  } else if (scr_child_writer_err_code != NULL) {
+    scr_error_set_code(e, scr_child_writer_err_code);
   } else {
     const char *code = scr_err_msg_code(msg);
     if (code != NULL) scr_error_set_code(e, code);
@@ -3468,7 +4419,8 @@ void scr_child_err_thunk_error(ScrClosure *cb, ScrStr *msg) {
 /* ── the loop's half (called from scr_async.c) ───────────────────────── */
 
 bool scr_children_pending(void) {
-  return scr_children != NULL || scr_child_streams_watching > 0;
+  return scr_children != NULL || scr_child_streams_watching > 0 ||
+         scr_child_writers_pending();
 }
 
 /* True while an UNSETTLED spawn failure sits in the registry: its 'error'
@@ -3503,6 +4455,10 @@ static void scr_child_settle(ScrChild *c) {
   if (c->state == SCR_CHILD_EXITED) {
     scr_child_stream_drain_now(c->out_stream);
     if (!scr_exc_pending()) scr_child_stream_drain_now(c->err_stream);
+  }
+  if (!scr_exc_pending()) {
+    scr_child_writer_child_settled(c->in_stream);
+    scr_child_writers_service();
   }
   c->settled = true;
   if (scr_exc_pending()) {
@@ -3548,6 +4504,8 @@ static void scr_child_settle(ScrChild *c) {
  * callbacks — a throw stops the pass and leaves the exception pending
  * for the loop. */
 void scr_children_poll(void) {
+  scr_child_writers_service();
+  if (scr_exc_pending()) return;
   scr_child_streams_service();
   if (scr_exc_pending()) return;
   ScrChild **link = &scr_children;

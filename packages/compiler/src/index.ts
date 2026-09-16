@@ -383,6 +383,7 @@ function moduleWasiUnavailableSurface(mod: IrModule): { surface: string; loc: Sr
     ["child", "child processes (WASI Preview 1 has no process-spawning API)"],
     ["spawnRes", "child processes (WASI Preview 1 has no process-spawning API)"],
     ["childStream", "child processes (WASI Preview 1 has no process-spawning API)"],
+    ["childWriter", "child processes (WASI Preview 1 has no process-spawning API)"],
     ["netServer", "network sockets (WASI Preview 1 has no socket API)"],
     ["netSocket", "network sockets (WASI Preview 1 has no socket API)"],
     ["http2Session", "network sockets (WASI Preview 1 has no socket API)"],

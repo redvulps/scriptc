@@ -102,6 +102,38 @@ test("node-types: captured NodeJS.WritableStream values write through the procSt
   expect(stderr).toBe("[err] line\n");
 });
 
+test("node-types: refined spawn returns expose writable child stdin", async () => {
+  const dir = outDirFor("node-child-stdin");
+  const entry = join(nodeTypesDir, "child-stdin.ts");
+  const result = await compile(entry, {
+    outPath: join(dir, "child-stdin"),
+    outDir: dir,
+    sanitize,
+  });
+  expect(result.ok, !result.ok ? JSON.stringify(result.diagnostics, null, 2) : "").toBe(true);
+  if (!result.ok) return;
+  const { stdout } = await execFileAsync(result.binaryPath);
+  expect(stdout).toBe("typed child stdin\n");
+});
+
+test("node-types: unsupported child stdin overloads remain named fences", async () => {
+  const dir = outDirFor("node-child-stdin-fences");
+  const entry = join(nodeTypesDir, "child-stdin-fences.ts");
+  const result = await compile(entry, {
+    outPath: join(dir, "child-stdin-fences"),
+    outDir: dir,
+    sanitize,
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["SC2020", "SC2020", "SC2020"]);
+  expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+    expect.stringContaining("child stdin write with 2 arguments"),
+    expect.stringContaining("Writable.end"),
+    expect.stringContaining("Writable.destroy"),
+  ]);
+});
+
 test("node-types: path and os lower statically under @types/node's shapes", async () => {
   const outDir = outDirFor("node-path-os");
   const result = await compile(join(nodeTypesDir, "path-os.ts"), {

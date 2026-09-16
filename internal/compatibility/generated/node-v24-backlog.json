@@ -8,8 +8,8 @@
     "tiers": {
       "static": {
         "replace-refusal": 59,
-        "verify-gap": 2746,
-        "audit-partial": 415,
+        "verify-gap": 2742,
+        "audit-partial": 419,
         "classify": 2,
         "implement": 81
       },
@@ -6612,12 +6612,19 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:child_process",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:child_process.stdin",
+          "tests": [
+            "tests/corpus/2893-child-stdin-duplex.ts",
+            "tests/corpus/2894-child-stdin-backpressure.ts",
+            "tests/corpus/2895-child-stdin-write-after-end.ts",
+            "tests/corpus/2896-child-stdin-write-after-finish.ts",
+            "tests/corpus/2897-child-stdin-destroy.ts",
+            "tests/corpus/2898-child-stdin-spawn-failure.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -78843,12 +78850,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:stream",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:stream.writable.destroy",
+          "tests": [
+            "tests/corpus/2897-child-stdin-destroy.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -79133,12 +79142,15 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:stream",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:stream.writable",
+          "tests": [
+            "tests/corpus/2893-child-stdin-duplex.ts",
+            "tests/corpus/2895-child-stdin-write-after-end.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -79496,12 +79508,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:stream",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:stream.'drain'",
+          "tests": [
+            "tests/corpus/2894-child-stdin-backpressure.ts"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",

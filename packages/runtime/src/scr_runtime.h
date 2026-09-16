@@ -2624,6 +2624,13 @@ typedef struct ScrChild ScrChild;
  * own 'exit' (Node's pinned ordering; the settle path drains first). A
  * flowing stream (data consumer, not yet EOF) keeps the loop alive. */
 typedef struct ScrChildStream ScrChildStream;
+/* A piped child-input writer (child.stdin — stdio mode 3 on fd 0).
+ * write copies borrowed string/bytes data into a nonblocking queue and
+ * returns false once buffered data reaches the stream high-water mark;
+ * drain fires when that queue empties. end closes after queued data and
+ * then fires finish; destroy closes immediately without finish. Errors
+ * are asynchronous and use the child error adapters. */
+typedef struct ScrChildWriter ScrChildWriter;
 /* The data adapter: the chunk arrives BORROWED (multiple listeners see
  * the same chunk); adapters retain what they keep. */
 typedef void (*ScrChildStreamDataFn)(ScrClosure *cb, ScrBytes *chunk);
@@ -2638,7 +2645,8 @@ ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args); /* +1, never throws */
 /* The options form (cp.spawnOpts): PER-SLOT stdio modes — 0 = ignore
  * (/dev/null), 1 = inherit, 2 = fd (out/err only: out_fd/err_fd dup2
  * into the child's slot, the openSync daemon-log idiom), 3 = pipe
- * (out/err only: the read end becomes the child.stdout/stderr stream);
+ * (stdin's write end becomes child.stdin; out/err read ends become the
+ * child.stdout/stderr streams);
  * detached = POSIX_SPAWN_SETSID (own session/process group); env
  * REPLACES the child environment when has_env ([k,v,...] pairs); cwd ""
  * = inherit. */
@@ -2673,6 +2681,20 @@ void scr_child_stream_on_data(ScrChildStream *s, ScrClosure *cb /*moves*/,
 void scr_child_stream_on_end(ScrChildStream *s, ScrClosure *cb /*moves*/, bool once);
 void scr_child_stream_thunk0(ScrClosure *cb, ScrBytes *chunk);
 void scr_child_stream_thunk_bytes(ScrClosure *cb, ScrBytes *chunk);
+ScrChildWriter *scr_child_writer_retain(ScrChildWriter *w);
+void scr_child_writer_release(ScrChildWriter *w);
+void *scr_child_writer_retain_v(void *p);
+void scr_child_writer_release_v(void *p);
+ScrChildWriter *scr_child_stdin(ScrChild *c); /* +1, or NULL */
+bool scr_child_writer_write_string(ScrChildWriter *w, const ScrStr *data);
+bool scr_child_writer_write_bytes(ScrChildWriter *w, const ScrBytes *data);
+void scr_child_writer_end(ScrChildWriter *w);
+void scr_child_writer_destroy(ScrChildWriter *w);
+bool scr_child_writer_writable(ScrChildWriter *w);
+void scr_child_writer_on_drain(ScrChildWriter *w, ScrClosure *cb /*moves*/, bool once);
+void scr_child_writer_on_finish(ScrChildWriter *w, ScrClosure *cb /*moves*/, bool once);
+void scr_child_writer_on_error(ScrChildWriter *w, ScrClosure *cb /*moves*/,
+                               ScrChildErrFn fn, bool once);
 /* The lifecycle members, Node's exact shapes (pinned by the corpus):
  * pid is undefined (has_pid false) exactly on spawn failure; exitCode is
  * null while running / after a signal death, the code after a normal

@@ -85,6 +85,8 @@ export function cType(t: IrType): string {
       return "ScrWatcher *";
     case "childStream":
       return "ScrChildStream *";
+    case "childWriter":
+      return "ScrChildWriter *";
     case "procStream":
       // A SCALAR kind: the stream value IS its fd (1 = stdout, 2 =
       // stderr) — no heap, no refcount.

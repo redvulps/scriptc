@@ -333,7 +333,7 @@ export function boxNewCall(host: ShapeHost, t: IrType): string {
     t.kind === "record" || t.kind === "object" || t.kind === "classval" || t.kind === "union" ||
     t.kind === "array" || t.kind === "map" || t.kind === "set" || t.kind === "symbol" || t.kind === "regex" ||
     t.kind === "promise" || t.kind === "bytes" || t.kind === "url" || t.kind === "searchParams" ||
-    t.kind === "stats" || t.kind === "fileHandle" || t.kind === "spawnRes" || t.kind === "child" || t.kind === "childStream" ||
+    t.kind === "stats" || t.kind === "fileHandle" || t.kind === "spawnRes" || t.kind === "child" || t.kind === "childStream" || t.kind === "childWriter" ||
     t.kind === "generator" ||
     t.kind === "netServer" || t.kind === "netSocket" || t.kind === "dgramSocket" ||
     t.kind === "httpReq" || t.kind === "httpRes" || t.kind === "httpClientReq" ||

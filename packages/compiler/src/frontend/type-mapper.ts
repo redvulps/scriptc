@@ -533,6 +533,8 @@ export function formatIrType(t: IrType, shapes: ShapeRegistry, unions: UnionRegi
       return "FSWatcher";
     case "childStream":
       return "Readable";
+    case "childWriter":
+      return "Writable";
     case "procStream":
       return "WriteStream";
     case "promise":
@@ -1225,7 +1227,7 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   // no class identity of its own.
   if (widened.isIntersectionType()) {
     const HANDLE_KINDS = new Set([
-      "netServer", "netSocket", "httpReq", "httpRes", "httpClientReq", "dgramSocket",
+      "netServer", "netSocket", "httpReq", "httpRes", "httpClientReq", "dgramSocket", "childWriter",
       // process.stdout's own type IS the refined intersection
       // `WriteStream & { fd: 1 }` — the scalar stream kind rides the same
       // refinement rule.
@@ -1805,14 +1807,19 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   ) {
     return { kind: "spawnRes" };
   }
-  // child_process.ChildProcess: @types/node's class or the fallback
-  // declarations' interface. Provenance-checked like Stats.
+  // child_process.ChildProcess and @types/node's stdio-refined return
+  // interfaces: all carry the same runtime child handle; the generic
+  // refinements only tell the checker which stdio properties are null.
   if (
-    psym?.name === "ChildProcess" &&
+    psym !== undefined &&
+    (psym.name === "ChildProcess" ||
+      psym.name === "ChildProcessWithoutNullStreams" ||
+      psym.name === "ChildProcessByStdio") &&
     checker.declarationsOf(psym).some(
       (d) =>
         (ts.isInterfaceDeclaration(d) || ts.isClassDeclaration(d)) &&
-        ctx.isStdlibFile(d.getSourceFile()),
+        ctx.isStdlibFile(d.getSourceFile()) &&
+        isDeclaredInAmbientModule(d, "child_process"),
     )
   ) {
     return { kind: "child" };
@@ -1924,6 +1931,29 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
       ))
   ) {
     return PROCSTREAM_T;
+  }
+  // A piped child stdin writer. The fallback declarations give it the
+  // dedicated ChildStdin name; @types/node spells the same value as
+  // stream.Writable. As with stream.Readable below, unsupported producers
+  // of the broad @types class fence where they are constructed.
+  if (
+    (psym?.name === "ChildStdin" &&
+      checker.declarationsOf(psym).some(
+        (d) =>
+          ts.isInterfaceDeclaration(d) &&
+          ctx.isStdlibFile(d.getSourceFile()) &&
+          isDeclaredInAmbientModule(d, "child_process"),
+      )) ||
+    (psym?.name === "Writable" &&
+      checker.declarationsOf(psym).some(
+        (d) =>
+          (ts.isInterfaceDeclaration(d) || ts.isClassDeclaration(d)) &&
+          ctx.isStdlibFile(d.getSourceFile()) &&
+          isNodeTypesPath(d.getSourceFile().fileName) &&
+          isDeclaredInAmbientModule(d, "stream"),
+      ))
+  ) {
+    return { kind: "childWriter" };
   }
   // The static node:stream classes (the shipped fallback declarations —
   // NOT @types/node, whose stream.Readable also types child stdio; under
@@ -2589,7 +2619,7 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   // NgrokChildProcess idiom — `spawn(...) as NgrokChildProcess`, declared
   // so tests can hand in mocks): every member is named on the lowered
   // ChildProcess surface AND at least two are the handle-defining ones
-  // (kill/on/stdout/stderr/unref/exitCode — a data record like
+  // (kill/on/stdin/stdout/stderr/unref/exitCode — a data record like
   // `{ pid: number }` never qualifies). The TYPE maps to the child
   // handle: in a compiled program the only VALUE producer is spawn
   // itself (a mock object literal in this slot fences at its
@@ -2607,9 +2637,9 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   ) {
     const CHILD_SURFACE = new Set([
       "pid", "exitCode", "killed", "kill", "on", "once", "off",
-      "removeListener", "unref", "ref", "stdout", "stderr",
+      "removeListener", "unref", "ref", "stdin", "stdout", "stderr",
     ]);
-    const CHILD_CORE = new Set(["kill", "on", "stdout", "stderr", "unref", "exitCode"]);
+    const CHILD_CORE = new Set(["kill", "on", "stdin", "stdout", "stderr", "unref", "exitCode"]);
     const props = checker.getPropertiesOfType(widened);
     let core = 0;
     const childShaped =

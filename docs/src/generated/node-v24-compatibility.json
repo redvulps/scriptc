@@ -218,9 +218,9 @@
       "apiEntries": 39,
       "static": {
         "supported": 0,
-        "partial": 6,
+        "partial": 7,
         "refused": 1,
-        "not-implemented": 32,
+        "not-implemented": 31,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -986,9 +986,9 @@
       "apiEntries": 137,
       "static": {
         "supported": 0,
-        "partial": 33,
+        "partial": 36,
         "refused": 0,
-        "not-implemented": 104,
+        "not-implemented": 101,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -12261,9 +12261,9 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "detail": "No static compiler lowering is registered for this API yet.",
-        "verification": "registry-gap"
+        "status": "partial",
+        "detail": "Implemented for the documented scriptc module-loader subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "not-implemented",
@@ -72438,9 +72438,9 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "detail": "No static compiler lowering is registered for this API yet.",
-        "verification": "registry-gap"
+        "status": "partial",
+        "detail": "Implemented for the documented static async-iteration subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "partial",
@@ -72662,9 +72662,9 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "detail": "No static compiler lowering is registered for this API yet.",
-        "verification": "registry-gap"
+        "status": "partial",
+        "detail": "Implemented for the documented static async-iteration subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "not-implemented",
@@ -72970,9 +72970,9 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "detail": "No static compiler lowering is registered for this API yet.",
-        "verification": "registry-gap"
+        "status": "partial",
+        "detail": "Implemented for the documented static async-iteration subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "not-implemented",

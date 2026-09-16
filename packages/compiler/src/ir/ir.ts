@@ -186,6 +186,11 @@ export type IrType =
    * rules as child: union arms fine (the checker's `Readable | null`), 
    * arrays/maps/JSON fenced. */
   | { kind: "childStream" }
+  /** A piped child-input stream (child.stdin — spawn with a piped stdin
+   * slot; scr_child.c). Heap, refcounted, and mutable: writes queue into
+   * the platform pipe without blocking the JavaScript thread, and
+   * drain/finish/error listeners drop when the writer settles. */
+  | { kind: "childWriter" }
   /** A process output stream as a FIRST-CLASS value (process.stdout /
    * process.stderr flowing into a `NodeJS.WritableStream` slot — the
    * prefixStream idiom). Representation is the raw FD as a double (1 or
@@ -338,6 +343,7 @@ const POINTER_HANDLE_KINDS = [
   "cryptoHmac",
   "fsWatcher",
   "childStream",
+  "childWriter",
 ] as const satisfies readonly IrType["kind"][];
 
 interface IrKindSet<K extends IrType["kind"]> extends ReadonlySet<IrType["kind"]> {
@@ -415,6 +421,7 @@ export const RUNTIME_RC_STEMS: Record<IrType["kind"], string> = {
   httpRes: "scr_http_res",
   httpClientReq: "scr_http_client",
   childStream: "scr_child_stream",
+  childWriter: "scr_child_writer",
   procStream: "",
   fsWatcher: "scr_watcher",
   secureCtx: "scr_secure_ctx",
@@ -458,7 +465,7 @@ export const REF_TRUTHY_KINDS: ReadonlySet<string> = new Set([
   "symbol",
   "date", "array", "map", "set", "regex", "url", "searchParams", "stats", "fileHandle", "spawnRes", "child",
   "netServer", "netSocket", "http2Session", "http2Stream", "dgramSocket", "testCtx", "httpReq", "httpRes", "httpClientReq",
-  "secureCtx", "cryptoHash", "cryptoHmac", "fsWatcher", "childStream", "procStream", "bytes", "func", "object", "record", "promise",
+  "secureCtx", "cryptoHash", "cryptoHmac", "fsWatcher", "childStream", "childWriter", "procStream", "bytes", "func", "object", "record", "promise",
   // A generator object is a JS object: always truthy.
   "generator",
   // A class object is a JS object (constructors are functions): always truthy.
@@ -492,6 +499,7 @@ export const CRYPTOHASH_T: IrType = { kind: "cryptoHash" };
 export const CRYPTOHMAC_T: IrType = { kind: "cryptoHmac" };
 export const FSWATCHER_T: IrType = { kind: "fsWatcher" };
 export const CHILDSTREAM_T: IrType = { kind: "childStream" };
+export const CHILDWRITER_T: IrType = { kind: "childWriter" };
 export const PROCSTREAM_T: IrType = { kind: "procStream" };
 export const VOID: IrType = { kind: "void" };
 export const DYN: IrType = { kind: "dyn" };
@@ -2341,10 +2349,9 @@ export type IrLibFn =
    * the backend (the envGet convention). Never throws. */
   | "spawnRes.error"
   /** child_process.spawn (scr_child.c + the scr_async.c loop): posix_spawnp
-   * with stdio "ignore" (all three fds on /dev/null — the only supported
-   * stdio; "pipe"/"inherit" are frontend-fenced), the child registered
-   * with the event loop, which polls waitpid(WNOHANG) at quiescence like
-   * timers (kqueue is the follow-up; SEMANTICS.md documents the polling).
+   * with per-slot ignore/inherit/pipe modes (and number output fds), the
+   * all-piped Node default, and the child registered with the event loop,
+   * which polls waitpid(WNOHANG) at quiescence like timers.
    * NEVER throws: spawn failure defers to the "error" event, Node-exact
    * (the error message is Node's "spawn <cmd> <ERRNO-NAME>"; an "error"
    * event with no listener prints it and exits 1 like an EventEmitter).
@@ -2402,6 +2409,19 @@ export type IrLibFn =
   | "child.stderr"
   | "stream.onData"
   | "stream.onEnd"
+  /** The piped-input writer (stdio mode 3 on fd 0). child.stdin answers
+   * `Writable | null`; writes copy borrowed data into the nonblocking
+   * queue, end/destroy settle it, writable is a pure state read, and
+   * listener callbacks move into the writer registry. */
+  | "child.stdin"
+  | "writer.writeString"
+  | "writer.writeBytes"
+  | "writer.end"
+  | "writer.destroy"
+  | "writer.writable"
+  | "writer.onDrain"
+  | "writer.onFinish"
+  | "writer.onError"
   /** The first-class WritableStream write (`output.write(line)` — the
    * prefixStream idiom): the receiver IS the fd scalar (process.stdout/
    * stderr reads mint 1/2), dispatched onto the exact stdoutWrite/
@@ -6450,12 +6470,12 @@ export function moduleUsesChildProcess(mod: IrModule): boolean {
     if (
       node.kind === "libCall" &&
       typeof node.fn === "string" &&
-      (node.fn.startsWith("cp.") || node.fn.startsWith("child.") || node.fn.startsWith("spawnRes."))
+      (node.fn.startsWith("cp.") || node.fn.startsWith("child.") || node.fn.startsWith("writer.") || node.fn.startsWith("spawnRes."))
     ) {
       found = true;
       return;
     }
-    if (node.kind === "child" || node.kind === "childStream" || node.kind === "spawnRes") {
+    if (node.kind === "child" || node.kind === "childStream" || node.kind === "childWriter" || node.kind === "spawnRes") {
       found = true;
       return;
     }
@@ -6903,6 +6923,7 @@ const LIB_MODE_REFUSED_KINDS: ReadonlyMap<string, string> = new Map([
   ["child", "the child_process surface"],
   ["spawnRes", "the child_process surface"],
   ["childStream", "the child_process surface"],
+  ["childWriter", "the child_process surface"],
   ["netServer", "the node:net surface"],
   ["netSocket", "the node:net surface"],
   ["http2Session", "the node:http2 surface"],
