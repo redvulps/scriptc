@@ -63,7 +63,7 @@ import { VtSlot, ClassMeta, emitStructDefs, vtEntriesFor, vtSlotParams, emitVtab
 import { emitAsyncScaffolding, childDataThunkFor, childExitThunkFor, childExitSignalThunkFor, closeBindThunkFor, connectResThunkFor, connectSockThunkFor, closeOverrideWrapFor, dgramMsgThunkFor, dnsLookupThunkFor, fsRenameThunkFor, genResultThunkFor, netLookupAnswerThunkFor, emitterInvokeThunkFor, streamCbThunkFor, streamDataThunkFor, raceAdapterFor, resolveThunkFor, sniAnswerThunkFor } from "./async.js";
 import { emitNpmEmbedding, islandAdapter, islandTypedAdapter } from "./island.js";
 import { emitFunction, emitBlock, emitStmts, emitStmt, emitTryCatch, emitSwitch, mergeBrace, emitBranchInto, emitCondition } from "./stmts.js";
-import { emitExpr } from "./exprs.js";
+import { emitExpr, liveDynRefAdapter as buildLiveDynRefAdapter, type StreamTypedRefAdapter } from "./exprs.js";
 import { emitLibraryIdentityLines } from "../library-identity-markers.js";
 
 export interface CEmitOptions {
@@ -1412,6 +1412,10 @@ export class CEmitter {
 
   toDynHelper(t: IrType): string {
     return toDynHelper(this, t);
+  }
+
+  liveDynRefAdapter(t: IrType): StreamTypedRefAdapter {
+    return buildLiveDynRefAdapter(this, t);
   }
 
   dynFuncBoxHelper(t: IrType & { kind: "func" }): string {

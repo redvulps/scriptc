@@ -249,18 +249,34 @@ export function npmStaticRuntimeClassTargets(
       ts.isClassDeclaration(statement) && statement.name !== undefined ? [statement.name.text] : []
     ),
   );
-  const required = new Map<string, { imported: string; specifier: string }>();
+  const linked = new Map<string, { imported: string; specifier: string }>();
   for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      const specifier = requireSpecifier(declaration.initializer);
-      if (specifier === null || !specifier.startsWith(".") || !ts.isObjectBindingPattern(declaration.name)) continue;
-      for (const element of declaration.name.elements) {
-        if (element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) continue;
-        const imported = element.propertyName !== undefined && ts.isIdentifier(element.propertyName)
-          ? element.propertyName.text
-          : element.name.text;
-        required.set(element.name.text, { imported, specifier });
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const specifier = requireSpecifier(declaration.initializer);
+        if (specifier === null || !specifier.startsWith(".") || !ts.isObjectBindingPattern(declaration.name)) continue;
+        for (const element of declaration.name.elements) {
+          if (element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) continue;
+          const imported = element.propertyName !== undefined && ts.isIdentifier(element.propertyName)
+            ? element.propertyName.text
+            : element.name.text;
+          linked.set(element.name.text, { imported, specifier });
+        }
+      }
+      continue;
+    }
+    if (
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text.startsWith(".") &&
+      statement.importClause?.namedBindings !== undefined &&
+      ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        linked.set(element.name.text, {
+          imported: element.propertyName?.text ?? element.name.text,
+          specifier: statement.moduleSpecifier.text,
+        });
       }
     }
   }
@@ -271,7 +287,7 @@ export function npmStaticRuntimeClassTargets(
       targets.set(exported, specifier);
       return;
     }
-    const imported = required.get(local);
+    const imported = linked.get(local);
     if (imported !== undefined && imported.imported === exported) targets.set(exported, imported.specifier);
     else if (localClasses.has(local)) targets.set(exported, null);
   };

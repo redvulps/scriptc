@@ -52,3 +52,9 @@ function optional(value: Box | undefined): unknown {
 const optionalBox = optional(leaf) as Box | undefined;
 const optionalMissing = optional(undefined);
 console.log("optional:", optionalBox === leaf, optionalMissing === undefined);
+
+// A boxed closure's result crosses through the same typed-reference capsule. Use a wider return signature so the dynamic call thunk runs instead of the exact-signature fast path simply unboxing the closure.
+const opaqueFactory: unknown = (name: string): Box => new Box(name, 3);
+const invokeFactory = opaqueFactory as (name: string) => unknown;
+const made = invokeFactory("made") as Box;
+console.log("factory:", made.name, made.count);

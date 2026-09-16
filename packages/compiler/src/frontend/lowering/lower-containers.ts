@@ -1111,8 +1111,9 @@ function truthyFilterCallback(
 
 /** The predicate result kinds `.filter()` accepts. JS applies ToBoolean to
  * whatever the callback answers, so a bool is not required: the scalars and
- * the reference kinds have constant or by-value answers, and a union is fine
- * when every arm does. void/dyn/jsval/caught stay out — see below. */
+ * the reference kinds have constant or by-value answers, checked-dynamic
+ * values ask their runtime kind, and a union is fine when every arm does.
+ * void/jsval/caught stay out — see below. */
 function filterPredicateOk(lowerer: Lowerer, ret: IrType): boolean {
   if (ret.kind === "bool") return true;
   // VOID is a TYPE erasure, not a runtime value: TS lets a value-returning
@@ -1121,9 +1122,11 @@ function filterPredicateOk(lowerer: Lowerer, ret: IrType): boolean {
   // compiled ABI has already discarded it. Treating void as constantly
   // falsy would silently answer [] where Node answers [1]. Fenced until
   // the returned value can be preserved through the void ABI.
-  // dyn/jsval/caught stay out too: no native ToBoolean to compile against.
+  // A checked-dynamic value retains its runtime kind, so scr_dyn_truthy can
+  // apply JavaScript ToBoolean exactly. Island and caught values stay out.
   if (ret.kind === "void") return false;
-  if (ret.kind === "dyn" || ret.kind === "jsval" || ret.kind === "caught") return false;
+  if (ret.kind === "dyn") return true;
+  if (ret.kind === "jsval" || ret.kind === "caught") return false;
   if (ret.kind === "union") {
     const def = lowerer.unions.get(ret.unionId);
     return def !== undefined && def.arms.every((a) => a.kind !== "dyn" && a.kind !== "caught");
@@ -1142,9 +1145,9 @@ function filterCond(call: IrExpr, fnRet: IrType, loc: SrcLoc): IrExpr {
   // `void` returns to void and a standalone `null` return to the unit-ONLY
   // UNION, which routes through toBool below; ir/validate.ts rejects a
   // bare unit return type outright). filterPredicateOk already rejected
-  // the arms with no native ToBoolean (dyn/caught) — which is exactly what
-  // requireTruthyUnion checks — and it did so at the call site, where a
-  // real node exists for the diagnostic.
+  // unsafe union arms (dyn/caught) at the call site, where a real node
+  // exists for the diagnostic. A bare dyn value is handled directly by
+  // the runtime's kind-aware ToBoolean.
   return { kind: "toBool", operand: call, type: BOOL, loc };
 }
 

@@ -62,7 +62,7 @@ import { InternalCompilerError } from "../../errors.js";
  * lazy-inflate representation as the C debugging backend.
  */
 import { deflateRawSync } from "node:zlib";
-import { endsWithJump, matchStringSelfConcat } from "../../ir/analysis.js";
+import { endsWithJump, matchStringSelfConcat, streamTypedRefEligible } from "../../ir/analysis.js";
 import { emitLibraryIdentityLines } from "../library-identity-markers.js";
 import type {
   IrBytesElem,
@@ -79,7 +79,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { CAUGHT, ffiCallbackType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesChildProcess, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, typeKey, VOID } from "../../ir/ir.js";
+import { CAUGHT, ffiCallbackType, isDynTypedRefType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesChildProcess, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, typeKey, VOID } from "../../ir/ir.js";
 import { matchIntegerBytesForLoop } from "../../ir/integer-loops.js";
 import { allocateFfiCallbackAdapters, hasForeignFfiCallback, hasRetainedFfiCallback, type FfiCallbackAdapter } from "../ffi-callbacks.js";
 import { RUNTIME_ABI_MARKER } from "../runtime-abi.js";
@@ -4334,6 +4334,24 @@ class LlEmitter {
     snapshot: string,
   ): string {
     return streamTypedRefCommitAdapter(this.expressionContext(), t, snapshot);
+  }
+
+  liveDynRefAdapter(t: IrType): LlStreamTypedRefAdapter {
+    const key = typeKey(t);
+    const existing = this.liveDynRefAdapters.get(key);
+    if (existing) return existing;
+    if (!streamTypedRefEligible(t) && !isDynTypedRefType(t)) {
+      throw new InternalCompilerError(`llvm emitter bug: live dyn ref of ${key}`);
+    }
+    const prefix = `sc_ldr_${this.liveDynRefAdapters.size}`;
+    const adapter = streamTypedRefMaterializeAdapter(
+      this.expressionContext(),
+      t,
+      { prefix, adapters: new Map() },
+      `${prefix}_materialize`,
+    );
+    this.liveDynRefAdapters.set(key, adapter);
+    return adapter;
   }
 
   private liveDynUnionRefAdapter(

@@ -282,6 +282,17 @@ declare var process: {
   emitWarning(warning: string | Error, ...args: any[]): void;
 };
 
+/* Node's process module default export is the global process object. These
+ * declaration aliases let the ESM spelling typecheck against the same
+ * deliberately narrow fallback surface when @types/node is absent. */
+declare module "process" {
+  export = process;
+}
+declare module "node:process" {
+  import process = require("process");
+  export = process;
+}
+
 /* ── globals a real CLI's sources reference (all @types/node or dyn-lib
  * territory; the fallback declares the slice so projects PREFLIGHT and
  * every reached use lands on the SC2020 fence — or a real lowering where

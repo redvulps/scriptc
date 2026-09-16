@@ -4360,8 +4360,8 @@ export type IrExpr =
    * statement-position `assign`). Statement position keeps the `assign`
    * statement; this node exists for value positions. */
   | { kind: "assignExpr"; localId: string; value: IrExpr; type: IrType; loc: SrcLoc }
-  /** JS ToBoolean: f64 is false iff 0, -0, or NaN; string is false iff empty.
-   * Operand is f64|string (bool needs no conversion) or a UNION — the ARM
+  /** JS ToBoolean: f64 is false iff 0, -0, or NaN; string is false iff empty;
+   * dyn asks its runtime kind. The other operand form is a UNION — the ARM
    * value's ToBoolean via a per-union interned helper (unit arms false;
    * f64/string/bool arms per-value; ref arms — arrays, records, objects,
    * functions, maps, sets, promises, ... — always true; jsval arms ask the

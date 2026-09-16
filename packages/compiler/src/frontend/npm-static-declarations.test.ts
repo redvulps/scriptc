@@ -137,4 +137,15 @@ module.exports = { Chainy };
       ["Local", null],
     ]));
   });
+
+  test("binds declaration classes through one-hop ESM import/export plumbing", () => {
+    expect(npmStaticRuntimeClassTargets("index.js", `
+      import { Command, Other as Alias } from "./lib/command.js";
+      class Local {}
+      export { Command, Alias, Local };
+    `, new Set(["Command", "Alias", "Local"]))).toEqual(new Map([
+      ["Command", "./lib/command.js"],
+      ["Local", null],
+    ]));
+  });
 });

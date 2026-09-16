@@ -127,6 +127,7 @@ export interface LlvmEmitterContext extends ShapeHost {
   islandTypedAdapter(fn: IrType & { kind: "func" }): string;
   keyedRecordReadInto(slot: string, join: string, objName: string, keyName: string, shapeId: string, resultType: IrType, overflowOnly: boolean, loc?: SrcLoc): void;
   liveDynRefAdapters: Map<string, LlStreamTypedRefAdapter>;
+  liveDynRefAdapter(t: IrType): LlStreamTypedRefAdapter;
   liveDynUnionRefAdapter(t: IrType & { kind: "union" }): string;
   liveDynUnionRefAdapters: Map<string, string>;
   llType(t: IrType): string;

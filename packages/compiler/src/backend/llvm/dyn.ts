@@ -24,7 +24,7 @@ import { InternalCompilerError } from "../../errors.js";
  *   ScrBytes { rc +0; len +8; elem +16; data +24 }.
  *   ScrDynPath { parent, key, index } — the %ScrDynPath type. */
 import type { IrType } from "../../ir/ir.js";
-import { DYN_HANDLE_KINDS, isRefCounted, typeKey } from "../../ir/ir.js";
+import { DYN_HANDLE_KINDS, isDynTypedRefType, isRefCounted, typeKey } from "../../ir/ir.js";
 import { dynDesc, undefinedArmTag } from "../../ir/analysis.js";
 import { mangleRecordNew, mangleRecordStruct } from "../mangle.js";
 import { BlockBuilder } from "./blocks.js";
@@ -65,6 +65,7 @@ export const DYN_KIND = {
  * unit instances (undefined-armed dynCheck targets build them). */
 export interface DynHost extends WalkerHost {
   unitInstanceRef(unionId: string, tag: number): string;
+  liveDynRefAdapter(t: IrType): { snapshot: string; commit: string };
 }
 
 /** Exact double literal (the emitter's f64Lit — the walkers' copy). */
@@ -1264,13 +1265,27 @@ export class LlDyn {
         break;
       }
       case "object": {
-        // %Error only (canConvertToDyn's gate): the checked-dynamic tree's error encoding.
-        if (t.className !== "%Error") {
-          throw new InternalCompilerError(`llvm emitter bug: to-dyn of class ${t.className}`);
+        const className = t.className;
+        if (className === "%Error") {
+          host.declare(`declare ptr @scr_dyn_from_error(ptr)`);
+          const r = B.tmp();
+          B.line(`${r} = call ptr @scr_dyn_from_error(ptr %v)`);
+          B.terminate(`ret ptr ${r}`);
+          break;
         }
-        host.declare(`declare ptr @scr_dyn_from_error(ptr)`);
+        if (!isDynTypedRefType(t)) {
+          throw new InternalCompilerError(`llvm emitter bug: to-dyn of runtime class ${className}`);
+        }
+        const adapter = host.liveDynRefAdapter(t);
+        const rc = vAdapters(host, t);
+        const keyLit = host.cstr(typeKey(t));
+        host.declare(
+          `declare ptr @scr_dyn_new_typed_ref(ptr, ptr, ptr, ptr, ${host.sizeType}, ptr, ptr)`,
+        );
         const r = B.tmp();
-        B.line(`${r} = call ptr @scr_dyn_from_error(ptr %v)`);
+        B.line(
+          `${r} = call ptr @scr_dyn_new_typed_ref(ptr %v, ptr ${rc.retain}, ptr ${rc.release}, ptr ${keyLit}, ${host.sizeType} ${Buffer.byteLength(typeKey(t), "utf8")}, ptr @${adapter.snapshot}, ptr ${adapter.commit})`,
+        );
         B.terminate(`ret ptr ${r}`);
         break;
       }

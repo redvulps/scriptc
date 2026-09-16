@@ -7,7 +7,7 @@ import { InternalCompilerError } from "../../errors.js";
  * interning ORDER is part of the emitted C, so the registries stay on
  * CEmitter and these functions only consult them through it. */
 import type { CEmitter } from "./c-emitter.js";
-import { DYN_HANDLE_KINDS, IrType, isRefCounted, typeEquals, typeKey } from "../../ir/ir.js";
+import { DYN_HANDLE_KINDS, IrType, isDynTypedRefType, isRefCounted, typeEquals, typeKey } from "../../ir/ir.js";
 import { dynDesc, undefinedArmTag } from "../../ir/analysis.js";
 import { cDecl, cStringLiteral, cType, elemAccess, releaseCallC, retainCallC, vAdapters } from "./types.js";
 import { mangleField, mangleRecordNew, mangleRecordStruct } from "../mangle.js";
@@ -1472,13 +1472,26 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
       case "nullT":
         d.push(`  (void)v; return scr_dyn_new_null();`);
         break;
-      case "object":
-        // %Error only (canConvertToDyn's gate): the checked-dynamic tree's error encoding.
-        if (t.className !== "%Error") {
-          throw new InternalCompilerError(`emitter bug: to-dyn of class ${t.className}`);
+      case "object": {
+        const className = t.className;
+        if (className === "%Error") {
+          d.push(`  return scr_dyn_from_error(v);`);
+          break;
         }
-        d.push(`  return scr_dyn_from_error(v);`);
+        if (!isDynTypedRefType(t)) {
+          throw new InternalCompilerError(`emitter bug: to-dyn of runtime class ${className}`);
+        }
+        {
+          const adapter = emitter.liveDynRefAdapter(t);
+          const rc = vAdapters(t);
+          const key = typeKey(t);
+          const keyLit = cStringLiteral(Buffer.from(key, "utf8"));
+          d.push(
+            `  return scr_dyn_new_typed_ref(v, &${rc.retain}, &${rc.release}, ${keyLit}, ${Buffer.byteLength(key, "utf8")}, &${adapter.snapshot}, ${adapter.commit});`,
+          );
+        }
         break;
+      }
       case "dyn":
         // A dyn member of a converting composite (a dyn record field): the
         // dyn value passes through by reference — already a dyn, already

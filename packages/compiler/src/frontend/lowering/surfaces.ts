@@ -1597,9 +1597,11 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
   }
 
 /** The canonical stdlib-global name `expr` denotes, or null. Three
-   * spellings reach the same global (Node's own aliasing):
-   *   - the bare identifier (`process`), name + provenance checked;
-   *   - the `global` identifier — Node's alias of globalThis — and
+ * spellings reach the same global (Node's own aliasing):
+ *   - the bare identifier (`process`), name + provenance checked;
+ *   - the default import from `process`/`node:process`, whose value is
+ *     exactly the global process object;
+ *   - the `global` identifier — Node's alias of globalThis — and
    *     `globalThis` itself both canonicalize to "globalThis";
    *   - a property read off globalThis (`globalThis.process`,
    *     `global.process`) — `declare var` globals ARE properties of
@@ -1617,6 +1619,14 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
       if (!symbol) return null;
       const alias = lowerer.stdlibGlobalAliases.get(symbol);
       if (alias !== undefined) return alias;
+      const decl = lowerer.checker.declarationsOf(symbol)[0];
+      if (decl !== undefined && ts.isImportClause(decl) && decl.name !== undefined) {
+        const importDecl = decl.parent;
+        if (ts.isImportDeclaration(importDecl) && ts.isStringLiteral(importDecl.moduleSpecifier)) {
+          const spec = importDecl.moduleSpecifier.text;
+          if (spec === "process" || spec === "node:process") return "process";
+        }
+      }
       // An IMPORTED binding of a builtin module's re-exported global
       // (`import { Buffer } from "node:buffer"` — Node's module spelling
       // of the same object) resolves through the alias to the fallback

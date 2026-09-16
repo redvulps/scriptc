@@ -154,7 +154,7 @@ function streamTypedRefCommitAdapter(
   return `&${commit}`;
 }
 
-interface StreamTypedRefAdapter {
+export interface StreamTypedRefAdapter {
   snapshot: string;
   commit: string;
 }
@@ -350,7 +350,7 @@ function streamTypedRefAdapter(
 
 /** One per-type capsule adapter for Web API arguments whose JavaScript
  * contract preserves the exact input reference. */
-function liveDynRefAdapter(
+export function liveDynRefAdapter(
   emitter: CEmitter,
   t: IrType,
 ): StreamTypedRefAdapter {

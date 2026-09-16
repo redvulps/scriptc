@@ -2011,10 +2011,11 @@ function validateFunction(
         if (
           e.operand.type.kind !== "f64" &&
           e.operand.type.kind !== "string" &&
+          e.operand.type.kind !== "dyn" &&
           e.operand.type.kind !== "union" &&
           !REF_TRUTHY_KINDS.has(e.operand.type.kind)
         ) {
-          err(`toBool operand must be f64|string|union|ref, got ${e.operand.type.kind}`, e.loc);
+          err(`toBool operand must be f64|string|dyn|union|ref, got ${e.operand.type.kind}`, e.loc);
         }
         if (e.operand.type.kind === "union") checkTruthyUnion(e.operand.type.unionId, e.loc);
         if (e.type.kind !== "bool") err("toBool must be bool", e.loc);

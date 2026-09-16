@@ -1757,6 +1757,16 @@ function processModuleAliasRequire7(spec: string, decl: ts.VariableDeclaration |
   return decl === null || ts.isIdentifier(decl.name);
 }
 
+/** `import process from 'node:process'`: the ESM spelling of the same
+ * global-object alias as processModuleAliasRequire7. Keep this exemption
+ * deliberately narrow: named and namespace imports need a represented
+ * module namespace, while the default binding is exactly globalThis.process. */
+function processModuleAliasImport7(spec: string, stmt: ts.ImportDeclaration): boolean {
+  if (spec !== "process" && spec !== "node:process") return false;
+  const clause = stmt.importClause;
+  return clause !== undefined && clause.name !== undefined && clause.namedBindings === undefined;
+}
+
 /** The whole TS7-lane lifecycle for one entry: spawn (or share) a tsgo
  * host, build the lowering-world program, run the ported preflight, and
  * dispose EVERYTHING before returning — the CLI process must exit promptly,
@@ -2309,6 +2319,10 @@ function preflight7(load: LoadResult): {
           continue;
         }
         if (projDep === null) {
+          // node:process's default export is the global process object. It
+          // contributes no module-order edge; the imported binding lowers
+          // through stdlibGlobalNameOf exactly like the bare global.
+          if (processModuleAliasImport7(spec, stmt)) continue;
           const nodeBuiltin = spec.startsWith("node:") || nodeBuiltinNames.has(spec);
           if (nodeBuiltin) {
             diags.push(unsupportedDiag("SC1010", locOf7(stmt), unsupportedModuleFeatureOf(spec)));
