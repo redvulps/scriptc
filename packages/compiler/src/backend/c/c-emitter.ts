@@ -56,7 +56,7 @@ import {
   mangleVtSlot,
   mangleWrapper,
 } from "../mangle.js";
-import { cFnPtrCast, cType, releaseCallC, cStringLiteral, cDecl } from "./types.js";
+import { cCommentText, cFnPtrCast, cType, releaseCallC, cStringLiteral, cDecl } from "./types.js";
 import { computeMayThrow } from "./may-throw.js";
 import { unionTruthyHelper, unionEqHelper, unionToStrHelper, unionJoinHelper, jsonWriteHelper, jsonIndentHelper, dynMatchHelper, dynCheckHelper, dynFuncBoxHelper, dynToStrHelper, caughtToDynHelper, toDynHelper, recordKeyGetHelper, recordKeySetHelper } from "./walkers.js";
 import { VtSlot, ClassMeta, emitStructDefs, vtEntriesFor, vtSlotParams, emitVtableDecls, emitVtableInstances, emitVtAdapterDefs, emitHierarchyClassHelpers, emitClassObjs, emitCtorThunkDefs, errorVtStampLines, emitterVtStampLines, streamVtStampLines, traceAdapterC, traceArgC, boxNewC, arrNewC } from "./shapes.js";
@@ -720,8 +720,7 @@ export class CEmitter {
       const pattern = key.slice(sep + 1);
       const src = this.internLiteral(pattern);
       const fl = this.internLiteral(flags);
-      // "*/" inside the pattern would close the trailing comment.
-      const safe = `/${pattern}/${flags}`.split("*/").join("* /");
+      const safe = cCommentText(`/${pattern}/${flags}`);
       out.push(
         `static ${this.mod.lib?.threadInstances === true ? "_Thread_local " : ""}ScrRegex ${sym} = { .rc = SIZE_MAX, .source = (ScrStr *)&${src}, ` +
           `.flags = (ScrStr *)&${fl}, .bc = NULL }; /* ${safe} */`,
@@ -1785,11 +1784,11 @@ export class CEmitter {
    * record shapes' construction paths, which write every field. */
   undefFieldInitLineC(name: string, t: IrType): string[] {
     if (t.kind === "jsval") {
-      return [`  o->${mangleField(name)} = scr_jsval_undefined(); /* ${name} starts undefined */`];
+      return [`  o->${mangleField(name)} = scr_jsval_undefined(); /* ${cCommentText(name)} starts undefined */`];
     }
     const tag = undefinedArmTag(t, this.unionsById);
     if (tag < 0 || t.kind !== "union") return [];
-    return [`  o->${mangleField(name)} = ${this.unitInstanceRef(t.unionId, tag)}; /* ${name} starts undefined */`];
+    return [`  o->${mangleField(name)} = ${this.unitInstanceRef(t.unionId, tag)}; /* ${cCommentText(name)} starts undefined */`];
   }
 
   /* ── functions ────────────────────────────────────────────────────── */

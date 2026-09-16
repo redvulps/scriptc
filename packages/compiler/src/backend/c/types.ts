@@ -412,6 +412,18 @@ export function mapValKindC(value: IrType): string {
       : "SCR_MAP_VAL_REF";
 }
 
+/** User-controlled text embedded inside a C block comment. Preserve
+ * ordinary output byte-for-byte, but split comment delimiters and encode
+ * source-control characters so the text cannot alter the translation unit. */
+export function cCommentText(text: string): string {
+  return text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (char) =>
+      `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
+    )
+    .replace(/\*\//g, "* /")
+    .replace(/\/\*/g, "/ *");
+}
+
 /** UTF-8 bytes as an unambiguous C string literal (octal escapes are always
  * three digits, so a following digit can never extend them — unlike \xHH). */
 export function cStringLiteral(bytes: Buffer): string {

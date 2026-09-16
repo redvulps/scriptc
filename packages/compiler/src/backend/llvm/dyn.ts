@@ -28,6 +28,7 @@ import { DYN_HANDLE_KINDS, isDynTypedRefType, isRefCounted, typeKey } from "../.
 import { dynDesc, undefinedArmTag } from "../../ir/analysis.js";
 import { mangleRecordNew, mangleRecordStruct } from "../mangle.js";
 import { BlockBuilder } from "./blocks.js";
+import { llvmCommentText } from "./common.js";
 import { arrNewCall, elemAccess, llFieldType, releaseSym, traceAdapter, traceArg, vAdapters } from "./shapes.js";
 import { LlvmUnsupportedError } from "./unsupported.js";
 import type { WalkerHost } from "./walkers.js";
@@ -216,7 +217,7 @@ export class LlDyn {
     this.host.declare(`declare ptr @scr_dyn_obj_get(ptr, ptr, ${this.S})`);
     const t = B.tmp();
     const len = Buffer.byteLength(key, "utf8");
-    B.line(`${t} = call ptr @scr_dyn_obj_get(ptr ${d}, ptr ${this.host.cstr(key)}, ${this.S} ${len}) ; .${key}`);
+    B.line(`${t} = call ptr @scr_dyn_obj_get(ptr ${d}, ptr ${this.host.cstr(key)}, ${this.S} ${len}) ; .${llvmCommentText(key)}`);
     return t;
   }
 
@@ -472,7 +473,7 @@ export class LlDyn {
               B.startBlock(lCmp);
               const c = B.tmp();
               const same = B.tmp();
-              B.line(`${c} = call i32 @memcmp(ptr ${ent.key}, ptr ${this.host.cstr(f.name)}, ${this.S} ${klen}) ; ${f.name}`);
+              B.line(`${c} = call i32 @memcmp(ptr ${ent.key}, ptr ${this.host.cstr(f.name)}, ${this.S} ${klen}) ; ${llvmCommentText(f.name)}`);
               B.line(`${same} = icmp eq i32 ${c}, 0`);
               const lNo2 = B.newLabel("dm.kn");
               const skip = B.newLabel("dm.ks");
@@ -694,7 +695,7 @@ export class LlDyn {
               : "%ScrArr";
             B.line(`${cachedPtr} = getelementptr inbounds ${struct}, ptr ${cached}, i64 0, i32 ${member.index}`);
             B.line(`${checkedPtr} = getelementptr inbounds ${struct}, ptr ${checked}, i64 0, i32 ${member.index}`);
-            B.line(`${oldValue} = load ${member.type}, ptr ${cachedPtr} ; ${member.name}`);
+            B.line(`${oldValue} = load ${member.type}, ptr ${cachedPtr} ; ${llvmCommentText(member.name)}`);
             B.line(`${newValue} = load ${member.type}, ptr ${checkedPtr}`);
             B.line(`store ${member.type} ${newValue}, ptr ${cachedPtr}`);
             B.line(`store ${member.type} ${oldValue}, ptr ${checkedPtr}`);
@@ -845,7 +846,7 @@ export class LlDyn {
         const storeInto = (fieldName: string, ft: IrType, value: string): void => {
           const idx = fieldIndex.get(fieldName)!;
           const p = B.tmp();
-          B.line(`${p} = getelementptr inbounds %${struct}, ptr %r0, i64 0, i32 ${idx} ; .${fieldName}`);
+          B.line(`${p} = getelementptr inbounds %${struct}, ptr %r0, i64 0, i32 ${idx} ; .${llvmCommentText(fieldName)}`);
           if (llFieldType(ft) === "i8") {
             const z = B.tmp();
             B.line(`${z} = zext i1 ${value} to i8`);
@@ -964,7 +965,7 @@ export class LlDyn {
               B.startBlock(lCmp);
               const c = B.tmp();
               const same = B.tmp();
-              B.line(`${c} = call i32 @memcmp(ptr ${ent.key}, ptr ${host.cstr(f.name)}, ${host.sizeType} ${klen}) ; ${f.name}`);
+              B.line(`${c} = call i32 @memcmp(ptr ${ent.key}, ptr ${host.cstr(f.name)}, ${host.sizeType} ${klen}) ; ${llvmCommentText(f.name)}`);
               B.line(`${same} = icmp eq i32 ${c}, 0`);
               const skip = B.newLabel("dcv.ks");
               const lNo2 = B.newLabel("dcv.kn");
@@ -1317,7 +1318,7 @@ export class LlDyn {
         const fieldIndex = new Map(shape.fields.map((f, i) => [f.name, i + 1]));
         const loadFieldOf = (fname: string, ft: IrType): string => {
           const p = B.tmp();
-          B.line(`${p} = getelementptr inbounds %${struct}, ptr %v, i64 0, i32 ${fieldIndex.get(fname)!} ; .${fname}`);
+          B.line(`${p} = getelementptr inbounds %${struct}, ptr %v, i64 0, i32 ${fieldIndex.get(fname)!} ; .${llvmCommentText(fname)}`);
           const raw = B.tmp();
           B.line(`${raw} = load ${llFieldType(ft)}, ptr ${p}`);
           if (llFieldType(ft) !== "i8") return raw;
@@ -1384,7 +1385,7 @@ export class LlDyn {
           const fv = loadFieldOf(f.name, f.type);
           const conv = B.tmp();
           B.line(`${conv} = call ptr @${this.toDynHelper(f.type)}(${this.valTy(f.type)} ${fv})`);
-          B.line(`call void @scr_dyn_obj_set(ptr ${d}, ptr ${host.cstr(f.name)}, ${host.sizeType} ${klen}, ptr ${conv}) ; ${f.name}`);
+          B.line(`call void @scr_dyn_obj_set(ptr ${d}, ptr ${host.cstr(f.name)}, ${host.sizeType} ${klen}, ptr ${conv}) ; ${llvmCommentText(f.name)}`);
         }
         if (shape.indexValue) {
           const iv = shape.indexValue;

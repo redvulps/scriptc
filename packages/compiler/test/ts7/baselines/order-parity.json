@@ -6205,6 +6205,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2891-json-record-key-escapes.ts": {
+   "order": [
+    "<repo>/tests/corpus/2891-json-record-key-escapes.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

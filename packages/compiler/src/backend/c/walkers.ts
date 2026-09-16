@@ -9,8 +9,9 @@ import { InternalCompilerError } from "../../errors.js";
 import type { CEmitter } from "./c-emitter.js";
 import { DYN_HANDLE_KINDS, IrType, isDynTypedRefType, isRefCounted, typeEquals, typeKey } from "../../ir/ir.js";
 import { dynDesc, undefinedArmTag } from "../../ir/analysis.js";
-import { cDecl, cStringLiteral, cType, elemAccess, releaseCallC, retainCallC, vAdapters } from "./types.js";
+import { cCommentText, cDecl, cStringLiteral, cType, elemAccess, releaseCallC, retainCallC, vAdapters } from "./types.js";
 import { mangleField, mangleRecordNew, mangleRecordStruct } from "../mangle.js";
+import { jsonObjectKeyLabel } from "../json-literal.js";
 import { OVERFLOW_MEMBER } from "./shapes.js";
 
 /** The per-union ToBoolean helper (interned per unionId): switch on the
@@ -529,7 +530,7 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
         d.push(`  scr_jb_putc(b, '{');`);
         if (!droppable) {
           emitFields.forEach((f, i) => {
-            const label = cStringLiteral(Buffer.from(`${i > 0 ? "," : ""}"${f.name}":`, "utf8"));
+            const label = cStringLiteral(Buffer.from(`${i > 0 ? "," : ""}${jsonObjectKeyLabel(f.name)}`, "utf8"));
             d.push(`  scr_jb_puts(b, ${label});`);
             if (edgeable(f.type)) d.push(`  scr_jb_edge_prop(b, ${cStringLiteral(Buffer.from(f.name, "utf8"))});`);
             // Refcounted fields are BORROWED straight off the struct (the
@@ -539,7 +540,7 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
         } else {
           d.push(`  bool first = true;`);
           for (const f of emitFields) {
-            const label = cStringLiteral(Buffer.from(`"${f.name}":`, "utf8"));
+            const label = cStringLiteral(Buffer.from(jsonObjectKeyLabel(f.name), "utf8"));
             const utag = undefinedArmTag(f.type, emitter.unionsById);
             const pad = utag >= 0 ? "    " : "  ";
             if (utag >= 0) {
@@ -1966,7 +1967,7 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
     // switch can never hit — only the overflow answers.
     for (const f of overflowOnly ? [] : shape.fields) {
       const lit = emitter.internLiteral(f.name);
-      d.push(`  if (scr_str_eq(k, (ScrStr *)&${lit})) { /* ${f.name} */`);
+      d.push(`  if (scr_str_eq(k, (ScrStr *)&${lit})) { /* ${cCommentText(f.name)} */`);
       d.push(`    return ${surface(f.type, `r->${mangleField(f.name)}`, false)};`);
       d.push(`  }`);
     }
@@ -2035,7 +2036,7 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
     for (const f of shape.fields) {
       const lit = emitter.internLiteral(f.name);
       const member = `r->${mangleField(f.name)}`;
-      d.push(`  if (scr_str_eq(k, (ScrStr *)&${lit})) { /* ${f.name} */`);
+      d.push(`  if (scr_str_eq(k, (ScrStr *)&${lit})) { /* ${cCommentText(f.name)} */`);
       if (iv.kind === "dyn" && shape.indexValue) {
         const keyLit = cStringLiteral(Buffer.from(f.name, "utf8"));
         d.push(`    ScrDynPath p = { NULL, ${keyLit}, 0 };`);

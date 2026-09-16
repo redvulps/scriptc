@@ -5,6 +5,7 @@ import { IrType, isClassOwnEnumerableFieldName, isDynTypedRefType, isRefCounted,
 import { mangleRecordStruct } from "../mangle.js";
 import { BlockBuilder } from "./blocks.js";
 import { classFieldIndex, classStructSym } from "./classes.js";
+import { llvmCommentText } from "./common.js";
 import { FN_ATTRS, llFieldType, releaseSym, traceArg, vAdapters } from "./shapes.js";
 import type { LlvmEmitterContext, LlStreamTypedRefAdapter, LlStreamTypedRefContext } from "./expr-context.js";
 
@@ -223,7 +224,7 @@ export function streamTypedRefCommitAdapter(host: LlvmEmitterContext,
       lines.push(
         `  %tp${index} = getelementptr inbounds %${mangleRecordStruct(t.shapeId)}, ptr %target, i64 0, i32 ${member.index}`,
         `  %np${index} = getelementptr inbounds %${mangleRecordStruct(t.shapeId)}, ptr %next, i64 0, i32 ${member.index}`,
-        `  %old${index} = load ${member.type}, ptr %tp${index} ; ${member.name}`,
+        `  %old${index} = load ${member.type}, ptr %tp${index} ; ${llvmCommentText(member.name)}`,
         `  %new${index} = load ${member.type}, ptr %np${index}`,
         `  store ${member.type} %new${index}, ptr %tp${index}`,
         `  store ${member.type} %old${index}, ptr %np${index}`,

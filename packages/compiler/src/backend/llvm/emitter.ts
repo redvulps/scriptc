@@ -86,7 +86,7 @@ import { RUNTIME_ABI_MARKER } from "../runtime-abi.js";
 import { computeMayThrow } from "../c/may-throw.js";
 import { mangleArgPack, mangleAsyncSpawn, mangleClassObj, mangleFnClosure, mangleFunction, mangleGenDrop, mangleGenSpawn, mangleGlobal, mangleLocal, mangleRecordStruct, mangleTrampoline, mangleWrapper } from "../mangle.js";
 import { BlockBuilder } from "./blocks.js";
-import { f64Lit, ffiNativeTypeLl } from "./common.js";
+import { f64Lit, ffiNativeTypeLl, llvmCommentText } from "./common.js";
 import { emitLiteralExpr, emitOperatorExpr, emitStringExpr, emitContainerExpr, emitRecordExpr } from "./expr-primitives.js";
 import { emitControlExpr } from "./expr-control.js";
 import { emitCallExpr } from "./expr-calls.js";
@@ -3310,7 +3310,7 @@ class LlEmitter {
           for (const f of shape.fields) {
             const lit = this.internLiteral(f.name);
             const hit = B.tmp();
-            B.line(`${hit} = call zeroext i1 @scr_str_eq(ptr ${key.name}, ptr ${lit}) ; ${f.name}`);
+            B.line(`${hit} = call zeroext i1 @scr_str_eq(ptr ${key.name}, ptr ${lit}) ; ${llvmCommentText(f.name)}`);
             const lh = B.newLabel("rks.h");
             const ln = B.newLabel("rks.n");
             B.condBr(hit, lh, ln);
@@ -3364,7 +3364,7 @@ class LlEmitter {
           // typeEquals(f.type, iv) — the frontend fences everything else.
           const lit = this.internLiteral(f.name);
           const hit = B.tmp();
-          B.line(`${hit} = call zeroext i1 @scr_str_eq(ptr ${key.name}, ptr ${lit}) ; ${f.name}`);
+          B.line(`${hit} = call zeroext i1 @scr_str_eq(ptr ${key.name}, ptr ${lit}) ; ${llvmCommentText(f.name)}`);
           const lh = B.newLabel("rks.h");
           const ln = B.newLabel("rks.n");
           B.condBr(hit, lh, ln);
