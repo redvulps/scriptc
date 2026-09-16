@@ -24,6 +24,37 @@ function zigOnPath(): boolean {
   }
 }
 
+function wasmCustomSectionNames(bytes: Uint8Array): string[] {
+  let offset = 8;
+  const names: string[] = [];
+  const readUleb = (end: number): number => {
+    let value = 0;
+    let shift = 0;
+    for (let count = 0; count < 5; count++) {
+      if (offset >= end) throw new Error("truncated wasm LEB128 value");
+      const byte = bytes[offset++]!;
+      value += (byte & 0x7f) * 2 ** shift;
+      if ((byte & 0x80) === 0) return value;
+      shift += 7;
+    }
+    throw new Error("oversized wasm LEB128 value");
+  };
+  while (offset < bytes.length) {
+    const sectionId = bytes[offset++]!;
+    const sectionSize = readUleb(bytes.length);
+    const sectionEnd = offset + sectionSize;
+    if (sectionEnd > bytes.length) throw new Error("truncated wasm section");
+    if (sectionId === 0) {
+      const nameLength = readUleb(sectionEnd);
+      const nameEnd = offset + nameLength;
+      if (nameEnd > sectionEnd) throw new Error("truncated wasm custom-section name");
+      names.push(Buffer.from(bytes.subarray(offset, nameEnd)).toString("utf8"));
+    }
+    offset = sectionEnd;
+  }
+  return names;
+}
+
 const WASI_RUNNER = [
   'const fs=require("node:fs")',
   'const {WASI}=require("node:wasi")',
@@ -143,15 +174,21 @@ describe.skipIf(!zigOnPath())("wasm32-wasi differential", () => {
     if (wasm.exitCode === 0) expect(wasm.stderr).toBe(node.stderr);
   });
 
-  test("the explicit LLVM pin emits wasm", async () => {
+  test("the explicit LLVM pin emits compact release wasm", async () => {
     const outDir = await mkdtemp("/tmp/scriptc-wasi-refusal-");
+    const outPath = join(outDir, "llvm.wasm");
     const llvmResult = await compile(join(repoRoot, "tests/corpus/001-hello.ts"), {
       outDir,
-      outPath: join(outDir, "llvm.wasm"),
+      outPath,
       backend: "llvm",
     });
     expect(llvmResult.ok).toBe(true);
-    if (llvmResult.ok) expect(llvmResult.backend).toBe("llvm");
+    if (llvmResult.ok) {
+      expect(llvmResult.backend).toBe("llvm");
+      const wasm = await readFile(outPath);
+      expect(wasmCustomSectionNames(wasm).filter((name) => name.startsWith(".debug"))).toEqual([]);
+      expect(wasm.byteLength).toBeLessThan(256 * 1024);
+    }
   });
 
   test("library mode reports a target diagnostic instead of invoking the WASI toolchain", async () => {
@@ -168,17 +205,21 @@ describe.skipIf(!zigOnPath())("wasm32-wasi differential", () => {
     }
   });
 
-  test("the explicit C backend still emits async-free wasm", async () => {
+  test("the explicit C backend still emits compact async-free wasm", async () => {
     const outDir = await mkdtemp("/tmp/scriptc-wasi-c-");
+    const outPath = join(outDir, "program.wasm");
     const result = await compile(join(repoRoot, "tests/corpus/001-hello.ts"), {
       outDir,
-      outPath: join(outDir, "program.wasm"),
+      outPath,
       backend: "c",
     });
     if (!result.ok) {
       throw new Error(result.diagnostics.map((d) => `${d.code}: ${d.message}`).join("\n"));
     }
     expect(result.backend).toBe("c");
+    const wasm = await readFile(outPath);
+    expect(wasmCustomSectionNames(wasm).filter((name) => name.startsWith(".debug"))).toEqual([]);
+    expect(wasm.byteLength).toBeLessThan(256 * 1024);
   });
 
   test("the explicit C backend diagnoses coroutine-dependent programs", async () => {

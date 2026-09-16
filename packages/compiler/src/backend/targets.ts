@@ -23,6 +23,19 @@ export type NativeTargetName =
 export type NativeObjectFormat = "macho" | "elf" | "coff" | "wasm";
 export type NativeTargetPlatform = "darwin" | "linux" | "win32" | "wasi";
 
+/** Linker flags that belong to an optimization posture rather than the
+ * target ABI. Zig's WASI runtime objects carry DWARF custom sections even
+ * when compiled with -O2; release executables discard that non-runtime
+ * payload, while dev executables retain it for inspection and debugging. */
+export function executableOptimizationLinkerArgs(
+  platform: string,
+  optimization: "release" | "dev",
+): string[] {
+  return platform === "wasi" && optimization === "release"
+    ? ["-Wl,--strip-debug"]
+    : [];
+}
+
 export interface NativeTargetSpec {
   /** Stable scriptc-facing identity used in cache keys and diagnostics. */
   name: NativeTargetName;

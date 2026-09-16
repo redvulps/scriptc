@@ -10,6 +10,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { localizeElfObject, mergeAndLocalizeCoffObjects } from "./object-localize.js";
+import { executableOptimizationLinkerArgs } from "./targets.js";
 import {
   createVendorArchives,
   MBEDTLS_VERSION,
@@ -3701,10 +3702,11 @@ function localArtifactIdentity(
       .sort(([a], [b]) => a.localeCompare(b)),
   );
   const executableSectionFlags = executableSectionEliminationFlags(targetPlatform(driver));
+  const executableOptimizationFlags = executableOptimizationLinkerArgs(
+    targetPlatform(driver),
+    opts.optimization ?? "release",
+  );
   const hash = createHash("sha256")
-    // v2 adds the executable section-GC recipe. A v1 output-local stamp can
-    // name a same-source binary from before unused runtime sections were
-    // eliminated, so it must never short-circuit the new linker invocation.
     .update("local-artifact-v2\0")
     .update(cacheTargetIdentity(driver)).update("\0")
     .update(environmentFingerprint).update("\0")
@@ -3715,6 +3717,13 @@ function localArtifactIdentity(
     .update(driver.linkArgs.join("\x1f")).update("\0")
     .update(executableSectionFlags.compile.join("\x1f")).update("\0")
     .update(executableSectionFlags.link.join("\x1f")).update("\0");
+  // Only release WASI currently adds an optimization-specific link flag.
+  // Salt that identity so a pre-fix DWARF-bearing output cannot hit, without
+  // invalidating unchanged native and dev artifacts on upgrade.
+  if (executableOptimizationFlags.length > 0) {
+    hash.update("optimization-linker-flags\0")
+      .update(executableOptimizationFlags.join("\x1f")).update("\0");
+  }
   if (programShardMerge !== null) {
     updateProgramShardCacheIdentity(
       hash,
@@ -4039,6 +4048,13 @@ async function compileCInternal(
     ? EXECUTABLE_RUNTIME_SOURCES.filter((source) => source !== "scr_child.c")
     : EXECUTABLE_RUNTIME_SOURCES;
   const executableSectionFlags = executableSectionEliminationFlags(targetPlatform(driver));
+  const executableLinkFlags = [
+    ...executableSectionFlags.link,
+    ...executableOptimizationLinkerArgs(
+      targetPlatform(driver),
+      optimization,
+    ),
+  ];
   // scr_async.c submits callback-style filesystem work to a native worker.
   // POSIX drivers need the thread compile/link mode; win32 uses CreateThread.
   const threadArgs = targetPlatform(driver) === "win32" || targetPlatform(driver) === "wasi"
@@ -4579,7 +4595,7 @@ async function compileCInternal(
     // program and every native FFI input because GNU ld resolves archives
     // from left to right.
     ...driver.linkArgs,
-    ...executableSectionFlags.link,
+    ...executableLinkFlags,
     "-o", build.outPath ?? opts.outPath,
   ];
   // Compile-only flags shared by runtime-object population and the caller-TU
@@ -4777,7 +4793,7 @@ async function compileCInternal(
     ...(dynamic && !driver.linkArgs.includes("-lm") ? ["-lm"] : []),
     ...(((opts.zlib ?? false) || nativeFetch) && !isZigDriver(driver) ? ["-lz"] : []),
     ...driver.linkArgs,
-    ...executableSectionFlags.link,
+    ...executableLinkFlags,
   ];
   // Both the wrapper dry run and dependency trace need the real build's
   // compile/link flag shape: wrappers commonly inject flags or native inputs
@@ -4797,7 +4813,7 @@ async function compileCInternal(
       : []),
     ...(((opts.zlib ?? false) || nativeFetch) && !isZigDriver(driver) ? ["-lz"] : []),
     ...driver.linkArgs,
-    ...executableSectionFlags.link,
+    ...executableLinkFlags,
   ];
   // A complete hit is checked before cross-target curl's generated import stub
   // is materialized. Its -L spelling still joins the dry-run identity, while

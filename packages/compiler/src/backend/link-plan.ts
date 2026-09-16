@@ -10,7 +10,10 @@ import type { FfiProfile } from "../ffi/ffi-manifest.js";
 import type { NativeLinkFeatures } from "./native-link-info.js";
 import type { NativeArtifactDependency } from "./native-toolchain.js";
 import { loadRuntimePack, type RuntimePackSelection } from "./runtime-pack.js";
-import type { NativeTargetSpec } from "./targets.js";
+import {
+  executableOptimizationLinkerArgs,
+  type NativeTargetSpec,
+} from "./targets.js";
 
 export interface NativeLinkPlan {
   target: NativeTargetSpec;
@@ -51,9 +54,12 @@ export async function createNativeLinkPlan(options: {
       ...(options.ffi?.systemLibraries ?? []),
       ...runtimePack.systemLibraries,
     ])],
-    driverFlags: options.target.executableLinkerArgs.map((arg, index, args) =>
-      index > 0 && args[index - 1] === "-target" ? options.target.linkerTargetTriple : arg
-    ),
+    driverFlags: [
+      ...options.target.executableLinkerArgs.map((arg, index, args) =>
+        index > 0 && args[index - 1] === "-target" ? options.target.linkerTargetTriple : arg
+      ),
+      ...executableOptimizationLinkerArgs(options.target.platform, options.optimization),
+    ],
     dependencyPaths: [
       ...runtimePack.dependencyPaths,
       ...(options.ffi?.libraries ?? []),

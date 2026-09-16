@@ -12,7 +12,10 @@ import {
   RUNTIME_ABI_MARKER,
   RUNTIME_ABI_VERSION,
 } from "./runtime-abi.js";
-import type { NativeTargetSpec } from "./targets.js";
+import {
+  executableOptimizationLinkerArgs,
+  type NativeTargetSpec,
+} from "./targets.js";
 import { LRE_SOURCES, QJS_ENGINE_SOURCES } from "./vendor-archives.js";
 
 export interface NativeLinkFeatures {
@@ -274,6 +277,7 @@ function runtimeSourceRecipe(
     systemLibraries,
     driverFlags: [
       ...target.executableLinkerArgs,
+      ...executableOptimizationLinkerArgs(target.platform, optimization),
     ],
   };
 }
