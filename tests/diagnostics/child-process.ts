@@ -14,6 +14,9 @@ const noOpts = spawn("/bin/echo");
 const piped = spawn("/bin/echo", [], { stdio: "pipe" });
 const inherited = spawn("/bin/echo", [], { stdio: "inherit" });
 
+// A variable options value must fence instead of being dropped.
+const options: { stdio: "ignore"; detached: boolean } = { stdio: "ignore", detached: true };
+spawn("true", [], options);
 const c = spawn("true", [], { stdio: "ignore" });
 
 // `() => 5` IS assignable to a void-returning listener slot and now ADOPTS
@@ -21,6 +24,6 @@ const c = spawn("true", [], { stdio: "ignore" });
 // listener keeps its word and stays fenced — the registry calls listeners
 // as void.
 c.on("exit", (): number => 5);
-
 // Methods have no bound-value form — call on directly.
 const f = c.on;
+// Keep each fence on its own statement so diagnostics remain site-specific.

@@ -2316,9 +2316,18 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
       optsNode = expr.arguments[2];
     } else if (expr.arguments.length === 2) {
       const second = expr.arguments[1]!;
-      const mapped = lowerer.mapTypeOf(lowerer.typeOf(second));
-      if (mapped?.kind === "array" && mapped.elem.kind === "string") argsNode = second;
+      const secondType = lowerer.typeOf(second);
+      const mapped = lowerer.mapTypeOf(secondType);
+      if (lowerer.checker.isArrayType(secondType) || lowerer.checker.isTupleType(secondType) ||
+          (mapped?.kind === "array" && mapped.elem.kind === "string")) argsNode = second;
       else optsNode = second;
+    }
+    if (optsNode !== undefined && !ts.isObjectLiteralExpression(optsNode)) {
+      lowerer.noLowering(
+        "spawn with a non-literal options argument",
+        optsNode,
+        "pass stdio, detached, env, cwd, and windowsHide in an inline object literal",
+      );
     }
 
     const emptyStr: IrExpr = { kind: "strLit", value: "", type: STRING, loc };
@@ -2335,7 +2344,7 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     let cwd: IrExpr = emptyStr;
     let plain = true; // exactly { stdio: "ignore" }: the historical libCall
 
-    if (optsNode && ts.isObjectLiteralExpression(optsNode) && expr.arguments.length >= 2) {
+    if (optsNode && ts.isObjectLiteralExpression(optsNode)) {
       for (const p of optsNode.properties) {
         // The conditional-spread idiom `...(isWindows ? {} : { detached:
         // true })` (either orientation): the one carried member supported

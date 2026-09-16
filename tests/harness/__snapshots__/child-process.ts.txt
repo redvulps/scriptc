@@ -1,22 +1,31 @@
-child-process.ts:23:14 - error SC1090: listeners returning a value (make the callback body a block, or return nothing) is not supported yet
+child-process.ts:19:19 - error SC2020: 'spawn with a non-literal options argument' is part of the standard library types but has no scriptc lowering yet
 
-  22 | // as void.
-  23 | c.on("exit", (): number => 5);
+  18 | const options: { stdio: "ignore"; detached: boolean } = { stdio: "ignore", detached: true };
+  19 | spawn("true", [], options);
+     |                   ^~~~~~~
+  20 | const c = spawn("true", [], { stdio: "ignore" });
+
+  hint: pass stdio, detached, env, cwd, and windowsHide in an inline object literal
+
+child-process.ts:26:14 - error SC1090: listeners returning a value (make the callback body a block, or return nothing) is not supported yet
+
+  25 | // as void.
+  26 | c.on("exit", (): number => 5);
      |              ^~~~~~~~~~~~~~~
-  24 | 
+  27 | // Methods have no bound-value form — call on directly.
 
-child-process.ts:26:7 - error SC2007: values of type '{ (event: "exit", listener: (code: number | null, signal: string | null) => void): void; (event: "error", listener: (err: Error) => void): void; }' cannot be compiled: the type declares multiple call signatures (overloads), and a compiled function value is always one concrete signature
+child-process.ts:28:7 - error SC2007: values of type '{ (event: "exit", listener: (code: number | null, signal: string | null) => void): void; (event: "error", listener: (err: Error) => void): void; }' cannot be compiled: the type declares multiple call signatures (overloads), and a compiled function value is always one concrete signature
 
-  25 | // Methods have no bound-value form — call on directly.
-  26 | const f = c.on;
+  27 | // Methods have no bound-value form — call on directly.
+  28 | const f = c.on;
      |       ^
-  27 | 
+  29 | // Keep each fence on its own statement so diagnostics remain site-specific.
 
   hint: annotate the slot with the ONE signature the program actually calls (e.g. '(x: number) => string'), or wrap the overloaded function in a single-signature arrow
 
-child-process.ts:26:11 - error SC1090: child methods as values (call 'on' directly) are not supported yet
+child-process.ts:28:11 - error SC1090: child methods as values (call 'on' directly) are not supported yet
 
-  25 | // Methods have no bound-value form — call on directly.
-  26 | const f = c.on;
+  27 | // Methods have no bound-value form — call on directly.
+  28 | const f = c.on;
      |           ^~~~
-  27 | 
+  29 | // Keep each fence on its own statement so diagnostics remain site-specific.

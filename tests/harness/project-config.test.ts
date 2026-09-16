@@ -116,7 +116,7 @@ test("node-types: refined spawn returns expose writable child stdin", async () =
   expect(stdout).toBe("typed child stdin\n");
 });
 
-test("node-types: unsupported child stdin overloads remain named fences", async () => {
+test("node-types: unsupported child stdin and spawn options forms remain named fences", async () => {
   const dir = outDirFor("node-child-stdin-fences");
   const entry = join(nodeTypesDir, "child-stdin-fences.ts");
   const result = await compile(entry, {
@@ -126,8 +126,10 @@ test("node-types: unsupported child stdin overloads remain named fences", async 
   });
   expect(result.ok).toBe(false);
   if (result.ok) return;
-  expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["SC2020", "SC2020", "SC2020"]);
+  expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["SC2020", "SC2020", "SC2020", "SC2020", "SC2020"]);
   expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+    expect.stringContaining("spawn with a non-literal options argument"),
+    expect.stringContaining("spawn with a non-literal options argument"),
     expect.stringContaining("child stdin write with 2 arguments"),
     expect.stringContaining("Writable.end"),
     expect.stringContaining("Writable.destroy"),
