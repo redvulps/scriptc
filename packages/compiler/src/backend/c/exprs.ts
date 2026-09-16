@@ -3,7 +3,7 @@ import { InternalCompilerError } from "../../errors.js";
  * expression lands in a fresh C temp, with RC ownership tracked on the
  * emitter's frames (see the discipline comment in emitter core). */
 import type { CEmitter, Temp } from "./c-emitter.js";
-import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
+import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isClassOwnEnumerableFieldName, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
 import { boxAccess, BYTES_NUM_KIND_C, BYTES_NUM_VAR_C, bytesElemKindC, cDecl, cFnPtrCast, cNumberLiteral, cStringLiteral, cType, DV_GET_KIND_C, DV_SET_KIND_C, elemAccess, mapKeyAccess, mapKeyKindC, mapValKindC, releaseCallC, retainCallC, vAdapters } from "./types.js";
 import { mangleClassNew, mangleClassRetain, mangleClassStruct, mangleField, mangleFnClosure, mangleFunction, mangleGlobal, mangleLocal, mangleRecordClone, mangleRecordNew, mangleRecordStruct, mangleVtStruct } from "../mangle.js";
 import { OVERFLOW_MEMBER } from "./shapes.js";
@@ -94,7 +94,7 @@ function streamTypedRefCommitAdapter(
       `static void ${commit}(void *sc_p, const ScrDyn *sc_d) {`,
       `  ${cDecl(t, "sc_target")} = (${cType(t).trim()})sc_p;`,
     );
-    for (const field of meta.def.fields) {
+    for (const field of meta.def.fields.filter((f) => isClassOwnEnumerableFieldName(f.name))) {
       const member = mangleField(field.name);
       const keyLit = cStringLiteral(Buffer.from(field.name, "utf8"));
       const keyLen = Buffer.byteLength(field.name, "utf8");
@@ -269,7 +269,7 @@ function streamTypedRefAdapter(
       throw new InternalCompilerError(`emitter bug: typed-ref materialize of unknown class ${t.className}`);
     }
     lines.push(`  ScrDyn *d = scr_dyn_new_obj();`);
-    for (const field of meta.def.fields) {
+    for (const field of meta.def.fields.filter((f) => isClassOwnEnumerableFieldName(f.name))) {
       const keyLit = cStringLiteral(Buffer.from(field.name, "utf8"));
       lines.push(
         `  scr_dyn_obj_set(d, ${keyLit}, ${Buffer.byteLength(field.name, "utf8")}, ${box(field.type, `v->${mangleField(field.name)}`)});`,

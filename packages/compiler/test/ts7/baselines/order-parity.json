@@ -6184,6 +6184,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2878-class-private-unknown.cjs": {
+   "order": [
+    "<repo>/tests/corpus/2878-class-private-unknown.cjs"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

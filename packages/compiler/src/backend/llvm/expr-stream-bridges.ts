@@ -1,7 +1,7 @@
 /* Focused LLVM expression emission extracted from emitter.ts. */
 import { InternalCompilerError } from "../../errors.js";
 import { streamTypedRefEligible } from "../../ir/analysis.js";
-import { IrType, isDynTypedRefType, isRefCounted, typeKey } from "../../ir/ir.js";
+import { IrType, isClassOwnEnumerableFieldName, isDynTypedRefType, isRefCounted, typeKey } from "../../ir/ir.js";
 import { mangleRecordStruct } from "../mangle.js";
 import { BlockBuilder } from "./blocks.js";
 import { classFieldIndex, classStructSym } from "./classes.js";
@@ -146,7 +146,8 @@ export function streamTypedRefCommitAdapter(host: LlvmEmitterContext,
         `define internal void @${commit}(ptr %target, ptr %d) ${FN_ATTRS} { ; commit unknown class ${typeKey(t)}`,
         `entry:`,
       ];
-      for (const [index, field] of meta.def.fields.entries()) {
+      const fields = meta.def.fields.filter((field) => isClassOwnEnumerableFieldName(field.name));
+      for (const [index, field] of fields.entries()) {
         const next = `f${index}_next`;
         const raw = `f${index}_raw`;
         const missing = `f${index}_missing`;
@@ -530,7 +531,7 @@ export function streamTypedRefMaterializeAdapter(host: LlvmEmitterContext,
       host.declare(`declare void @scr_dyn_obj_set(ptr, ptr, ${host.sizeType}, ptr)`);
       const out = B.tmp();
       B.line(`${out} = call ptr @scr_dyn_new_obj()`);
-      for (const field of meta.def.fields) {
+      for (const field of meta.def.fields.filter((f) => isClassOwnEnumerableFieldName(f.name))) {
         const { index } = classFieldIndex(meta, field.name);
         const fieldPtr = B.tmp();
         let fieldValue = B.tmp();

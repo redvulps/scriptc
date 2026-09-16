@@ -5,14 +5,22 @@ class Box {
   name: string;
   count: number;
   child: Box | undefined = undefined;
+  #secret: string;
+  private tsPrivate: string;
 
   constructor(name: string, count: number) {
     this.name = name;
     this.count = count;
+    this.#secret = `secret:${name}`;
+    this.tsPrivate = `ts-private:${name}`;
   }
 
   bump(): void {
     this.count++;
+  }
+
+  privateState(): string {
+    return `${this.#secret}|${this.tsPrivate}`;
   }
 }
 
@@ -29,6 +37,7 @@ const recovered = opaque as Box;
 console.log("same root:", recovered === root);
 recovered.bump();
 console.log("mutated:", root.count);
+console.log("private:", recovered.privateState());
 console.log("materialized:", JSON.stringify(opaque));
 
 const table: Record<string, unknown> = {};

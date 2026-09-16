@@ -5693,6 +5693,14 @@ export function isDynTypedRefType(t: IrType): t is Extract<IrType, { kind: "obje
   return t.kind === "object" && !RUNTIME_ERROR_CLASSES.has(t.className);
 }
 
+/** Whether a class layout field is an ECMAScript own enumerable property.
+ * `#private` slots and `%`-prefixed compiler storage exist only in the native
+ * layout; TypeScript `private`/`protected` fields keep ordinary names and are
+ * observable properties at runtime. */
+export function isClassOwnEnumerableFieldName(name: string): boolean {
+  return !name.startsWith("#") && !name.startsWith("%");
+}
+
 /** A static type that CONVERTS into a dyn value — the dynFrom domain:
  * JSON-safe data, bytes<u8> (payload copied), identity-preserving class
  * references, undefined-armed unions of those arms, boxable function types,
