@@ -6,13 +6,29 @@ All notable changes to scriptc will be documented in this file.
 
 <!-- release:start -->
 
+## 0.1.2
+
+### Features
+
+- **CommonJS module graphs compile statically.** `require`, `module.exports`, `exports`, module metadata, caching, cycles, resolution, and failure eviction now follow Node semantics across compiled CommonJS graphs.
+- **Async iteration parity expands.** Async generators support queued `next`/`return`/`throw` requests, promised yields, cleanup, and class, object, and private methods; `for await` closes custom async iterators and WHATWG readable streams correctly.
+- **Explicit resource management compiles natively.** `using`, `await using`, `for using`, disposable Node handles, and suppressed disposal errors preserve JavaScript cleanup ordering.
+- **Node module resolution introspection is supported.** `import.meta.resolve`, `require.resolve`, `require.resolve.paths`, and `module.createRequire` handle supported static requests with Node-compatible resolution and errors.
+- **Static npm declarations preserve overloads.** `--npm-static` keeps overload groups from shipped declaration files while compiling package implementations, including Commander command actions.
+- **Unknown values preserve native handles.** Class and child handles can round-trip through `unknown` while private fields remain hidden.
+
+### Fixes
+
+- **TypeScript compatibility is more faithful.** Branded primitive types, leading BOM literals, TypeScript 7 project resolution, and Node type-link behavior now retain their expected semantics.
+- **Dynamic operations and runtime arguments are more reliable.** Dynamic `any`-local operators lower correctly, executable-path arguments remain intact, and URLSearchParams sorting scales without quadratic behavior.
+
+<!-- release:end -->
+
 ## 0.1.1
 
 ### Fixes
 
 - **Native package releases are more reliable.** Musl LLVM helpers build as portable static executables, downloaded helper artifacts retain executable permissions, and npm publishing reconciles asynchronous staged versions on retry.
-
-<!-- release:end -->
 
 ## 0.0.37
 
