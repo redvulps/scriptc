@@ -2722,8 +2722,8 @@ bool scr_children_wait(double max_wait_ms);
 ScrStr *scr_crypto_random_uuid(void);
 ScrStr *scr_crypto_random_string(double n, ScrStr *enc); /* +1, or throws */
 /* The fused createHash chain and crypto.hash. Strings hash their UTF-8
- * bytes; byte values hash their raw storage. Algorithms outside the
- * supported runtime set throw "Digest method not supported". */
+ * bytes; byte values hash their raw storage. Unknown runtime algorithms
+ * preserve each Node API's distinct error message, class, and code. */
 ScrStr *scr_crypto_hash_digest_str(ScrStr *alg, ScrStr *data, ScrStr *enc);
 ScrStr *scr_crypto_hash_digest_bytes(ScrStr *alg, ScrBytes *data, ScrStr *enc);
 typedef struct ScrCryptoHash ScrCryptoHash;

@@ -4164,6 +4164,39 @@ static void scr_crypto_digest_unsupported(void) {
   scr_throw_error_msg(SCR_ERR_ERROR, msg, sizeof msg - 1);
 }
 
+static void scr_crypto_invalid_digest(const ScrStr *alg) {
+  static const char prefix[] = "Invalid digest: ";
+  const size_t prefix_len = sizeof prefix - 1;
+  if (alg->len > SIZE_MAX - prefix_len) scr_trap("scriptc: out of memory\n");
+  const size_t msg_len = prefix_len + alg->len;
+  char *msg = malloc(msg_len);
+  if (!msg) scr_trap("scriptc: out of memory\n");
+  memcpy(msg, prefix, prefix_len);
+  memcpy(msg + prefix_len, alg->data, alg->len);
+  scr_throw_error_msg_code(SCR_ERR_TYPE, msg, msg_len,
+                           "ERR_CRYPTO_INVALID_DIGEST");
+  free(msg);
+}
+
+static void scr_crypto_hash_digest_unsupported(const ScrStr *alg) {
+  static const char prefix[] = "Digest method ";
+  static const char suffix[] = " is not supported";
+  const size_t prefix_len = sizeof prefix - 1;
+  const size_t suffix_len = sizeof suffix - 1;
+  if (alg->len > SIZE_MAX - prefix_len ||
+      suffix_len > SIZE_MAX - prefix_len - alg->len) {
+    scr_trap("scriptc: out of memory\n");
+  }
+  const size_t msg_len = prefix_len + alg->len + suffix_len;
+  char *msg = malloc(msg_len);
+  if (!msg) scr_trap("scriptc: out of memory\n");
+  memcpy(msg, prefix, prefix_len);
+  memcpy(msg + prefix_len, alg->data, alg->len);
+  memcpy(msg + prefix_len + alg->len, suffix, suffix_len);
+  scr_throw_error_msg(SCR_ERR_ERROR, msg, msg_len);
+  free(msg);
+}
+
 static void scr_crypto_hash_finalized(void) {
   static const char msg[] = "Digest already called";
   scr_throw_error_msg_code(SCR_ERR_ERROR, msg, sizeof msg - 1,
@@ -4193,7 +4226,7 @@ ScrCryptoHash *scr_crypto_hash_new(ScrStr *alg) {
 ScrCryptoHash *scr_crypto_hmac_new_str(ScrStr *alg, ScrStr *key) {
   ScrDigestAlg kind;
   if (!scr_digest_alg(alg->data, alg->len, &kind)) {
-    scr_crypto_digest_unsupported();
+    scr_crypto_invalid_digest(alg);
     return NULL;
   }
   return scr_crypto_hash_alloc(kind, true, (const unsigned char *)key->data, key->len);
@@ -4202,7 +4235,7 @@ ScrCryptoHash *scr_crypto_hmac_new_str(ScrStr *alg, ScrStr *key) {
 ScrCryptoHash *scr_crypto_hmac_new_bytes(ScrStr *alg, ScrBytes *key) {
   ScrDigestAlg kind;
   if (!scr_digest_alg(alg->data, alg->len, &kind)) {
-    scr_crypto_digest_unsupported();
+    scr_crypto_invalid_digest(alg);
     return NULL;
   }
   return scr_crypto_hash_alloc(kind, true, key->data,
@@ -4291,7 +4324,7 @@ static ScrStr *scr_hash_digest_raw(const ScrStr *alg, const unsigned char *data,
                                     const ScrStr *enc) {
   ScrDigestAlg kind;
   if (!scr_digest_alg(alg->data, alg->len, &kind)) {
-    scr_crypto_digest_unsupported();
+    scr_crypto_hash_digest_unsupported(alg);
     return NULL;
   }
   unsigned char d[32];
@@ -4474,7 +4507,7 @@ ScrBytes *scr_crypto_pbkdf2(ScrBytes *password, ScrBytes *salt,
   }
   ScrDigestAlg alg;
   if (!scr_digest_alg(digest->data, digest->len, &alg)) {
-    scr_crypto_digest_unsupported();
+    scr_crypto_invalid_digest(digest);
     return NULL;
   }
   return scr_crypto_pbkdf2_raw(password->data,

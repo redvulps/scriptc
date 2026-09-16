@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { createHash, createHmac, pbkdf2Sync, randomFillSync, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, pbkdf2, pbkdf2Sync, randomFillSync, randomInt, timingSafeEqual } from "node:crypto";
 
 function caught(fn: () => void): string {
   try {
@@ -8,6 +8,18 @@ function caught(fn: () => void): string {
   } catch (error) {
     if (error instanceof Error) {
       return `${error.name}:${error.message}`;
+    }
+    return String(error);
+  }
+}
+
+function caughtWithCode(fn: () => void): string {
+  try {
+    fn();
+    return "no-throw";
+  } catch (error) {
+    if (error instanceof Error) {
+      return `${error.name}:${(error as NodeJS.ErrnoException).code}:${error.message}`;
     }
     return String(error);
   }
@@ -57,3 +69,13 @@ finalized.digest();
 console.log("finalized", caught(() => void finalized.digest("hex")));
 const badAlgorithm: string = "nope";
 console.log("bad-algorithm", caught(() => void createHash(badAlgorithm)));
+console.log("bad-hmac-string", caughtWithCode(() => void createHmac(badAlgorithm, "key")));
+console.log("bad-hmac-buffer", caughtWithCode(() => void createHmac(badAlgorithm, Buffer.from("key"))));
+console.log("bad-hash", caughtWithCode(() => void crypto.hash(badAlgorithm, "data")));
+console.log("bad-pbkdf2-sync", caughtWithCode(() => void pbkdf2Sync("pw", "salt", 1, 1, badAlgorithm)));
+let badPbkdf2CallbackCalled = false;
+console.log("bad-pbkdf2-callback", caughtWithCode(() => {
+  pbkdf2("pw", "salt", 1, 1, badAlgorithm, () => {
+    badPbkdf2CallbackCalled = true;
+  });
+}), badPbkdf2CallbackCalled);
