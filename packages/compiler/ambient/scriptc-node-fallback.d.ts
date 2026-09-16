@@ -296,6 +296,20 @@ declare var process: {
 declare var __dirname: string;
 declare var __filename: string;
 
+interface ScriptcModule {
+  children: ScriptcModule[];
+  exports: any;
+  filename: string;
+  id: string;
+  isPreloading: boolean;
+  loaded: boolean;
+  parent: ScriptcModule | null | undefined;
+  path: string;
+  paths: string[];
+  require(id: string): any;
+}
+declare var module: ScriptcModule;
+
 /* `global` IS globalThis (Node's alias), and `declare var process` above
  * puts process on `typeof globalThis` — so `globalThis.process` and
  * `global.process` read the same object as the bare name. */
@@ -303,10 +317,8 @@ declare var global: typeof globalThis;
 
 /* The `require` VALUE's non-call surface. require() CALLS are module
  * edges (the checker models them as imports); the object's own members
- * are declared here so harness idioms typecheck. `require.main` lowers
- * to the ENTRY module's record ({ filename } — a compiled binary's main
- * module is always the entry, Node's answer for a directly-run script);
- * the rest fences per site. */
+ * are declared here so harness idioms typecheck. The main/cache values and
+ * the CommonJS module graph lower to native process-lifetime handles. */
 interface ScriptcRequireResolveOptions {
   paths?: string[];
 }
@@ -321,9 +333,9 @@ interface ScriptcRequire {
    * @types/node: the value's home is the module system, not the static
    * value model — reached uses fence per site. */
   (id: string): any;
-  main: { filename: string } | undefined;
+  main: ScriptcModule | undefined;
   resolve: ScriptcRequireResolve;
-  cache: { [id: string]: unknown };
+  cache: { [id: string]: ScriptcModule | undefined };
 }
 declare var require: ScriptcRequire;
 

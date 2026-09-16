@@ -6190,6 +6190,15 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2880-cjs-module-graph/main.cjs": {
+   "order": [
+    "<repo>/tests/corpus/2880-cjs-module-graph/leaf.cjs",
+    "<repo>/tests/corpus/2880-cjs-module-graph/child.cjs",
+    "<repo>/tests/corpus/2880-cjs-module-graph/failed.cjs",
+    "<repo>/tests/corpus/2880-cjs-module-graph/main.cjs"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
@@ -7251,6 +7260,12 @@
      "milestone": "later"
     }
    ]
+  },
+  "<repo>/tests/diagnostics/cjs-module-mutation/main.ts": {
+   "order": [
+    "<repo>/tests/diagnostics/cjs-module-mutation/main.ts"
+   ],
+   "diags": []
   },
   "<repo>/tests/diagnostics/cjs-require-cycle/main.js": {
    "order": [

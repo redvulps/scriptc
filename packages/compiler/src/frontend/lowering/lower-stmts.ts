@@ -36,6 +36,7 @@ import { probeNodeRequireRefusal } from "../npm.js";
 import { numLit, varRef } from "../../ir/build.js";
 import { constituentTypes } from "../ts7/checker.js";
 import { npmStaticPackageOfPath } from "../npm-static.js";
+import { fenceNodeModuleMutation } from "./lower-node-module.js";
 
 interface UsingRegistration {
   acquire: IrStmt;
@@ -4363,6 +4364,7 @@ function lowerBranchSwitch(
     if (!ts.isElementAccessExpression(target) && !ts.isPropertyAccessExpression(target)) {
       lowerer.unsupported("SC1090", expr, "'delete' of non-property expressions");
     }
+    fenceNodeModuleMutation(lowerer, target, "delete");
     const lowerKey = (): IrExpr => {
       if (ts.isPropertyAccessExpression(target)) {
         return { kind: "strLit", value: target.name.text, type: STRING, loc: locOf(target.name) };
@@ -4890,6 +4892,7 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
         }
         if (ts.isElementAccessExpression(expr.left)) return lowerer.lowerElementWrite(expr);
         if (ts.isPropertyAccessExpression(expr.left)) {
+          fenceNodeModuleMutation(lowerer, expr.left, "assignment");
           // Native arrays have a writable length property. The runtime grows
           // by creating holes and truncates with RC-aware removal; keep this
           // as a statement operation so invalid lengths can use the normal

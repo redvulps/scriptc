@@ -113,6 +113,38 @@ static SCR_TL ScrStr *scr_arch_str = NULL;      /* interned process.arch */
 static SCR_TL ScrStr *scr_versions_node_str = NULL; /* interned process.versions.node */
 static SCR_TL ScrStr *scr_versions_openssl_str = NULL; /* interned process.versions.openssl */
 
+typedef struct {
+  ScrStr *filename;
+  ScrStr *id;
+  ScrStr *path;
+  ScrArr *paths;
+  ScrArr *children;
+  double parent;
+  size_t cache_order;
+  bool in_cache;
+  bool loaded;
+  bool is_main;
+} ScrModuleRecord;
+
+static SCR_TL ScrModuleRecord *scr_module_records = NULL;
+static SCR_TL size_t scr_module_record_count = 0;
+static SCR_TL size_t scr_module_next_cache_order = 1;
+
+static void scr_module_registry_cleanup(void) {
+  for (size_t i = 0; i < scr_module_record_count; i++) {
+    ScrModuleRecord *m = &scr_module_records[i];
+    scr_str_release(m->filename);
+    scr_str_release(m->id);
+    scr_str_release(m->path);
+    scr_arr_release(m->paths);
+    scr_arr_release(m->children);
+  }
+  free(scr_module_records);
+  scr_module_records = NULL;
+  scr_module_record_count = 0;
+  scr_module_next_cache_order = 1;
+}
+
 /* Keep lazy process values out of the startup cleanup root.  The executable
  * linker can discard an otherwise-unused getter, but an unconditional atexit
  * callback that mentions every cache would still retain each cache cell (and
@@ -121,6 +153,7 @@ static SCR_TL ScrStr *scr_versions_openssl_str = NULL; /* interned process.versi
  * at process exit and retains the RC-audit cleanup guarantee for the values a
  * program actually observes. */
 static void scr_lib_cleanup(void) {
+  scr_module_registry_cleanup();
   scr_arr_release(scr_argv_arr);
   scr_argv_arr = NULL;
 }
@@ -205,6 +238,151 @@ void scr_lib_session_cleanup(void) {
   scr_process_versions_openssl_cleanup();
 }
 #endif
+
+static size_t scr_module_index(double module_id) {
+  if (!isfinite(module_id) || module_id < 0 || trunc(module_id) != module_id ||
+      module_id >= (double)scr_module_record_count) {
+    scr_trap("invalid CommonJS module handle");
+  }
+  return (size_t)module_id;
+}
+
+static ScrModuleRecord *scr_module_record(double module_id) {
+  return &scr_module_records[scr_module_index(module_id)];
+}
+
+void scr_module_registry_init(double count_value) {
+  if (!isfinite(count_value) || count_value < 0 || trunc(count_value) != count_value ||
+      count_value > (double)SIZE_MAX) {
+    scr_trap("invalid CommonJS module registry size");
+  }
+  scr_module_registry_cleanup();
+  scr_module_record_count = (size_t)count_value;
+  if (scr_module_record_count == 0) return;
+  scr_module_records = (ScrModuleRecord *)calloc(scr_module_record_count, sizeof(*scr_module_records));
+  if (!scr_module_records) scr_trap("out of memory");
+  for (size_t i = 0; i < scr_module_record_count; i++) {
+    scr_module_records[i].parent = -1;
+  }
+}
+
+void scr_module_define(double module_id, ScrStr *filename, ScrStr *id,
+                       ScrStr *path, ScrArr *paths, bool is_main) {
+  ScrModuleRecord *m = scr_module_record(module_id);
+  scr_str_release(m->filename);
+  scr_str_release(m->id);
+  scr_str_release(m->path);
+  scr_arr_release(m->paths);
+  scr_arr_release(m->children);
+  m->filename = scr_str_retain(filename);
+  m->id = scr_str_retain(id);
+  m->path = scr_str_retain(path);
+  m->paths = scr_arr_retain(paths);
+  m->children = scr_arr_new(SCR_ELEM_F64, 4);
+  m->parent = is_main ? -1 : -2;
+  m->cache_order = 0;
+  m->in_cache = false;
+  m->loaded = false;
+  m->is_main = is_main;
+}
+
+void scr_module_enter(double module_id) {
+  ScrModuleRecord *m = scr_module_record(module_id);
+  if (!m->in_cache) {
+    m->in_cache = true;
+    m->cache_order = scr_module_next_cache_order++;
+  }
+  m->loaded = false;
+}
+
+void scr_module_link(double parent_id, double child_id) {
+  ScrModuleRecord *parent = scr_module_record(parent_id);
+  ScrModuleRecord *child = scr_module_record(child_id);
+  if (!child->is_main && child->parent < 0) child->parent = parent_id;
+  if (!scr_arr_includes_f64(parent->children, child_id)) {
+    scr_arr_push_f64(parent->children, child_id);
+  }
+}
+
+void scr_module_finish(double module_id) {
+  ScrModuleRecord *m = scr_module_record(module_id);
+  m->loaded = true;
+}
+
+void scr_module_fail(double module_id) {
+  ScrModuleRecord *m = scr_module_record(module_id);
+  if (m->parent >= 0) {
+    ScrModuleRecord *parent = scr_module_record(m->parent);
+    double at = scr_arr_index_of_f64(parent->children, module_id);
+    if (at >= 0) {
+      ScrArr *removed = scr_arr_splice(parent->children, at, 1);
+      scr_arr_release(removed);
+    }
+  }
+  m->parent = m->is_main ? -1 : -2;
+  m->cache_order = 0;
+  m->in_cache = false;
+  m->loaded = false;
+}
+
+ScrStr *scr_module_filename(double module_id) {
+  return scr_str_retain(scr_module_record(module_id)->filename);
+}
+
+ScrStr *scr_module_id(double module_id) {
+  return scr_str_retain(scr_module_record(module_id)->id);
+}
+
+ScrStr *scr_module_path(double module_id) {
+  return scr_str_retain(scr_module_record(module_id)->path);
+}
+
+ScrArr *scr_module_paths(double module_id) {
+  return scr_arr_retain(scr_module_record(module_id)->paths);
+}
+
+ScrArr *scr_module_children(double module_id) {
+  return scr_arr_retain(scr_module_record(module_id)->children);
+}
+
+double scr_module_parent(double module_id) {
+  return scr_module_record(module_id)->parent;
+}
+
+bool scr_module_loaded(double module_id) {
+  return scr_module_record(module_id)->loaded;
+}
+
+static bool scr_module_filename_equal(const ScrModuleRecord *m, const ScrStr *filename) {
+  return m->filename && m->filename->len == filename->len &&
+         memcmp(m->filename->data, filename->data, filename->len) == 0;
+}
+
+double scr_module_cache_get(ScrStr *filename) {
+  for (size_t i = 0; i < scr_module_record_count; i++) {
+    const ScrModuleRecord *m = &scr_module_records[i];
+    if (m->in_cache && scr_module_filename_equal(m, filename)) return (double)i;
+  }
+  return -1;
+}
+
+bool scr_module_cache_has(ScrStr *filename) {
+  return scr_module_cache_get(filename) >= 0;
+}
+
+ScrArr *scr_module_cache_keys(void) {
+  ScrArr *keys = scr_arr_new(SCR_ELEM_STR, scr_module_record_count);
+  for (size_t order = 1; order < scr_module_next_cache_order; order++) {
+    for (size_t i = 0; i < scr_module_record_count; i++) {
+      ScrModuleRecord *m = &scr_module_records[i];
+      if (m->in_cache && m->cache_order == order) {
+        scr_arr_push_ref(keys, scr_str_retain(m->filename));
+        break;
+      }
+    }
+  }
+  return keys;
+}
 
 /* Raw argv accessors for the island's process shim (scr_island.c): the
  * island's process.argv must match the static world's ["scriptc",

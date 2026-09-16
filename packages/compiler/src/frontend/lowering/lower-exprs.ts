@@ -34,6 +34,7 @@ import { isSafeToDiscard, isSafeToMoveConditionEarlier, isSafeToRepeat } from ".
 import { hasOptionalChainGuard, isOptionalChainTail, isRequireMainFilename } from "./expressions/optional-chains.js";
 import { conditionalSpreadOf, foldedStringKeyOf } from "./expressions/object-literals.js";
 import { tryLowerExpression } from "./expressions/try-lower-expression.js";
+import { fenceNodeModuleMutation, isNodeModuleValue, lowerNodeModuleIdentifier, lowerNodeModuleProperty, lowerRequireCacheElement, lowerRequireCacheHas, lowerRequireMainProperty } from "./lower-node-module.js";
 
 /** An assignable `obj.field` target — a class field, a record field, or a
  * class ACCESSOR property (reads become getter calls, writes setter calls;
@@ -598,6 +599,9 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       return { kind: "jsOp", op: "arrLit", args, type: JSVAL, loc };
     }
     if (ts.isTypeOfExpression(expr)) {
+      if (isNodeModuleValue(lowerer, expr.expression)) {
+        return { kind: "strLit", value: "object", type: STRING, loc };
+      }
       if (ts.isPropertyAccessExpression(expr.expression)) {
         const presence = lowerPromiseThenPresence(
           lowerer,
@@ -689,6 +693,8 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       lowerer.unsupported("SC1090", expr, "typeof expressions on statically-typed values");
     }
     if (ts.isIdentifier(expr)) {
+      const moduleValue = lowerNodeModuleIdentifier(lowerer, expr);
+      if (moduleValue) return moduleValue;
       if (lowerer.isSelfReference(expr)) {
         return { kind: "selfRef", type: lowerer.ctx.selfType!, loc };
       }
@@ -1414,6 +1420,10 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       if (isRequireMainFilename(lowerer, expr)) {
         return { kind: "strLit", value: lowerer.entry.fileName, type: STRING, loc };
       }
+      const requireMain = lowerRequireMainProperty(lowerer, expr);
+      if (requireMain) return requireMain;
+      const moduleProperty = lowerNodeModuleProperty(lowerer, expr);
+      if (moduleProperty) return moduleProperty;
       if (expr.questionDotToken && expr.name.text === "electron") {
         const processProperty = lowerer.lowerProcessProperty(expr);
         if (processProperty) return processProperty;
@@ -4054,6 +4064,8 @@ export function lowerOptionalNumber(
       const en = lowerEnumAccess(lowerer, expr);
       if (en) return en;
     }
+    const cachedModule = lowerRequireCacheElement(lowerer, expr);
+    if (cachedModule) return cachedModule;
     // Native Web handles use the same supported surface for bracket and dot
     // spellings. Fence a statically-known unsupported key before the generic
     // checked-dynamic element-read path can turn it into a runtime missing
@@ -4750,6 +4762,9 @@ export function lowerOptionalNumber(
     }
     if (!ts.isElementAccessExpression(expr)) return null;
 
+    const cachedModule = lowerRequireCacheElement(lowerer, expr);
+    if (cachedModule) return cachedModule;
+
     const header = lowerer.lowerHttpHeadersElement(expr);
     if (header) return header;
 
@@ -4840,6 +4855,7 @@ export function lowerOptionalNumber(
    * assignment, produce no value in our subset). */
   export function lowerElementWrite(lowerer: Lowerer, expr: ts.BinaryExpression): IrStmt {
     const target = expr.left as ts.ElementAccessExpression;
+    fenceNodeModuleMutation(lowerer, target, "assignment");
     // `process.env[key] = v` — the computed twin of the dotted env write:
     // setenv(3), string keys and string values only.
     if (lowerer.isProcessEnv(target.expression) && !target.questionDotToken) {
@@ -5711,7 +5727,13 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
     const loc = locOf(expr);
     const op = expr.operatorToken.kind;
 
+    const cacheHas = lowerRequireCacheHas(lowerer, expr);
+    if (cacheHas) return cacheHas;
+
     if (op === ts.SyntaxKind.EqualsToken || (op >= ts.SyntaxKind.FirstCompoundAssignment && op <= ts.SyntaxKind.LastCompoundAssignment)) {
+      if (ts.isPropertyAccessExpression(expr.left) || ts.isElementAccessExpression(expr.left)) {
+        fenceNodeModuleMutation(lowerer, expr.left, "assignment");
+      }
       // `x = e` in EXPRESSION position (`while ((idx = s.indexOf("\n")) !== -1)`,
       // `f(x = v)`): evaluate e once, write the binding, yield the assigned
       // value — JS evaluation order. Variable targets only (locals and module

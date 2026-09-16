@@ -1971,6 +1971,25 @@ export type IrLibFn =
    * numbers, booleans, arrays, objects answer JS-exactly; undefined and
    * null throw the catchable TypeError). */
   | "dyn.toString"
+  /** Engine-free CommonJS module graph. Module values are scalar f64
+   * handles; generated startup defines the registry, init wrappers update
+   * loading/cache state, and the read surface answers Node's live metadata. */
+  | "module.registryInit"
+  | "module.define"
+  | "module.enter"
+  | "module.link"
+  | "module.finish"
+  | "module.fail"
+  | "module.filename"
+  | "module.id"
+  | "module.path"
+  | "module.paths"
+  | "module.children"
+  | "module.parent"
+  | "module.loaded"
+  | "module.cacheGet"
+  | "module.cacheHas"
+  | "module.cacheKeys"
   | "fs.readFileSync"
   /** readFileSync(path) — the Buffer read (+1 bytes); throws catchably
    * like the utf8 form. */

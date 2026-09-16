@@ -219,6 +219,8 @@ export function emitLibCall(host: LlvmEmitterContext, e: LibCallExpr): LlValue {
       case "process":
       case "stdin":
         return host.emitProcessLibCall(e);
+      case "module":
+        return host.emitGenericLibCall(e);
       case "error":
       case "regex":
       case "emitter":

@@ -9,9 +9,9 @@
       "static": {
         "replace-refusal": 73,
         "verify-gap": 2756,
-        "audit-partial": 382,
-        "classify": 3,
-        "implement": 89
+        "audit-partial": 391,
+        "classify": 2,
+        "implement": 81
       },
       "dynamic": {
         "audit-partial": 748,
@@ -59332,7 +59332,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59373,7 +59374,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59414,7 +59416,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59455,7 +59458,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59532,7 +59536,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59640,12 +59645,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.cache",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -59718,7 +59725,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59792,7 +59800,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59821,12 +59830,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.children",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -59863,7 +59874,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59904,7 +59916,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59945,7 +59958,8 @@
             "tests/corpus/1612-cjs-module-globals.cjs",
             "tests/corpus/1596-cjs-modules/main.js",
             "tests/corpus/1629-require-main-filename.cjs",
-            "tests/corpus/2830-cjs-require-self-name/main.cjs"
+            "tests/corpus/2830-cjs-require-self-name/main.cjs",
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
           ]
         },
         "dynamic": {
@@ -59977,12 +59991,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.id",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -60013,12 +60029,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.isPreloading",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -60046,12 +60064,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.loaded",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -60082,12 +60102,14 @@
       "priority": "low",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.parent",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -60118,12 +60140,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "unreviewed",
-          "action": "classify",
-          "verification": "unreviewed",
-          "confidence": "low",
-          "source": null,
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "compiler-feature:modules.path",
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -60154,12 +60178,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.paths",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",
@@ -60187,12 +60213,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "implement",
-          "verification": "declared-gap",
-          "confidence": "medium",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
           "source": "compiler-feature:modules.Module",
-          "tests": []
+          "tests": [
+            "tests/corpus/2880-cjs-module-graph/main.cjs"
+          ]
         },
         "dynamic": {
           "status": "not-implemented",

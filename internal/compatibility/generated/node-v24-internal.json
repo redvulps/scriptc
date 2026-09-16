@@ -675,11 +675,11 @@
       "apiEntries": 27,
       "static": {
         "supported": 0,
-        "partial": 15,
+        "partial": 24,
         "refused": 0,
-        "not-implemented": 9,
+        "not-implemented": 1,
         "by-design": 0,
-        "unreviewed": 3,
+        "unreviewed": 2,
         "not-applicable": 0
       },
       "dynamic": {
@@ -73699,7 +73699,8 @@
           "tests/corpus/1629-require-main-filename.cjs",
           "tests/corpus/2830-cjs-require-self-name/main.cjs",
           "tests/corpus/2858-import-meta-resolve/main.mjs",
-          "tests/corpus/2860-require-resolve/main.cjs"
+          "tests/corpus/2860-require-resolve/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -73737,7 +73738,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -73801,7 +73803,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -73838,7 +73841,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -73875,7 +73879,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -73942,7 +73947,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74041,8 +74047,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.cache"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.cache",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -74105,7 +74114,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74168,7 +74178,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74195,8 +74206,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.children"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.children",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -74228,7 +74242,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74265,7 +74280,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74302,7 +74318,8 @@
           "tests/corpus/1612-cjs-module-globals.cjs",
           "tests/corpus/1596-cjs-modules/main.js",
           "tests/corpus/1629-require-main-filename.cjs",
-          "tests/corpus/2830-cjs-require-self-name/main.cjs"
+          "tests/corpus/2830-cjs-require-self-name/main.cjs",
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
         ]
       },
       "dynamic": {
@@ -74333,8 +74350,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.id"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.id",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -74364,8 +74384,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.isPreloading"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.isPreloading",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -74391,8 +74414,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.loaded"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.loaded",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -74422,8 +74448,11 @@
         "inherited": false
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.parent"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.parent",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -74453,7 +74482,11 @@
         "inherited": true
       },
       "static": {
-        "status": "unreviewed"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.path",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -74483,8 +74516,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.paths"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.paths",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -74510,8 +74546,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-feature:modules.Module"
+        "status": "partial",
+        "evidence": "compiler-feature:modules.Module",
+        "tests": [
+          "tests/corpus/2880-cjs-module-graph/main.cjs"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",

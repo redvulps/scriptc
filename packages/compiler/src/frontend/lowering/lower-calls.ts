@@ -34,6 +34,7 @@ import { expandoMemberRead } from "./lower-expando.js";
 import { npmStaticPackageOfPath } from "../npm-static.js";
 import { countedFor, varRef } from "../../ir/build.js";
 import { rejectStaticThis } from "./static-this.js";
+import { fenceNodeModuleMutationCall, lowerRequireCacheKeys } from "./lower-node-module.js";
 
 /** How a parameter participates in CALL-SITE COMPLETION (the frontend
  * completes every call to the one full signature, so the IR and backends
@@ -4299,6 +4300,7 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
     }
     if (ts.isPropertyAccessExpression(expr.expression)) {
       const intrinsic =
+        fenceNodeModuleMutationCall(lowerer, expr, expr.expression) ??
         // Builtin namespace imports first (`fs.readFileSync(...)` where fs
         // is `import * as fs from "node:fs"`): the same tables and fences
         // as named builtin imports — before anything below tries to lower
@@ -7671,6 +7673,8 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
     if (call.questionDotToken || access.questionDotToken) return null;
     if (!lowerer.isStdlibGlobal(access.expression, "Object")) return null;
     const member = access.name.text;
+    const cacheKeys = lowerRequireCacheKeys(lowerer, call, member);
+    if (cacheKeys) return cacheKeys;
     // Object.is — the spec's SameValue over the static kinds. Number
     // pairs take the runtime SameValue (NaN equals NaN, +0 differs from
     // -0 — the two divergences from ===); every other supported pair

@@ -7312,6 +7312,38 @@ function emitProcessLibCall(state: LibCallState): Temp {
             return finish(`scr_process_getuid()`);
           case "process.uptime":
             return finish(`scr_process_uptime()`);
+          case "module.registryInit":
+            return finish(`scr_module_registry_init(${arg(0)})`);
+          case "module.define":
+            return finish(`scr_module_define(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${arg(5)})`);
+          case "module.enter":
+            return finish(`scr_module_enter(${arg(0)})`);
+          case "module.link":
+            return finish(`scr_module_link(${arg(0)}, ${arg(1)})`);
+          case "module.finish":
+            return finish(`scr_module_finish(${arg(0)})`);
+          case "module.fail":
+            return finish(`scr_module_fail(${arg(0)})`);
+          case "module.filename":
+            return finish(`scr_module_filename(${arg(0)})`);
+          case "module.id":
+            return finish(`scr_module_id(${arg(0)})`);
+          case "module.path":
+            return finish(`scr_module_path(${arg(0)})`);
+          case "module.paths":
+            return finish(`scr_module_paths(${arg(0)})`);
+          case "module.children":
+            return finish(`scr_module_children(${arg(0)})`);
+          case "module.parent":
+            return finish(`scr_module_parent(${arg(0)})`);
+          case "module.loaded":
+            return finish(`scr_module_loaded(${arg(0)})`);
+          case "module.cacheGet":
+            return finish(`scr_module_cache_get(${arg(0)})`);
+          case "module.cacheHas":
+            return finish(`scr_module_cache_has(${arg(0)})`);
+          case "module.cacheKeys":
+            return finish(`scr_module_cache_keys()`);
           case "process.availableMemory":
             return finish(`scr_available_memory()`);
           case "process.constrainedMemory":
@@ -8382,6 +8414,7 @@ function emitLibCallExpr(emitter: CEmitter, e: LibCallExpr): Temp {
       return emitAsyncContextLibCall(state);
     case "process":
     case "stdin":
+    case "module":
       return emitProcessLibCall(state);
     case "error":
     case "regex":

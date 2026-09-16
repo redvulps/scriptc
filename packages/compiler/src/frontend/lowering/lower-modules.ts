@@ -25,6 +25,7 @@ import { isUnitOnlyTsType, unitOnlyUnion } from "../type-mapper.js";
 import type { ClassInfo } from "./lower-classes.js";
 import { decoratorNodesOf, genericIfaceBindingKeepsClass, guaranteedDecorationThrow } from "./lower-classes.js";
 import { isMixinFnBinding, mixinResultBindingClassOf } from "./lower-mixins.js";
+import { cjsModuleRef, cjsModuleRegistryPrelude } from "./lower-node-module.js";
 
 /** One file's declarations, split for collection and init-body lowering. */
 export interface FileParts {
@@ -1912,6 +1913,44 @@ export function collectGlobals(lowerer: Lowerer, sf: ts.SourceFile, topStmts: ts
         body.push(...lowerer.lowerStaticFieldInits(statics[at]!.info));
         at++;
       }
+      const moduleRef = cjsModuleRef(lowerer, sf);
+      if (moduleRef !== null) {
+        const guardedBody = body.splice(guardId !== undefined ? 2 : 0);
+        const catchLocal = lowerer.declareHiddenLocal("%moduleError", { kind: "caught" });
+        guardedBody.unshift({
+          kind: "exprStmt",
+          expr: { kind: "libCall", fn: "module.enter", args: [moduleRef], type: VOID, loc: loc0 },
+          loc: loc0,
+        });
+        guardedBody.push({
+          kind: "exprStmt",
+          expr: { kind: "libCall", fn: "module.finish", args: [moduleRef], type: VOID, loc: loc0 },
+          loc: loc0,
+        });
+        body.push({
+          kind: "tryCatch",
+          tryBody: guardedBody,
+          catchBody: [
+            {
+              kind: "exprStmt",
+              expr: { kind: "libCall", fn: "module.fail", args: [moduleRef], type: VOID, loc: loc0 },
+              loc: loc0,
+            },
+            ...(guardId !== undefined
+              ? [{
+                  kind: "assign" as const,
+                  localId: guardId,
+                  value: { kind: "boolLit" as const, value: false, type: BOOL, loc: loc0 },
+                  loc: loc0,
+                }]
+              : []),
+            { kind: "rethrow", localId: catchLocal.id, loc: loc0 },
+          ],
+          catchLocalId: catchLocal.id,
+          finallyBody: null,
+          loc: loc0,
+        });
+      }
       const loc: SrcLoc = { file: sf.fileName, start: 0, end: 0 };
       return {
         name,
@@ -1951,16 +1990,16 @@ export function collectGlobals(lowerer: Lowerer, sf: ts.SourceFile, topStmts: ts
             loc,
           }
         : null;
-    const body: IrStmt[] =
-      initCall !== null
-        ? [{
-            kind: "exprStmt",
-            expr: isAsync
-              ? { kind: "awaitExpr", value: initCall, type: VOID, loc }
-              : initCall,
-            loc,
-          }]
-        : [];
+    const body: IrStmt[] = [...cjsModuleRegistryPrelude(lowerer, loc)];
+    if (initCall !== null) {
+      body.push({
+        kind: "exprStmt",
+        expr: isAsync
+          ? { kind: "awaitExpr", value: initCall, type: VOID, loc }
+          : initCall,
+        loc,
+      });
+    }
     // Node's startup refusal (a resolution the graph carries that Node
     // rejects — preflight's Node-order resolution walk — or a module-LINK
     // SyntaxError from either named-import checker): the graph is refused

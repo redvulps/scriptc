@@ -29,6 +29,7 @@ const results = await Promise.all(jobs); // number[] — compiles
 
 **Standard library**
 
+- CommonJS module metadata (`module.id`, `filename`, `path`, `paths`, `loaded`, `isPreloading`, `parent`, `children`, `require.main`, and read-only `require.cache` lookup/enumeration) compiles natively. A compiled binary has a fixed module graph, so cache deletion/reloading, metadata writes, `module.paths` mutation, and `require.extensions` remain explicit refusals.
 - The type checker sees the full standard library; only the supported surface compiles. Reaching declared-but-unlowered surface is SC2020 with the supported alternatives in the hint — e.g. parts of the regex API (`re.exec`), `Symbol`, `globalThis`, array/Map/Set methods beyond the lowered sets.
 - `Date` values support zero-argument construction, one number/string argument, storage and passing, `getTime`/`valueOf`, `toISOString`, the local and UTC calendar getters, and `getTimezoneOffset`. Date-armed unions, the year/month field constructor, setters, identity comparisons, throwing `Date` values, `Date.parse`, and locale/string formatters remain fenced; the supported string grammar is described below.
 - Map keys and Set elements are strings and numbers; other key types are fenced.

@@ -92,6 +92,7 @@ import {
 } from "../type-mapper.js";
 import { CompoundOp, IslandFnEntry, boundaryIntoIslandMsg, boundaryOutOfIslandMsg, BuiltinModuleFn, builtinConstLit, builtinModuleConstOf, builtinModulesArrayLit, builtinFenceHintOf, builtinModuleFnOf, stdlibMemberFence, isStdlibMember, isStdlibSymbol, isStdlibGlobal, stdlibGlobalMember, nodeTypesOnlySymbol } from "./surfaces.js";
 import { FileParts, splitFiles, collectProgram, collectNpmImports, collectJsonImports, moduleArtifacts, collectGlobals, declSymbolOf, defaultExportSymbolOf, lowerFileInit, lowerDefaultExport, buildMain, appendDynamicImportModules } from "./lower-modules.js";
+import { prepareCjsModuleGraph } from "./lower-node-module.js";
 import { ClassInfo, ClassIteratorInfo, GenericClassInfo, registerBuiltinErrorClasses, registerBuiltinEmitterClass, registerBuiltinStreamClasses, builtinErrorInfoOf, builtinEmitterInfoOf, builtinStreamInfoOf, analyzeClassDecoration, classIteratorDrainCall, classIteratorNextCall, classIteratorOf, classIteratorOpenCall, classIteratorRestDrainCall, classMemberNameOf, classValueRef, collectClassShape, exactClassOfReceiver, collectClassShapeInner, ctorAbiEquals, findMethodOn, findStaticOn, findGenericMethodOn, findGenericStaticOn, genericClassInstanceType, isSubclassOf, inHierarchy, overrideBelow, staticShadowBelow, upcastTo, lowerClassMembers, lowerClassCtor, lowerClassExpression, lowerClassExpressionInfo, lowerClassMethodMember, lowerClassValueProperty, lowerStaticMethod, throwingSetterFn, fieldInitStmts, lowerStaticFieldInits, lowerStaticFieldRead, lowerDerivedCtorBody, superCallStmt, lowerSuperMethodCall, superThisRef, lowerSuperAccessorRead, lowerSuperAccessorWrite, inheritsBuiltinErrorCtor, inheritsBuiltinEmitterCtor, errorMessageArg, lowerNew, accessorCall } from "./lower-classes.js";
 import { MixinFnShape, mixinCallClassInfoOf, mixinIntersectionInstanceType } from "./lower-mixins.js";
 import { ParamShape, FnSig, GenericFnInfo, GenericInstance, bindingNeverReassigned, bodyReadsArguments, implicitMonoFile, isThisParameter, paramShape, paramShapes, checkDefaultParamBodyType, completeArgs, wrappedUndefined, undefinedArgFor, requireExactArityValue, bodyReturnType, declaredReturnType, collectSignature, collectSignatureInner, collectGenericSignature, genericFnOf, lowerGenericCall, lowerGenericFnValue, inferTypeParamBindings, lowerGenericInstance, lowerCall, lowerFfiCall, lowerTimersMemberCall, lowerPromiseMethodCall, lowerFilterNarrowCall, isTopLevelFnSymbol, lowerNestedFunctionDecl, lambdaSignature, lowerLambda, lowerFunction, validateFfiImports } from "./lower-calls.js";
@@ -1628,6 +1629,12 @@ export class Lowerer {
    * any body lowers: import headers and inline require statements call
    * dependency inits by these names. */
   readonly initNameOf = new Map<ts.SourceFile, string>();
+  /** CommonJS module objects are scalar handles into the runtime registry.
+   * IDs are assigned in deterministic module order before any body lowers;
+   * the feature gate stays false for programs that never inspect the graph. */
+  readonly cjsModuleIdOf = new Map<ts.SourceFile, number>();
+  readonly cjsModuleFiles: ts.SourceFile[] = [];
+  cjsModuleGraphEnabled = false;
   /** File → the id of its run-once guard global (a bool module global,
    * false at program start). Every non-entry module gets one: its %init
    * may be called from several importers/requirers, and the guard is what
@@ -2569,9 +2576,30 @@ export class Lowerer {
     const initName = this.initNameOf.get(dep);
     if (initName === undefined) return null;
     const loc = locOf(node);
-    return {
+    const init: IrStmt = {
       kind: "exprStmt",
       expr: { kind: "call", callee: initName, args: [], type: VOID, loc },
+      loc,
+    };
+    const parentModule = this.cjsModuleIdOf.get(node.getSourceFile());
+    const childModule = this.cjsModuleIdOf.get(dep);
+    if (parentModule === undefined || childModule === undefined) return init;
+    return {
+      kind: "block",
+      body: [
+        {
+          kind: "exprStmt",
+          expr: {
+            kind: "libCall",
+            fn: "module.link",
+            args: [numLit(parentModule, loc), numLit(childModule, loc)],
+            type: VOID,
+            loc,
+          },
+          loc,
+        },
+        init,
+      ],
       loc,
     };
   }
@@ -3257,6 +3285,7 @@ export class Lowerer {
     // (valueGlobalId) settled before any body lowers.
     for (const info of this.classes.values()) analyzeClassDecoration(this, info);
     this.prepareModuleInits(parts);
+    prepareCjsModuleGraph(this, parts);
 
     const functions: IrFunction[] = [];
     for (const fp of parts) {
@@ -3622,6 +3651,7 @@ export class Lowerer {
     // thunks) reachable emit must see.
     for (const info of this.classes.values()) analyzeClassDecoration(this, info);
     this.prepareModuleInits(parts);
+    prepareCjsModuleGraph(this, parts);
 
     // Every lowerable body, by emitted-function name. The names double as
     // retained-function keys and are deterministic by construction
@@ -9190,6 +9220,14 @@ export class Lowerer {
   }
 
   lowerElementAccess(expr: ts.ElementAccessExpression): IrExpr {
+    if (
+      ts.isPropertyAccessExpression(expr.expression) &&
+      ts.isIdentifier(expr.expression.expression) &&
+      expr.expression.expression.text === "require" &&
+      expr.expression.name.text === "cache"
+    ) {
+      return lowerElementAccess(this, expr);
+    }
     const receiver = this.runtimeOptionalIdentifierValue(expr.expression);
     const receiverValue = receiver && (receiver.present.kind === "array" || receiver.present.kind === "record")
       ? (() => {
