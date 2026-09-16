@@ -36,7 +36,7 @@ const results = await Promise.all(jobs); // number[] — compiles
 **The `any`/`unknown` boundary**
 
 - `any` without `--dynamic` is a compile error (SC2011) — use `unknown` and a checked cast, or opt into the engine.
-- `any` and `unknown` ride locals, parameters, and returns — never class fields, array elements, or union arms (record and tuple fields hold `unknown`).
+- `any` and `unknown` ride locals, parameters, and returns — never class fields, array elements, or union arms (record and tuple fields hold `unknown`). Program class instances can pass through `unknown` and recover at their exact static class type without losing identity, as can supported native handles; JSON-shaped records and arrays retain the copy boundary described below.
 - Operations on `unknown` beyond the supported surface (truthiness, `typeof` narrowing, property access, `+`, `switch`, `throw`) need a checked cast first.
 
 **Type surface**

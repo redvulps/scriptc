@@ -1,7 +1,7 @@
 /* Focused LLVM expression emission extracted from emitter.ts. */
 import { InternalCompilerError } from "../../errors.js";
 import { streamTypedRefEligible } from "../../ir/analysis.js";
-import { DYN, isRefCounted, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
+import { DYN, isDynTypedRefType, isRefCounted, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
 import { DYN_KIND } from "./dyn.js";
 import { elemAccess, vAdapters } from "./shapes.js";
 import { LlvmUnsupportedError } from "./unsupported.js";
@@ -30,14 +30,18 @@ export function emitDynamicExpr(host: LlvmEmitterContext, e: ExprOf<"dynFrom" | 
           return host.own({ name: t, type: e.type });
         }
         const v = host.emitExpr(e.value);
-        if (e.liveRef) {
+        const identityRef =
+          isDynTypedRefType(v.type) ||
+          (v.type.kind === "union" &&
+            (host.unionsById.get(v.type.unionId)?.arms.some(isDynTypedRefType) ?? false));
+        if (e.liveRef || identityRef) {
           if (v.type.kind === "union") {
             const adapter = host.liveDynUnionRefAdapter(v.type);
             const boxed = B.tmp();
             B.line(`${boxed} = call ptr @${adapter}(ptr ${v.name})`);
             return host.own({ name: boxed, type: e.type });
           }
-          if (!streamTypedRefEligible(v.type)) {
+          if (!streamTypedRefEligible(v.type) && !isDynTypedRefType(v.type)) {
             throw new InternalCompilerError(`llvm emitter bug: live dyn ref of ${typeKey(v.type)}`);
           }
           const key = typeKey(v.type);

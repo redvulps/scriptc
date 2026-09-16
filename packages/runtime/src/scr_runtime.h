@@ -2667,6 +2667,9 @@ bool scr_child_killed(ScrChild *c);
 bool scr_child_kill(ScrChild *c, const ScrStr *signal);
 bool scr_child_kill_num(ScrChild *c, double signum);
 void scr_child_unref(ScrChild *c);
+/* Installs ChildProcess's checked-dynamic handle identity bridge. Emitted
+ * programs call this only when the child_process surface is present. */
+void scr_child_dyn_install(void);
 bool scr_children_reffed_pending(void);
 void scr_children_teardown(void);
 /* Node's signal-name table (scr_lib.c), shared with child.kill: the
@@ -3070,12 +3073,13 @@ typedef enum {
    * object → host closure → dyn is merely never collected (the
    * documented cross-boundary-cycle divergence). */
   SCR_DYN_JSVAL,
-  /* A compiler-owned typed reference in transit through a native Web
-   * stream. Unlike an ordinary typed→unknown conversion, this capsule
-   * retains the original value so a statically typed reader can recover
-   * its identity. `materialize` supplies the ordinary deep-copy view for
-   * consumers such as fetch request bodies that need a dyn chunk. Enum
-   * position: LAST — LLVM hardcodes every preceding kind number. */
+  /* A compiler-owned typed reference. Program class instances use this for
+   * ordinary `unknown` storage; native Web streams also use it when their
+   * contract must expose the exact input reference again. The capsule
+   * retains the original value so an exact checked cast preserves identity;
+   * `materialize` supplies the ordinary own-field/data view to generic dyn
+   * consumers. Enum position: LAST — LLVM hardcodes every preceding kind
+   * number. */
   SCR_DYN_TYPED_REF,
 } ScrDynKind;
 
@@ -3100,6 +3104,7 @@ typedef enum {
   SCR_DYNH_FETCH_HEADERS, /* native static-fetch response Headers */
   SCR_DYNH_EVENT,          /* native static-fetch abort Event */
   SCR_DYNH_ABORT_CONTROLLER, /* native static-fetch AbortController */
+  SCR_DYNH_CHILD,          /* child_process.ChildProcess */
   SCR_DYNH_COUNT,
 } ScrDynHandleTag;
 

@@ -3593,3 +3593,66 @@ void scr_children_poll(void) {
 }
 
 #endif /* !_WIN32 */
+
+/* ── checked-dynamic ChildProcess identity bridge ────────────────────
+ * Typed code normally checks the box back to ChildProcess before member
+ * access, so this table's essential contract is retain/release identity.
+ * The three modeled properties also remain useful while a JavaScript
+ * package carries the handle through an inferred checked-dynamic slot.
+ * Method calls stay loud until their callback signatures have dedicated
+ * dyn adapters; they never silently manufacture a different child. */
+static ScrDyn *scr_child_dyn_invoke(
+    void *h, ScrDyn *self, const char *method,
+    ScrDyn *const *args, size_t argc, const char *what) {
+  (void)h;
+  (void)self;
+  (void)method;
+  (void)args;
+  (void)argc;
+  (void)what;
+  static const char msg[] =
+      "ChildProcess method calls through an 'unknown' value are not supported yet — narrow the value to ChildProcess first";
+  scr_throw_error_msg(SCR_ERR_ERROR, msg, sizeof msg - 1);
+  return NULL;
+}
+
+static ScrDyn *scr_child_dyn_get(void *h, const char *key, size_t key_len) {
+  ScrChild *child = (ScrChild *)h;
+  if (key_len == 6 && memcmp(key, "killed", 6) == 0) {
+    return scr_dyn_new_bool(scr_child_killed(child));
+  }
+  if (key_len == 3 && memcmp(key, "pid", 3) == 0) {
+    return scr_child_has_pid(child)
+        ? scr_dyn_new_num(scr_child_pid(child))
+        : scr_dyn_retain(scr_dyn_undefined());
+  }
+  if (key_len == 8 && memcmp(key, "exitCode", 8) == 0) {
+    return scr_child_has_exit_code(child)
+        ? scr_dyn_new_num(scr_child_exit_code(child))
+        : scr_dyn_new_null();
+  }
+  return NULL;
+}
+
+static bool scr_child_dyn_set(
+    void *h, const char *key, size_t key_len, const ScrDyn *value) {
+  (void)h;
+  (void)key;
+  (void)key_len;
+  (void)value;
+  return false;
+}
+
+static const ScrDynHandleOps scr_child_dyn_ops = {
+  "ChildProcess",
+  &scr_child_retain_v,
+  &scr_child_release_v,
+  &scr_child_dyn_invoke,
+  &scr_child_dyn_get,
+  &scr_child_dyn_set,
+  NULL,
+};
+
+void scr_child_dyn_install(void) {
+  scr_dyn_handle_install(SCR_DYNH_CHILD, &scr_child_dyn_ops);
+}

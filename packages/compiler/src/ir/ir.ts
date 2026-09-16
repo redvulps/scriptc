@@ -4832,12 +4832,13 @@ export type IrExpr =
    * TypeError), the interned signature key (dynCheck's exact-unwrap fast
    * path), and `fnName` — the best-effort static spelling for inspect
    * ([Function: name]) and Node-shaped call errors. The operand is
-   * borrowed; the result is owned (+1). Never throws. `liveRef` is the
-   * narrow Web-platform exception for record/array/bytes values (including
-   * mutable arms selected at runtime from a union) whose API contract
-   * exposes the same reference again (stream chunks and abort reasons): it
-   * emits a typed capsule with a live materializer instead of the ordinary
-   * deep copy. */
+   * borrowed; the result is owned (+1). Never throws. Program class
+   * instances always use a typed capsule so an exact checked cast recovers
+   * the original identity. `liveRef` requests the same capsule form for
+   * record/array/bytes values (including mutable arms selected at runtime
+   * from a union) whose Web API contract exposes the reference again, such
+   * as stream chunks and abort reasons; ordinary JSON-shaped values retain
+   * the documented deep-copy boundary. */
   | { kind: "dynFrom"; value: IrExpr; fnName?: string; liveRef?: true; type: IrType; loc: SrcLoc }
   /** Island value → dyn conversion (`type` is always dyn; the operand
    * is always jsval): the jsval→dyn crossing — an 'any'-typed engine
@@ -5674,6 +5675,7 @@ export function canMarshalTypedFuncIntoIsland(
  * entry carries the runtime tag spelling and the class display name
  * (dynCheck's "expected IncomingMessage ..." texts). */
 export const DYN_HANDLE_KINDS: ReadonlyMap<string, { tag: string; cls: string }> = new Map([
+  ["child", { tag: "SCR_DYNH_CHILD", cls: "ChildProcess" }],
   ["httpReq", { tag: "SCR_DYNH_HTTP_REQ", cls: "IncomingMessage" }],
   ["httpRes", { tag: "SCR_DYNH_HTTP_RES", cls: "ServerResponse" }],
   ["netSocket", { tag: "SCR_DYNH_NET_SOCKET", cls: "Socket" }],
@@ -5683,10 +5685,18 @@ export const DYN_HANDLE_KINDS: ReadonlyMap<string, { tag: string; cls: string }>
   ["httpClientReq", { tag: "SCR_DYNH_HTTP_CLIENT", cls: "ClientRequest" }],
 ]);
 
+/** A class value that crosses an `unknown` slot as a compiler-owned typed
+ * reference. %Error keeps its dedicated error encoding; every other class
+ * preserves the original object identity and exposes a materialized own-field
+ * view only when a checked-dynamic operation actually needs one. */
+export function isDynTypedRefType(t: IrType): t is Extract<IrType, { kind: "object" }> {
+  return t.kind === "object" && !RUNTIME_ERROR_CLASSES.has(t.className);
+}
+
 /** A static type that CONVERTS into a dyn value — the dynFrom domain:
- * JSON-safe data, bytes<u8> (payload copied), undefined-armed unions of
- * JSON-safe arms, boxable function types, and the runtime HANDLE kinds
- * (boxed by reference — DYN_HANDLE_KINDS). */
+ * JSON-safe data, bytes<u8> (payload copied), identity-preserving class
+ * references, undefined-armed unions of those arms, boxable function types,
+ * and the runtime HANDLE kinds (boxed by reference — DYN_HANDLE_KINDS). */
 export function canConvertToDyn(
   t: IrType,
   getRecord: (shapeId: string) => IrRecordShape | undefined,
@@ -5704,6 +5714,7 @@ export function canConvertToDyn(
   // code?} — the caughtToDyn shape, scr_dyn_from_error): the dyn 'error'
   // listener boundary (a mustCall-wrapped handler receiving the payload).
   if (t.kind === "object" && t.className === "%Error") return true;
+  if (isDynTypedRefType(t)) return true;
   if (t.kind === "func") return canBoxFuncIntoDyn(t, getRecord, getUnion);
   if (DYN_HANDLE_KINDS.has(t.kind)) return true;
   // Promises box by REFERENCE (SCR_DYN_PROMISE): promise<dyn> carries its
@@ -5727,6 +5738,7 @@ export function canConvertToDyn(
     // boundary exactly like a bare func dynFrom).
     return !!def && def.arms.every((a) =>
       a.kind === "undefinedT" || isJsonSafeType(a, getRecord, getUnion) ||
+      isDynTypedRefType(a) || DYN_HANDLE_KINDS.has(a.kind) ||
       (a.kind === "func" && canBoxFuncIntoDyn(a, getRecord, getUnion)) ||
       (a.kind === "promise" && canConvertToDyn(a, getRecord, getUnion)),
     );
@@ -6355,6 +6367,36 @@ export function moduleUsesInspect(mod: IrModule): boolean {
     }
     const node = v as { kind?: unknown; fn?: unknown };
     if (node.kind === "libCall" && typeof node.fn === "string" && node.fn.startsWith("insp.")) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(v)) visit((v as Record<string, unknown>)[key]);
+  };
+  visit(mod);
+  return found;
+}
+
+/** True when the module reaches child_process or carries one of its runtime
+ * handle/result types. Besides the existing link consequence, this gates the
+ * checked-dynamic ChildProcess handle table installed from scr_child.c. */
+export function moduleUsesChildProcess(mod: IrModule): boolean {
+  let found = false;
+  const visit = (v: unknown): void => {
+    if (found || v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      for (const item of v) visit(item);
+      return;
+    }
+    const node = v as { kind?: unknown; fn?: unknown };
+    if (
+      node.kind === "libCall" &&
+      typeof node.fn === "string" &&
+      (node.fn.startsWith("cp.") || node.fn.startsWith("child.") || node.fn.startsWith("spawnRes."))
+    ) {
+      found = true;
+      return;
+    }
+    if (node.kind === "child" || node.kind === "childStream" || node.kind === "spawnRes") {
       found = true;
       return;
     }

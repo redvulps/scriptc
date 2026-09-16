@@ -40,7 +40,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { ffiCallbackType, funcOf, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, mapOf, moduleEmbedsCompressedNpm, moduleUsesDgram, moduleUsesDynInvoke, moduleEmbedsBuiltin, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttp2, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, POINTER_KINDS, type PointerKind, RUNTIME_EMITTER_CLASS, STRING, VOID } from "../../ir/ir.js";
+import { ffiCallbackType, funcOf, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, mapOf, moduleEmbedsCompressedNpm, moduleUsesChildProcess, moduleUsesDgram, moduleUsesDynInvoke, moduleEmbedsBuiltin, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttp2, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, POINTER_KINDS, type PointerKind, RUNTIME_EMITTER_CLASS, STRING, VOID } from "../../ir/ir.js";
 import { undefinedArmTag } from "../../ir/analysis.js";
 import { allocateFfiCallbackAdapters, hasForeignFfiCallback, hasRetainedFfiCallback, type FfiCallbackAdapter } from "../ffi-callbacks.js";
 import {
@@ -305,8 +305,8 @@ export class CEmitter {
    * for each pull, preserving iterator-time reads without teaching the
    * runtime the compiler's program-specific record/union layouts. */
   readonly streamFromArrayAdapters = new Map<string, string>();
-  /** Identity-preserving static→dyn capsules used by Web APIs whose values
-   * remain directly observable (stream chunks and AbortSignal reasons). */
+  /** Identity-preserving static→dyn capsules for program classes and Web
+   * APIs whose values remain directly observable. */
   readonly liveDynRefAdapters = new Map<
     string,
     { snapshot: string; commit: string }
@@ -975,6 +975,7 @@ export class CEmitter {
       // (scr_events.c) links only when this line is emitted (native-toolchain.ts gates
       // on the same predicate, like fetch).
       ...(moduleUsesProcessEvents(this.mod) ? [`  scr_events_install();`] : []),
+      ...(moduleUsesChildProcess(this.mod) ? [`  scr_child_dyn_install();`] : []),
       // Net-surface programs fill the loop's net hooks before %main — the
       // net unit (scr_net.c) links only when this line is emitted (native-toolchain.ts
       // gates on the same predicate, like events). The dyn-install twin

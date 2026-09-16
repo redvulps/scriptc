@@ -39,6 +39,10 @@ const DYN_HANDLE_TAG_NUM: Record<string, number> = {
   httpRes: 1,
   netSocket: 2,
   netServer: 3,
+  http2Session: 4,
+  http2Stream: 5,
+  httpClientReq: 6,
+  child: 16,
 };
 
 export const DYN_KIND = {
@@ -364,6 +368,31 @@ export class LlDyn {
         if (t.elem !== "u8") throw new InternalCompilerError(`llvm emitter bug: dynMatch of bytes<${t.elem}>`);
         kindIs(DYN_KIND.BYTES);
         break;
+      case "func":
+        kindIs(DYN_KIND.FUNC);
+        break;
+      case "object": {
+        if (t.className !== "%Error") {
+          // Exact class capsules returned true before materialization.
+          // Plain dyn objects carry no class brand.
+          B.terminate(`ret i1 false`);
+          break;
+        }
+        const kd = this.kindOf(B, "%d");
+        const isObj = B.tmp();
+        B.line(`${isObj} = icmp eq i32 ${kd}, ${DYN_KIND.OBJ}`);
+        const lObj = B.newLabel("dm.err.obj");
+        const lFail = B.newLabel("dm.err.fail");
+        B.condBr(isObj, lObj, lFail);
+        B.startBlock(lObj);
+        const marker = this.objGetLit(B, "%d", "%error");
+        const present = B.tmp();
+        B.line(`${present} = icmp ne ptr ${marker}, null`);
+        B.terminate(`ret i1 ${present}`);
+        B.startBlock(lFail);
+        B.terminate(`ret i1 false`);
+        break;
+      }
       case "record": {
         const shape = this.host.recordsById.get(t.shapeId);
         if (!shape) throw new InternalCompilerError(`llvm emitter bug: dynCheck of unknown shape ${t.shapeId}`);
@@ -506,8 +535,27 @@ export class LlDyn {
         B.terminate(`ret i1 true`);
         break;
       }
-      default:
-        throw new LlvmUnsupportedError(`dynMatch:${t.kind}`);
+      default: {
+        const h = DYN_HANDLE_KINDS.get(t.kind);
+        if (!h) throw new LlvmUnsupportedError(`dynMatch:${t.kind}`);
+        const kd = this.kindOf(B, "%d");
+        const isHandle = B.tmp();
+        B.line(`${isHandle} = icmp eq i32 ${kd}, ${DYN_KIND.HANDLE}`);
+        const lHandle = B.newLabel("dm.handle");
+        const lNo = B.newLabel("dm.handle.no");
+        B.condBr(isHandle, lHandle, lNo);
+        B.startBlock(lHandle);
+        const tagPtr = B.tmp();
+        const tag = B.tmp();
+        B.line(`${tagPtr} = getelementptr inbounds i8, ptr %d, i64 ${this.abiOffset(24, 20)} ; ->v.handle.tag`);
+        B.line(`${tag} = load i32, ptr ${tagPtr}`);
+        const matched = B.tmp();
+        B.line(`${matched} = icmp eq i32 ${tag}, ${DYN_HANDLE_TAG_NUM[t.kind]}`);
+        B.terminate(`ret i1 ${matched}`);
+        B.startBlock(lNo);
+        B.terminate(`ret i1 false`);
+        break;
+      }
     }
     this.defs.push(
       `define internal zeroext i1 @${name}(ptr %d) ${FN_ATTRS} { ; matches ${key}`,
@@ -731,7 +779,11 @@ export class LlDyn {
         // %error objects rebuild once and cache the pair. The C walker's
         // arm exactly.
         if (t.className !== "%Error") {
-          throw new InternalCompilerError(`llvm emitter bug: dynCheck of class ${t.className} (only %Error extracts from the checked-dynamic tree)`);
+          // Exact class capsules returned before this switch. A plain dyn
+          // object cannot acquire a class brand structurally.
+          B.line(`call void @scr_dyn_check_fail(ptr %path, ptr ${want}, ptr %d)`);
+          B.terminate(`ret ptr null`);
+          break;
         }
         const kd = this.kindOf(B, "%d");
         const isObj = B.tmp();

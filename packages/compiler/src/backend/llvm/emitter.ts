@@ -79,7 +79,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { CAUGHT, ffiCallbackType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, typeKey, VOID } from "../../ir/ir.js";
+import { CAUGHT, ffiCallbackType, isFfiContextParam, isRefCounted, isUnitType, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesChildProcess, moduleUsesDynInvoke, moduleUsesFetch, moduleUsesFsWatch, moduleUsesHttpServer, moduleUsesNet, moduleUsesNodeTest, moduleUsesProcessEvents, moduleUsesStream, moduleUsesTls, moduleUsesTlsCa, NPM_COMPRESS_MIN, POINTER_KINDS, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, typeKey, VOID } from "../../ir/ir.js";
 import { matchIntegerBytesForLoop } from "../../ir/integer-loops.js";
 import { allocateFfiCallbackAdapters, hasForeignFfiCallback, hasRetainedFfiCallback, type FfiCallbackAdapter } from "../ffi-callbacks.js";
 import { RUNTIME_ABI_MARKER } from "../runtime-abi.js";
@@ -274,8 +274,8 @@ class LlEmitter {
   /** ReadableStream.from adapters keep typed arrays by reference and box
    * one current element per pull. */
   private readonly streamFromArrayAdapters = new Map<string, string>();
-  /** Identity-preserving static→dyn capsules used by Web APIs whose values
-   * remain directly observable (stream chunks and AbortSignal reasons). */
+  /** Identity-preserving static→dyn capsules for program classes and Web
+   * APIs whose values remain directly observable. */
   private readonly liveDynRefAdapters = new Map<
     string,
     LlStreamTypedRefAdapter
@@ -835,6 +835,7 @@ class LlEmitter {
     // BEFORE the global releases (the C emitter's runExitListeners
     // ordering — the atexit half becomes an idempotent no-op).
     const usesEvents = moduleUsesProcessEvents(this.mod);
+    const usesChildProcess = moduleUsesChildProcess(this.mod);
     const usesFsWatch = moduleUsesFsWatch(this.mod);
     // Stream-surface programs fill the loop's stream hook (the deferred
     // next-tick emissions) and the emitter's post-registration flow kick
@@ -868,6 +869,7 @@ class LlEmitter {
     const programExitUsesIsland = !usesNodeTest && usesIsland;
     // Declared NOW — the extern block flushes before main assembles.
     if (usesEvents) this.declare(`declare void @scr_events_install()`);
+    if (usesChildProcess) this.declare(`declare void @scr_child_dyn_install()`);
     if (usesFsWatch) this.declare(`declare void @scr_watch_install()`);
     if (this.ffiHasForeignCallback) this.declare(`declare void @scr_ffi_install()`);
     if (usesStream) this.declare(`declare void @scr_stream_install()`);
@@ -1294,6 +1296,7 @@ class LlEmitter {
       // nullable event hooks before %main — scr_events.c links only when
       // this line is emitted (native-toolchain.ts gates on the same predicate).
       ...(usesEvents ? [`  call void @scr_events_install()`] : []),
+      ...(usesChildProcess ? [`  call void @scr_child_dyn_install()`] : []),
       // fs.watch programs fill the loop's watch hooks the same way —
       // scr_watch.c links only when this line is emitted.
       ...(usesFsWatch ? [`  call void @scr_watch_install()`] : []),

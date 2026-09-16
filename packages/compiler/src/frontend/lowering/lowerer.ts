@@ -52,7 +52,7 @@ import type {
   IrUnionDef,
   SrcLoc,
 } from "../../ir/ir.js";
-import { arrayOf, BOOL, canAdaptDynFuncTo, canConvertToDyn, canCrossIslandBoundary, canExitIslandToType, canMarshalTypedFuncIntoIsland, DYN, F64, isJsonSafeType, isJsonStringifySafeType, isUndefinedArmedUnion, isUnitType, JSVAL, NULL_T, RUNTIME_ERROR_CLASSES, STRING, typeEquals, UNDEFINED_T, VOID } from "../../ir/ir.js";
+import { arrayOf, BOOL, canAdaptDynFuncTo, canConvertToDyn, canCrossIslandBoundary, canExitIslandToType, canMarshalTypedFuncIntoIsland, DYN, DYN_HANDLE_KINDS, F64, isDynTypedRefType, isJsonSafeType, isJsonStringifySafeType, isUndefinedArmedUnion, isUnitType, JSVAL, NULL_T, RUNTIME_ERROR_CLASSES, STRING, typeEquals, UNDEFINED_T, VOID } from "../../ir/ir.js";
 import { type DynamicImportResolution, type NpmBuiltinUse, type NpmLazyTrap } from "../npm.js";
 import { provenanceActive } from "../provenance-registry.js";
 import {
@@ -4989,10 +4989,21 @@ export class Lowerer {
         expected.kind === "union" &&
         (this.unions
           .get(expected.unionId)
-          ?.arms.every((a) => a.kind === "undefinedT" || this.jsonSafe(a)) ??
+          ?.arms.every(
+            (a) =>
+              a.kind === "undefinedT" ||
+              this.jsonSafe(a) ||
+              isDynTypedRefType(a) ||
+              DYN_HANDLE_KINDS.has(a.kind),
+          ) ??
           false);
       const bytesOk = expected.kind === "bytes" && expected.elem === "u8";
       const errorOk = expected.kind === "object" && expected.className === "%Error";
+      // Program and runtime class instances can return only from a
+      // compiler-owned typed-reference capsule. A parsed/plain dyn object
+      // fails the runtime check; an exact capsule unwraps the original
+      // instance and preserves identity.
+      const classOk = isDynTypedRefType(expected);
       // ADAPTABLE function targets (the checked-dynamic function
       // boundary's OUT direction — `const wrapped: F = mustCall(fn)`):
       // check callable-kind, then unwrap an identical boxed signature
@@ -5001,7 +5012,8 @@ export class Lowerer {
       const funcOk =
         expected.kind === "func" &&
         canAdaptDynFuncTo(expected, (id) => this.shapes.get(id), (id) => this.unions.get(id));
-      if (this.jsonSafe(expected) || undefArmedOk || bytesOk || errorOk || funcOk) {
+      const handleOk = DYN_HANDLE_KINDS.has(expected.kind);
+      if (this.jsonSafe(expected) || undefArmedOk || bytesOk || errorOk || classOk || funcOk || handleOk) {
         return { kind: "dynCheck", value: expr, type: expected, loc: expr.loc };
       }
       return expr;

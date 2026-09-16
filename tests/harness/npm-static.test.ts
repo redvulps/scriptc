@@ -193,12 +193,14 @@ describe(`npm-static pilots${sanitize ? " (sanitized)" : ""}`, () => {
     const total = coverage.stats.statementsTotal + (coverage.unreached?.stats.statementsTotal ?? 0);
     const failed = coverage.stats.statementsFailed + (coverage.unreached?.stats.statementsFailed ?? 0);
     expect(total).toBeGreaterThan(1200); // the whole package joined the program
-    expect((total - failed) / total).toBeGreaterThanOrEqual(0.93);
-    expect(total - failed).toBeGreaterThanOrEqual(1190);
+    expect((total - failed) / total).toBeGreaterThanOrEqual(0.95);
+    expect(total - failed).toBeGreaterThanOrEqual(1225);
     // Two promise-chain locals intentionally remain checked-dynamic: their
     // first assignment reads the preceding undefined value, so promoting
     // them to a scalar promise slot would be unsound.
-    expect(coverage.runtimeFences?.length ?? 0).toBeLessThanOrEqual(82);
+    expect(coverage.runtimeFences?.length ?? 0).toBeLessThanOrEqual(58);
+    const fenceMessages = (coverage.runtimeFences ?? []).map((f) => f.message).join("\n");
+    expect(fenceMessages).not.toMatch(/storing 'm5\.Command' values|holding 'm5\.Command|ChildProcess' is expected/);
 
     const binary = await buildStatic(entry, ["commander"]);
     const argv = ["add", "20", "22"];

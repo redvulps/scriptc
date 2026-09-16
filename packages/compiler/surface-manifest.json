@@ -185,7 +185,7 @@
       "name": "converting typed values to 'unknown'",
       "status": "unsupported",
       "code": "SC1101",
-      "note": "numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy — the 'unknown' value never aliases the original), and functions over those (boxed, identity preserved) convert into 'unknown' slots; this value's type has no dynamic representation yet"
+      "note": "numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy), functions, program class instances, and supported native handles convert into 'unknown' slots; functions, exact-class round trips, and handles preserve identity, while this value's type has no dynamic representation yet"
     },
     {
       "id": "diagnostic.sc1120",

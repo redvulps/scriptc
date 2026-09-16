@@ -3,7 +3,7 @@ import { InternalCompilerError } from "../../errors.js";
  * expression lands in a fresh C temp, with RC ownership tracked on the
  * emitter's frames (see the discipline comment in emitter core). */
 import type { CEmitter, Temp } from "./c-emitter.js";
-import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
+import { arrayOf, BOOL, BYTES_U8, bytesOf, canMarshalFuncIntoIsland, CHILDSTREAM_T, DYN, F64, IrExpr, IrLibFn, IrRecordShape, IrType, islandPromisePayloadTag, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isRefCounted, isUnitType, MAY_THROW_LIB_FNS, RUNTIME_ERROR_CLASSES, STRING, typeEquals, typeKey } from "../../ir/ir.js";
 import { boxAccess, BYTES_NUM_KIND_C, BYTES_NUM_VAR_C, bytesElemKindC, cDecl, cFnPtrCast, cNumberLiteral, cStringLiteral, cType, DV_GET_KIND_C, DV_SET_KIND_C, elemAccess, mapKeyAccess, mapKeyKindC, mapValKindC, releaseCallC, retainCallC, vAdapters } from "./types.js";
 import { mangleClassNew, mangleClassRetain, mangleClassStruct, mangleField, mangleFnClosure, mangleFunction, mangleGlobal, mangleLocal, mangleRecordClone, mangleRecordNew, mangleRecordStruct, mangleVtStruct } from "../mangle.js";
 import { OVERFLOW_MEMBER } from "./shapes.js";
@@ -81,6 +81,37 @@ function streamTypedRefCommitAdapter(
     );
     return `&${commit}`;
   }
+  if (isDynTypedRefType(t)) {
+    const meta = emitter.classMeta.get(t.className);
+    if (!meta) {
+      throw new InternalCompilerError(`emitter bug: typed-ref commit of unknown class ${t.className}`);
+    }
+    const commit = `${snapshot}_commit`;
+    emitter.walkerProtos.push(
+      `static void ${commit}(void *sc_p, const ScrDyn *sc_d); /* commit unknown class ${typeKey(t)} */`,
+    );
+    defs.push(
+      `static void ${commit}(void *sc_p, const ScrDyn *sc_d) {`,
+      `  ${cDecl(t, "sc_target")} = (${cType(t).trim()})sc_p;`,
+    );
+    for (const field of meta.def.fields) {
+      const member = mangleField(field.name);
+      const keyLit = cStringLiteral(Buffer.from(field.name, "utf8"));
+      const keyLen = Buffer.byteLength(field.name, "utf8");
+      defs.push(
+        `  {`,
+        `    const ScrDyn *sc_member = scr_dyn_obj_get(sc_d, ${keyLit}, ${keyLen});`,
+        `    ${cDecl(field.type, "sc_next")} = ${emitter.dynCheckHelper(field.type)}(sc_member ? sc_member : scr_dyn_undefined(), NULL);`,
+        `    if (scr_exc_pending()) return;`,
+        `    ${cDecl(field.type, "sc_old")} = sc_target->${member};`,
+        `    sc_target->${member} = sc_next;`,
+        ...(isRefCounted(field.type) ? [`    ${releaseCallC(field.type, "sc_old")};`] : ["    (void)sc_old;"]),
+        `  }`,
+      );
+    }
+    defs.push(`}`, ``);
+    return `&${commit}`;
+  }
   if (t.kind !== "record") return "NULL";
   const shape = emitter.recordsById.get(t.shapeId);
   if (!shape) {
@@ -132,6 +163,57 @@ interface StreamTypedRefContext {
   prefix: string;
   defs: string[];
   adapters: Map<string, StreamTypedRefAdapter>;
+  unions?: Map<string, string>;
+}
+
+/** Boxes a union selected at runtime, preserving mutable/class arm identity
+ * while converting scalar and unit arms normally. It shares the enclosing
+ * adapter context so recursive class fields reuse the prototype already
+ * registered by streamTypedRefAdapter instead of recursing forever. */
+function nestedTypedRefUnionAdapter(
+  emitter: CEmitter,
+  t: IrType & { kind: "union" },
+  ctx: StreamTypedRefContext,
+): string {
+  const key = typeKey(t);
+  const unions = (ctx.unions ??= new Map());
+  const existing = unions.get(key);
+  if (existing) return existing;
+  const def = emitter.unionsById.get(t.unionId);
+  if (!def) throw new InternalCompilerError(`emitter bug: typed-ref union ${t.unionId} is undeclared`);
+  const sym = `${ctx.prefix}_union_${unions.size}`;
+  unions.set(key, sym);
+  emitter.walkerProtos.push(`static ScrDyn *${sym}(ScrUnion *sc_u); /* typed-ref union ${key} */`);
+  const lines = [`static ScrDyn *${sym}(ScrUnion *sc_u) {`, `  switch (sc_u->tag) {`];
+  def.arms.forEach((arm, tag) => {
+    if (streamTypedRefEligible(arm) || isDynTypedRefType(arm)) {
+      const adapter = streamTypedRefAdapter(emitter, arm, ctx);
+      const rc = vAdapters(arm);
+      const armKey = typeKey(arm);
+      const keyLit = cStringLiteral(Buffer.from(armKey, "utf8"));
+      lines.push(
+        `  case ${tag}: return scr_dyn_new_typed_ref(scr_union_peek(sc_u), &${rc.retain}, &${rc.release}, ${keyLit}, ${Buffer.byteLength(armKey, "utf8")}, &${adapter.snapshot}, ${adapter.commit});`,
+      );
+    } else if (arm.kind === "undefinedT") {
+      lines.push(`  case ${tag}: return scr_dyn_retain(scr_dyn_undefined());`);
+    } else if (arm.kind === "nullT") {
+      lines.push(`  case ${tag}: return scr_dyn_new_null();`);
+    } else if (arm.kind === "f64") {
+      lines.push(`  case ${tag}: return scr_dyn_new_num(scr_union_get_f64(sc_u));`);
+    } else if (arm.kind === "bool") {
+      lines.push(`  case ${tag}: return scr_dyn_new_bool(scr_union_get_bool(sc_u));`);
+    } else {
+      lines.push(`  case ${tag}: return ${emitter.toDynHelper(arm)}((${cType(arm).trim()})scr_union_peek(sc_u));`);
+    }
+  });
+  lines.push(
+    `  default: scr_trap("scriptc: internal error: invalid union tag\\n");`,
+    `  }`,
+    `}`,
+    ``,
+  );
+  ctx.defs.push(...lines);
+  return sym;
 }
 
 /** Build the live dyn view of one typed stream value. Mutable reference
@@ -159,7 +241,15 @@ function streamTypedRefAdapter(
   adapter.commit = streamTypedRefCommitAdapter(emitter, t, snapshot, ctx.defs);
 
   const box = (child: IrType, expr: string): string => {
-    if (!streamTypedRefEligible(child)) {
+    if (
+      child.kind === "union" &&
+      (emitter.unionsById.get(child.unionId)?.arms.some(
+        (arm) => streamTypedRefEligible(arm) || isDynTypedRefType(arm),
+      ) ?? false)
+    ) {
+      return `${nestedTypedRefUnionAdapter(emitter, child, ctx)}(${expr})`;
+    }
+    if (!streamTypedRefEligible(child) && !isDynTypedRefType(child)) {
       return `${emitter.toDynHelper(child)}(${expr})`;
     }
     const nested = streamTypedRefAdapter(emitter, child, ctx);
@@ -173,7 +263,20 @@ function streamTypedRefAdapter(
     `static ScrDyn *${snapshot}(void *sc_p) { /* materialize live stream value ${key} */`,
     `  ${cDecl(t, "v")} = (${cType(t).trim()})sc_p;`,
   ];
-  if (t.kind === "record") {
+  if (isDynTypedRefType(t)) {
+    const meta = emitter.classMeta.get(t.className);
+    if (!meta) {
+      throw new InternalCompilerError(`emitter bug: typed-ref materialize of unknown class ${t.className}`);
+    }
+    lines.push(`  ScrDyn *d = scr_dyn_new_obj();`);
+    for (const field of meta.def.fields) {
+      const keyLit = cStringLiteral(Buffer.from(field.name, "utf8"));
+      lines.push(
+        `  scr_dyn_obj_set(d, ${keyLit}, ${Buffer.byteLength(field.name, "utf8")}, ${box(field.type, `v->${mangleField(field.name)}`)});`,
+      );
+    }
+    lines.push(`  return d;`);
+  } else if (t.kind === "record") {
     const shape = emitter.recordsById.get(t.shapeId);
     if (!shape) {
       throw new InternalCompilerError(
@@ -254,7 +357,7 @@ function liveDynRefAdapter(
   const key = typeKey(t);
   const existing = emitter.liveDynRefAdapters.get(key);
   if (existing) return existing;
-  if (!streamTypedRefEligible(t)) {
+  if (!streamTypedRefEligible(t) && !isDynTypedRefType(t)) {
     throw new InternalCompilerError(`emitter bug: live dyn ref of ${key}`);
   }
   const prefix = `sc_ldr_${emitter.liveDynRefAdapters.size}`;
@@ -287,7 +390,7 @@ function liveDynUnionRefAdapter(
   }
   const mutableArms = union.arms
     .map((arm, tag) => ({ arm, tag }))
-    .filter(({ arm }) => streamTypedRefEligible(arm));
+    .filter(({ arm }) => streamTypedRefEligible(arm) || isDynTypedRefType(arm));
   if (mutableArms.length === 0) {
     throw new InternalCompilerError(`emitter bug: live dyn ref of immutable union ${key}`);
   }
@@ -322,9 +425,23 @@ function liveDynUnionRefAdapter(
       `    return scr_dyn_new_typed_ref(scr_union_peek(sc_u), &${rc.retain}, &${rc.release}, ${keyLit}, ${Buffer.byteLength(armKey, "utf8")}, &${adapter.snapshot}, ${adapter.commit});`,
     );
   }
+  const mutableTags = new Set(mutableArms.map(({ tag }) => tag));
+  union.arms.forEach((arm, tag) => {
+    if (mutableTags.has(tag)) return;
+    if (arm.kind === "undefinedT") {
+      defs.push(`  case ${tag}: return scr_dyn_retain(scr_dyn_undefined());`);
+    } else if (arm.kind === "nullT") {
+      defs.push(`  case ${tag}: return scr_dyn_new_null();`);
+    } else if (arm.kind === "f64") {
+      defs.push(`  case ${tag}: return scr_dyn_new_num(scr_union_get_f64(sc_u));`);
+    } else if (arm.kind === "bool") {
+      defs.push(`  case ${tag}: return scr_dyn_new_bool(scr_union_get_bool(sc_u));`);
+    } else {
+      defs.push(`  case ${tag}: return ${emitter.toDynHelper(arm)}((${cType(arm).trim()})scr_union_peek(sc_u));`);
+    }
+  });
   defs.push(
-    `  default:`,
-    `    return ${emitter.toDynHelper(t)}(sc_u);`,
+    `  default: scr_trap("scriptc: internal error: invalid union tag\\n");`,
     `  }`,
     `}`,
     ``,
@@ -2673,7 +2790,11 @@ function emitDynamicExpr(
           );
         }
         const v = emitter.emitExpr(e.value);
-        if (e.liveRef) {
+        const identityRef =
+          isDynTypedRefType(v.type) ||
+          (v.type.kind === "union" &&
+            (emitter.unionsById.get(v.type.unionId)?.arms.some(isDynTypedRefType) ?? false));
+        if (e.liveRef || identityRef) {
           if (v.type.kind === "union") {
             const adapter = liveDynUnionRefAdapter(emitter, v.type);
             return emitter.newTemp(e.type, `${adapter}(${v.name})`);

@@ -6172,6 +6172,18 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2876-class-unknown-roundtrip.ts": {
+   "order": [
+    "<repo>/tests/corpus/2876-class-unknown-roundtrip.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2877-child-unknown-roundtrip.ts": {
+   "order": [
+    "<repo>/tests/corpus/2877-child-unknown-roundtrip.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

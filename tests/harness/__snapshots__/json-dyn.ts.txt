@@ -1,61 +1,54 @@
-json-dyn.ts:21:35 - error SC1101: converting typed values to 'unknown' is not supported yet
+json-dyn.ts:22:35 - error SC1101: converting typed values to 'unknown' is not supported yet
 
-  20 | // dyn representation (Maps, classes, bytes).
-  21 | const typedIntoUnknown: unknown = new Map<string, number>();
+  21 | // dyn representation.
+  22 | const typedIntoUnknown: unknown = new Map<string, number>();
      |                                   ^~~~~~~~~~~~~~~~~~~~~~~~~
-  22 | function wantsUnknown(x: unknown): void {}
+  23 | function wantsUnknown(x: unknown): void {}
 
-  hint: numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy — the 'unknown' value never aliases the original), and functions over those (boxed, identity preserved) convert into 'unknown' slots; this value's type has no dynamic representation yet
+  hint: numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy), functions, program class instances, and supported native handles convert into 'unknown' slots; functions, exact-class round trips, and handles preserve identity, while this value's type has no dynamic representation yet
 
-json-dyn.ts:23:14 - error SC1101: converting typed values to 'unknown' is not supported yet
+json-dyn.ts:24:14 - error SC1101: converting typed values to 'unknown' is not supported yet
 
-  22 | function wantsUnknown(x: unknown): void {}
-  23 | wantsUnknown(new Map<string, number>());
+  23 | function wantsUnknown(x: unknown): void {}
+  24 | wantsUnknown(new Map<string, number>());
      |              ^~~~~~~~~~~~~~~~~~~~~~~~~
-  24 | const stringifyClosure = JSON.stringify((x: number) => x + 1);
+  25 | const stringifyClosure = JSON.stringify((x: number) => x + 1);
 
-  hint: numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy — the 'unknown' value never aliases the original), and functions over those (boxed, identity preserved) convert into 'unknown' slots; this value's type has no dynamic representation yet
+  hint: numbers, strings, booleans, JSON-safe records/arrays/unions (a deep copy), functions, program class instances, and supported native handles convert into 'unknown' slots; functions, exact-class round trips, and handles preserve identity, while this value's type has no dynamic representation yet
 
-json-dyn.ts:24:41 - error SC1090: JSON.stringify of '(number) => number' values (only number, string, boolean, records, arrays, unions of those, and 'unknown' stringify) are not supported yet
+json-dyn.ts:25:41 - error SC1090: JSON.stringify of '(number) => number' values (only number, string, boolean, records, arrays, unions of those, and 'unknown' stringify) are not supported yet
 
-  23 | wantsUnknown(new Map<string, number>());
-  24 | const stringifyClosure = JSON.stringify((x: number) => x + 1);
+  24 | wantsUnknown(new Map<string, number>());
+  25 | const stringifyClosure = JSON.stringify((x: number) => x + 1);
      |                                         ^~~~~~~~~~~~~~~~~~~~
-  25 | class Point {
+  26 | class Point {
 
-json-dyn.ts:28:19 - error SC1090: a checked cast of 'unknown' to 'Point' (a dynamic value can only be validated against JSON-representable types: number, string, boolean, records, arrays, and unions of those) is not supported yet
+json-dyn.ts:42:3 - error SC1090: 'unknown'-typed class fields are not supported yet
 
-  27 | }
-  28 | const intoClass = JSON.parse("{}") as Point;
-     |                   ^~~~~~~~~~~~~~~~~~~~~~~~~
-  29 | // (casts of unknown to ADAPTABLE function types compile now — the kind
-
-json-dyn.ts:38:3 - error SC1090: 'unknown'-typed class fields are not supported yet
-
-  37 | class Holder {
-  38 |   data: unknown = JSON.parse("{}");
+  41 | class Holder {
+  42 |   data: unknown = JSON.parse("{}");
      |   ^~~~
-  39 | }
+  43 | }
 
-json-dyn.ts:42:7 - error SC2007: values of type '{ (text: string, reviver?: ((this: any, key: string, value: any) => any) | undefined): any; (text: string): unknown; }' cannot be compiled: the type declares multiple call signatures (overloads), and a compiled function value is always one concrete signature
+json-dyn.ts:46:7 - error SC2007: values of type '{ (text: string, reviver?: ((this: any, key: string, value: any) => any) | undefined): any; (text: string): unknown; }' cannot be compiled: the type declares multiple call signatures (overloads), and a compiled function value is always one concrete signature
 
-  41 | const dynArray: unknown[] = []; // unknown[] IS the dyn array now — no fence (corpus 2585)
-  42 | const parseRef = JSON.parse;
+  45 | const dynArray: unknown[] = []; // unknown[] IS the dyn array now — no fence (corpus 2585)
+  46 | const parseRef = JSON.parse;
      |       ^~~~~~~~
-  43 | // The exact `string | undefined` root now lowers: strings serialize while
+  47 | // The exact `string | undefined` root now lowers: strings serialize while
 
   hint: annotate the slot with the ONE signature the program actually calls (e.g. '(x: number) => string'), or wrap the overloaded function in a single-signature arrow
 
-json-dyn.ts:42:18 - error SC1090: JSON methods as values (call 'parse' directly) are not supported yet
+json-dyn.ts:46:18 - error SC1090: JSON methods as values (call 'parse' directly) are not supported yet
 
-  41 | const dynArray: unknown[] = []; // unknown[] IS the dyn array now — no fence (corpus 2585)
-  42 | const parseRef = JSON.parse;
+  45 | const dynArray: unknown[] = []; // unknown[] IS the dyn array now — no fence (corpus 2585)
+  46 | const parseRef = JSON.parse;
      |                  ^~~~~~~~~~
-  43 | // The exact `string | undefined` root now lowers: strings serialize while
+  47 | // The exact `string | undefined` root now lowers: strings serialize while
 
-json-dyn.ts:59:1 - error SC1090: constructing through a class value whose class has no lowering (the class declaration itself was rejected — see its own diagnostic) is not supported yet
+json-dyn.ts:63:1 - error SC1090: constructing through a class value whose class has no lowering (the class declaration itself was rejected — see its own diagnostic) is not supported yet
 
-  58 | // them relevant; these references are what makes them count.
-  59 | new Holder();
+  62 | // them relevant; these references are what makes them count.
+  63 | new Holder();
      | ^~~~~~~~~~~~
-  60 | 
+  64 | // End with a nonblank context line so diagnostic snapshots carry no trailing whitespace.

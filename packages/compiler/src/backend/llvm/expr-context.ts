@@ -28,6 +28,7 @@ export interface LlStreamTypedRefAdapter {
 export interface LlStreamTypedRefContext {
   prefix: string;
   adapters: Map<string, LlStreamTypedRefAdapter>;
+  unions?: Map<string, string>;
 }
 
 export interface LlvmEmitterContext extends ShapeHost {

@@ -738,6 +738,19 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
         if (t.elem !== "u8") throw new InternalCompilerError(`emitter bug: dynMatch of bytes<${t.elem}>`);
         d.push(`  return d->kind == SCR_DYN_BYTES;`);
         break;
+      case "func":
+        d.push(`  return d->kind == SCR_DYN_FUNC;`);
+        break;
+      case "object":
+        if (t.className === "%Error") {
+          d.push(`  return d->kind == SCR_DYN_OBJ && scr_dyn_obj_get(d, "%error", 6) != NULL;`);
+        } else {
+          // Non-error classes match only the exact typed-reference fast
+          // path above. A plain object (including JSON input) must never
+          // acquire a class identity structurally.
+          d.push(`  (void)d; return false;`);
+        }
+        break;
       case "record": {
         const shape = emitter.recordsById.get(t.shapeId);
         if (!shape) throw new InternalCompilerError(`emitter bug: dynCheck of unknown shape ${t.shapeId}`);
@@ -812,8 +825,14 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
         d.push(`  return ${arms.join(" || ")};`);
         break;
       }
-      default:
+      default: {
+        const h = DYN_HANDLE_KINDS.get(t.kind);
+        if (h) {
+          d.push(`  return d->kind == SCR_DYN_HANDLE && d->v.handle.tag == ${h.tag};`);
+          break;
+        }
         throw new InternalCompilerError(`emitter bug: dynMatch of non-JSON type ${t.kind}`);
+      }
     }
     d.push(`}`, ``);
     emitter.walkerDefs.push(...d);
@@ -1183,11 +1202,16 @@ export function jsonWriteHelper(emitter: CEmitter, t: IrType): string {
         // ScrError answers that very instance, so out-and-back crossings
         // compare reference-equal (the tracing suite's shape); alien
         // %error objects rebuild once and cache the pair.
-        if (t.className !== "%Error") {
-          throw new InternalCompilerError(`emitter bug: dynCheck of class ${t.className} (only %Error extracts from the checked-dynamic tree)`);
+        if (t.className === "%Error") {
+          d.push(`  if (d->kind != SCR_DYN_OBJ || !scr_dyn_obj_get(d, "%error", 6)) { scr_dyn_check_fail(path, ${want}, d); return NULL; }`);
+          d.push(`  return scr_error_from_dyn(d);`);
+        } else {
+          // Exact typed references returned before this switch. Plain dyn
+          // objects do not carry a class brand, so fail instead of
+          // manufacturing an instance from matching fields.
+          d.push(`  scr_dyn_check_fail(path, ${want}, d);`);
+          d.push(`  return NULL;`);
         }
-        d.push(`  if (d->kind != SCR_DYN_OBJ || !scr_dyn_obj_get(d, "%error", 6)) { scr_dyn_check_fail(path, ${want}, d); return NULL; }`);
-        d.push(`  return scr_error_from_dyn(d);`);
         break;
       case "record": {
         const shape = emitter.recordsById.get(t.shapeId);
