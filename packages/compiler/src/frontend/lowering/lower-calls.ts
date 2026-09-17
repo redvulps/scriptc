@@ -6305,10 +6305,12 @@ function loweredTemplateStrings(
           // the validator's bare-unitLit rule (typeCheckReturnExpression).
           // A `void e` body rides the statement lowering (the value is
           // discarded here, so the operand evaluates for effect alone —
-          // `(name) => void doThing(name)`, the fire-and-forget arrow).
+          // `(name) => void doThing(name)`, the fire-and-forget arrow). A
+          // conditional body does the same so its void arms become lazy
+          // statement branches instead of a forbidden void-valued ternary.
           let stripped: ts.Expression = bodyExpr;
           while (ts.isParenthesizedExpression(stripped)) stripped = stripped.expression;
-          if (ts.isVoidExpression(stripped)) {
+          if (ts.isVoidExpression(stripped) || ts.isConditionalExpression(stripped)) {
             body = [lowerer.lowerExprStatement(stripped)];
           } else {
             const value = lowerer.lowerExpr(bodyExpr);

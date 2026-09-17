@@ -4725,6 +4725,26 @@ function isEsModuleStamp(expr: ts.Expression): boolean {
   export function lowerExprStatement(lowerer: Lowerer, expr: ts.Expression): IrStmt {
     const stmtNode = expr.parent;
     while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+    // A discarded conditional has no value to merge: represent its lazy
+    // branch selection directly as statement control flow. In particular,
+    // both arms may be void calls (`flag ? emitA() : emitB()`), for which a
+    // value-shaped void ternary has no IR representation. Preserve the same
+    // narrowing environments as a source if statement, and lower only a
+    // statically selected arm when the condition folded without effects.
+    if (ts.isConditionalExpression(expr)) {
+      const cond = lowerer.lowerCondition(expr.condition);
+      if (cond.kind === "boolLit") {
+        return lowerExprStatement(lowerer, cond.value ? expr.whenTrue : expr.whenFalse);
+      }
+      const then = lowerer.narrowingAliases(aliasTypeofNarrows(lowerer, expr.condition, true), () =>
+        withRuntimeOptionalNarrowed(lowerer, runtimeOptionalTrueIds(lowerer, expr.condition), () =>
+          [lowerExprStatement(lowerer, expr.whenTrue)]),
+      );
+      const else_ = lowerer.narrowingAliases(aliasTypeofNarrows(lowerer, expr.condition, false), () =>
+        [lowerExprStatement(lowerer, expr.whenFalse)],
+      );
+      return { kind: "if", cond, then, else_, loc: locOf(expr) };
+    }
     // Assignment statements over the no-storage binding families:
     //   - `f1 = f2` where the RHS roots at an ambient-undefined name:
     //     Node evaluates the RHS first and dies on the root's
