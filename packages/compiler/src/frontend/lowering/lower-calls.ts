@@ -6018,18 +6018,36 @@ function loweredTemplateStrings(
     );
   }
 
-/** Nested `function name(...) {...}`: lowered as `const name = <lambda>`
-   * at the declaration's statement position (JS hoists function declarations
-   * to the top of the enclosing function — calling one before this statement
-   * is a compile error here, not a silent divergence). Self-references inside
-   * the body lower to `selfRef`, not a capture: a box holding its own
-   * closure would be an RC cycle. */
+/** Nested `function name(...) {...}`: declare the mutable function binding
+   * before lowering its body, then initialize it with the lifted closure.
+   * The early declaration is observable only when another nested closure
+   * captures the binding: its box must exist before either side of a mutual
+   * recursion cycle builds its closure. Forward source references use the
+   * same split declaration/assignment through predeclareForwardFnDecl.
+   * Self-references inside the body lower to `selfRef`, not a capture: a box
+   * holding its own closure would be an RC cycle. */
   export function lowerNestedFunctionDecl(lowerer: Lowerer, stmt: ts.FunctionDeclaration): IrStmt {
     if (!stmt.name) lowerer.unsupported("SC1090", stmt, "anonymous function declarations");
     const { funcType } = lowerer.lambdaSignature(stmt);
-    const local = lowerer.declareLocal(stmt.name, stmt.name.text, funcType, false);
+    // Function declaration bindings are mutable in JavaScript. More
+    // importantly, putting the empty slot into the owning statement list
+    // BEFORE lowerLambda lets a sibling lowered from that body capture this
+    // local's eventual box. The local object may become boxed while either
+    // body lowers; backends inspect its final shape when emitting varDecl.
+    const local = lowerer.declareLocal(stmt.name, stmt.name.text, funcType, true);
+    let declared = false;
+    for (let i = lowerer.activeStmtLists.length - 1; i >= 0; i--) {
+      const entry = lowerer.activeStmtLists[i]!;
+      if (entry.ctx !== lowerer.ctx || !entry.stmts.includes(stmt)) continue;
+      entry.out.push({ kind: "varDecl", localId: local.id, init: null, loc: locOf(stmt) });
+      declared = true;
+      break;
+    }
+    if (!declared) {
+      throw new InternalCompilerError("lowerer bug: nested function declaration has no active statement list");
+    }
     const init = lowerer.lowerLambda(stmt);
-    return { kind: "varDecl", localId: local.id, init, loc: locOf(stmt) };
+    return { kind: "assign", localId: local.id, value: init, loc: locOf(stmt) };
   }
 
 /** Signature checks + param shapes + IR func type for any lambda-like

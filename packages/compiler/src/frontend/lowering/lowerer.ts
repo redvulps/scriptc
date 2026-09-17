@@ -1704,10 +1704,10 @@ export class Lowerer {
   lambdaCounter = 0;
 
   /** Statement lists currently mid-lowering, innermost last: the forward-
-   * capture machinery (predeclareForwardCapture) needs to know which later
-   * statements of an OPEN list a symbol's declaration sits in, which scope
-   * frame list-level declarations register into, and where to insert the
-   * scope-entry TDZ varDecl (before the statement being lowered). */
+   * capture machinery needs to know which later statements of an OPEN list
+   * a symbol's declaration sits in, which scope frame list-level declarations
+   * register into, and where to insert predeclarations before closures or
+   * earlier source statements need them. */
   readonly activeStmtLists: {
     stmts: readonly ts.Statement[];
     index: number;

@@ -582,10 +582,11 @@ export function provenanceElidedConstDecl(lowerer: Lowerer, decl: ts.VariableDec
 /** The FUNCTION-DECLARATION twin of predeclareForwardCapture: JS hoists a
    * nested `function f() {}` to scope entry — the binding is LIVE from the
    * first statement, so a reference lexically above the declaration in the
-   * SAME function lowers the declaration eagerly at the reference (varDecl
-   * pushed before the current statement's IR, registered in the list's
-   * scope frame) and the statement loop skips the source statement when it
-   * arrives (lowerer.hoistedFnDecls). Same-function only: the declaration's own
+   * SAME function lowers the declaration eagerly at the reference (storage
+   * declaration and initializing assignment are pushed before the current
+   * statement's IR, registered in the list's scope frame) and the statement
+   * loop skips the source statement when it arrives
+   * (lowerer.hoistedFnDecls). Same-function only: the declaration's own
    * lowering runs under the ctx that owns its statement list, and a
    * cross-function early capture would need lowering under a DIFFERENT
    * ctx than the one currently open — that shape keeps the honest fence. */
@@ -1074,7 +1075,8 @@ export function lowerStmt(lowerer: Lowerer, stmt: ts.Statement): IrStmt | IrStmt
     if (ts.isFunctionDeclaration(stmt) && !stmt.body) return null;
     if (ts.isFunctionDeclaration(stmt)) {
       // Already lowered eagerly by the forward-hoisting machinery
-      // (predeclareForwardFnDecl) — the varDecl is in the list's output.
+      // (predeclareForwardFnDecl) — its declaration and assignment are in
+      // the list's output.
       if (lowerer.hoistedFnDecls.has(stmt)) return null;
       return lowerer.lowerNestedFunctionDecl(stmt);
     }
