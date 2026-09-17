@@ -262,6 +262,14 @@ export interface FileParts {
         // island runtime implementation; the preflight/import-use SC1010
         // fences are the whole story.
         if (lowerer.externalTypes.has(spec)) continue;
+        // A source-only workspace package is part of the program module
+        // graph: resolveImport follows its node_modules link to the loaded
+        // TypeScript entry. Its internal `.js` spellings have already been
+        // resolved to `.ts` by that graph, and no source may be handed to
+        // the JavaScript island.
+        if (!isRelativeSpecifier(spec) && resolveImport(lowerer.program, fp.sf, spec) !== null) {
+          continue;
+        }
         const npm = resolveNpmImport(fp.sf.fileName, spec);
         // --npm-static: an opted-in package that made it through preflight
         // is a PROGRAM-MODULE dependency — its entry sits in the module

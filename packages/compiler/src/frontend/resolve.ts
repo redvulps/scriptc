@@ -401,6 +401,10 @@ const EXPORT_CONDITIONS = new Set(["types", "import", "default"]);
  * package.json the tsgo host serves for the same package. */
 const JS_ONLY_CONDITIONS = new Set(["import", "default"]);
 
+/** Node's ESM runtime conditions. Source-only workspace detection follows
+ * the executable branch rather than the checker-only "types" branch. */
+const RUNTIME_IMPORT_CONDITIONS = new Set(["import", "node", "default"]);
+
 /** package.json "exports" lookup: exact subpath keys, then '*' patterns
  * (longest literal prefix wins), condition objects matched against the
  * supplied set in object-key order, arrays first-resolvable. Returns the
@@ -611,14 +615,17 @@ export function resolveProjectImport(fromFile: string, specifier: string): strin
 
 /** The one resolver entry point for source modules that compile into the
  * current program. Relative paths, tsconfig aliases, package imports, package
- * self-references, and provenance entries all meet here; builtins and ordinary
- * npm packages deliberately answer null for their dedicated callers. */
+ * self-references, provenance entries, and TypeScript-entry workspace
+ * packages all meet here; builtins and JavaScript npm packages deliberately
+ * answer null for their dedicated callers. */
 export function resolveProjectModule(fromFile: string, specifier: string): string | null {
   if (isRelativeSpecifier(specifier) || isAbsolute(specifier)) {
     return resolveRelativeModule(fromFile, specifier);
   }
   if (specifier.startsWith("node:")) return null;
-  return resolveProjectImport(fromFile, specifier);
+  return resolveProjectImport(fromFile, specifier) ??
+    resolveWorkspaceSourceModule(fromFile, specifier)?.typesFile ??
+    null;
 }
 
 /* 5.9.3 with allowJs resolves node_modules in TWO FULL PASSES (probed): the
@@ -628,7 +635,7 @@ export function resolveProjectModule(fromFile: string, specifier: string): strin
  * fails does a second identical walk run admitting the JavaScript files
  * themselves. An untyped package with an @types twin therefore answers the
  * @types files; an untyped package without one answers its own .js. */
-type ResolutionPass = "types" | "js";
+type ResolutionPass = "types" | "source" | "js";
 
 function extensionsFor(pass: ResolutionPass, flavor: "plain" | "x" | "m" | "c"): string[] {
   if (pass === "types") {
@@ -637,6 +644,14 @@ function extensionsFor(pass: ResolutionPass, flavor: "plain" | "x" | "m" | "c"):
       case "c": return [".cts", ".d.cts"];
       case "x": return [".tsx", ".ts", ".d.ts"];
       default: return [".ts", ".tsx", ".d.ts"];
+    }
+  }
+  if (pass === "source") {
+    switch (flavor) {
+      case "m": return [".mts"];
+      case "c": return [".cts"];
+      case "x": return [".tsx", ".ts"];
+      default: return [".ts", ".tsx"];
     }
   }
   switch (flavor) {
@@ -650,10 +665,17 @@ function extensionsFor(pass: ResolutionPass, flavor: "plain" | "x" | "m" | "c"):
 /** File resolution of an exports-map target (or types/typings/main field)
  * inside node_modules, for one pass: recognized-extension substitution,
  * extension addition, then directory index. */
-function loadTargetInPass(pkgDir: string, target: string, pass: ResolutionPass): string | null {
+function loadTargetInPass(
+  pkgDir: string,
+  target: string,
+  pass: ResolutionPass,
+  runtimeOnly = false,
+): string | null {
   const path = join(pkgDir, target);
   if (pass === "types") {
     if (/\.(d\.ts|d\.mts|d\.cts|ts|tsx|mts|cts)$/.test(path) && isFile(path)) return path;
+  } else if (pass === "source") {
+    if (/\.(ts|tsx|mts|cts)$/.test(path) && !/\.d\.(ts|mts|cts)$/.test(path) && isFile(path)) return path;
   } else if (/\.(js|jsx|mjs|cjs)$/.test(path) && isFile(path)) {
     return path;
   }
@@ -678,9 +700,10 @@ function loadTargetInPass(pkgDir: string, target: string, pass: ResolutionPass):
   if (isDirectory(path)) {
     const nested = pkgJsonOf(path);
     if (nested) {
-      for (const field of [nested.types, nested.typings, nested.main]) {
+      const fields = runtimeOnly ? [nested.main] : [nested.types, nested.typings, nested.main];
+      for (const field of fields) {
         if (typeof field === "string" && field !== "") {
-          const via = loadTargetInPass(path, field, pass);
+          const via = loadTargetInPass(path, field, pass, runtimeOnly);
           if (via) return via;
         }
       }
@@ -695,24 +718,31 @@ function loadTargetInPass(pkgDir: string, target: string, pass: ResolutionPass):
 
 /** node_modules file-or-directory resolution for a package-internal path (a
  * subpath without exports, the root lookup), for one pass. */
-function loadPathInPass(pkgDir: string, rel: string, pass: ResolutionPass): string | null {
+function loadPathInPass(
+  pkgDir: string,
+  rel: string,
+  pass: ResolutionPass,
+  runtimeOnly = false,
+): string | null {
   const base = rel === "." ? pkgDir : join(pkgDir, rel);
   if (rel !== ".") {
-    const viaFile = loadTargetInPass(pkgDir, rel, pass);
+    const viaFile = loadTargetInPass(pkgDir, rel, pass, runtimeOnly);
     if (viaFile) return viaFile;
     return null;
   }
   if (!isDirectory(base)) return null;
   const pkg = pkgJsonOf(base);
   if (pkg) {
-    for (const field of [pkg.types, pkg.typings]) {
-      if (typeof field === "string" && field !== "") {
-        const viaTypes = loadTargetInPass(base, field, pass);
-        if (viaTypes) return viaTypes;
+    if (!runtimeOnly) {
+      for (const field of [pkg.types, pkg.typings]) {
+        if (typeof field === "string" && field !== "") {
+          const viaTypes = loadTargetInPass(base, field, pass, runtimeOnly);
+          if (viaTypes) return viaTypes;
+        }
       }
     }
     if (typeof pkg.main === "string" && pkg.main !== "") {
-      const viaMain = loadTargetInPass(base, pkg.main, pass);
+      const viaMain = loadTargetInPass(base, pkg.main, pass, runtimeOnly);
       if (viaMain) return viaMain;
     }
   }
@@ -765,11 +795,12 @@ function packageAnswer(pkgDir: string, fallbackName: string, typesFile: string):
 export function resolveBareModule(
   fromFile: string,
   specifier: string,
-  /** "js-only" forces the runtime-JS resolution regardless of the active
-   * --npm-static set (the auto-detection probe); "types-only" forces the
-   * unshadowed declaration pass for overload-overlay discovery; default
-   * follows the active set. */
-  mode?: "js-only" | "types-only",
+  /** "js-only" forces --npm-static's runtime-JS resolution regardless of
+   * the active set (the auto-detection probe); "types-only" forces the
+   * unshadowed declaration pass for overload-overlay discovery;
+   * "runtime-js" and "runtime-source" probe Node's import-condition entry
+   * by executable file kind; default follows the active set. */
+  mode?: "js-only" | "types-only" | "runtime-js" | "runtime-source",
 ): BareResolution | null {
   const pkgName = packageNameOfSpecifier(specifier);
   const rest = specifier.slice(pkgName.length).replace(/^\//, "");
@@ -777,8 +808,14 @@ export function resolveBareModule(
   // An opted-in --npm-static package resolves to its RUNTIME JS: the js
   // pass only, the "types" export condition dropped, the @types mangling
   // never consulted — mirroring the shadowed world the tsgo host serves.
-  const npmStatic = mode === "js-only" || (mode !== "types-only" && isNpmStaticPackage(pkgName));
-  const conditions = npmStatic ? JS_ONLY_CONDITIONS : EXPORT_CONDITIONS;
+  const runtimeImport = mode === "runtime-js" || mode === "runtime-source";
+  const npmStatic = mode === "js-only" || (!runtimeImport && mode !== "types-only" && isNpmStaticPackage(pkgName));
+  const conditions = runtimeImport
+    ? RUNTIME_IMPORT_CONDITIONS
+    : npmStatic
+      ? JS_ONLY_CONDITIONS
+      : EXPORT_CONDITIONS;
+  const runtimeOnly = runtimeImport || npmStatic;
 
   const inPackage = (nmPkgDir: string, name: string, pass: ResolutionPass): BareResolution | null => {
     // A workspace link: the answer's realpath escaped node_modules, so the
@@ -819,12 +856,12 @@ export function resolveBareModule(
     if (pkg?.exports !== undefined) {
       const target = resolveExports(pkg.exports, subpath, conditions);
       if (target !== null) {
-        const file = loadTargetInPass(nmPkgDir, target, pass);
+        const file = loadTargetInPass(nmPkgDir, target, pass, runtimeOnly);
         if (file) return withWorkspace(packageAnswer(nmPkgDir, name, file));
       }
       return null;
     }
-    const file = loadPathInPass(nmPkgDir, subpath === "." ? "." : `./${rest}`, pass);
+    const file = loadPathInPass(nmPkgDir, subpath === "." ? "." : `./${rest}`, pass, runtimeOnly);
     if (!file) return null;
     // A SUBPATH answered through a nested package.json (the
     // @restart/hooks/useMergedRefs shape): 5.9.3 forms the packageId from
@@ -862,7 +899,46 @@ export function resolveBareModule(
   };
 
   if (mode === "types-only") return passOnce("types");
+  if (mode === "runtime-source") return passOnce("source");
+  if (mode === "runtime-js") return passOnce("js");
   return npmStatic ? passOnce("js") : (passOnce("types") ?? passOnce("js"));
+}
+
+/** A workspace-linked bare package whose executable entry is TypeScript,
+ * not shipped JavaScript. The type-resolution pass must reach that source
+ * directly, and the runtime-JS pass must have no answer: a workspace that
+ * ships dist/index.js beside src/index.ts remains an ordinary npm package
+ * whose JavaScript executes in the island unless --npm-static opts it in.
+ *
+ * Source-only workspace packages are part of the program author's module
+ * graph instead. The TypeScript program already loaded their source and
+ * resolved package-internal `.js` spellings to `.ts`; returning that same
+ * entry from resolveProjectModule lets preflight, module ordering, and
+ * lowering share the checker-resolved graph without feeding TypeScript to
+ * the JavaScript island. */
+export function resolveWorkspaceSourceModule(
+  fromFile: string,
+  specifier: string,
+): BareResolution | null {
+  if (
+    isRelativeSpecifier(specifier) ||
+    isAbsolute(specifier) ||
+    specifier.startsWith("node:") ||
+    specifier.startsWith("#")
+  ) {
+    return null;
+  }
+  const source = resolveBareModule(fromFile, specifier, "runtime-source");
+  if (
+    source?.workspaceDir === undefined ||
+    !/\.(?:ts|tsx|mts|cts)$/.test(source.typesFile) ||
+    /\.d\.(?:ts|mts|cts)$/.test(source.typesFile)
+  ) {
+    return null;
+  }
+  return resolveBareModule(fromFile, specifier, "runtime-js") === null
+    ? source
+    : null;
 }
 
 /** Resolves a `/// <reference types="name" />`-style TYPE DIRECTIVE the way

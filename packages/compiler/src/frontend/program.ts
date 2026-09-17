@@ -2157,7 +2157,8 @@ function preflight7(load: LoadResult): {
           diags.push(externalHostModuleDiag7(fromSpec, stmt));
           continue;
         }
-        if (!isRelativeSpecifier(fromSpec)) {
+        const projectReexport = resolveImport7(program, sf, fromSpec);
+        if (!isRelativeSpecifier(fromSpec) && projectReexport === null) {
           // NAMED re-exports from a SUPPORTED builtin pass (`export { ok }
           // from "node:assert"` — a universal re-export facade facade): the
           // statement binds nothing locally and evaluates nothing (builtins
@@ -2194,7 +2195,7 @@ function preflight7(load: LoadResult): {
           diags.push(unsupportedDiag("SC1014", locOf7(stmt), "re-exports from packages or builtin modules"));
           continue;
         }
-        const reDep = resolveImport7(program, sf, fromSpec);
+        const reDep = projectReexport;
         // `export * as ns from "./m"` re-exports the module NAMESPACE
         // object under a name: importers' `x.ns.member` reads resolve
         // statically through the same alias machinery as `import * as ns`
