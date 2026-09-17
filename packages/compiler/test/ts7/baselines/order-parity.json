@@ -6253,6 +6253,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2899-nested-mutual-recursion.ts": {
+   "order": [
+    "<repo>/tests/corpus/2899-nested-mutual-recursion.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
