@@ -6,6 +6,29 @@ All notable changes to scriptc will be documented in this file.
 
 <!-- release:start -->
 
+## 0.1.3
+
+### Features
+
+- **BigInt compiles natively.** BigInt literals, arithmetic, comparisons, conversions, storage, byte-buffer and `DataView` operations, and width boundaries now preserve Node behavior across the C and LLVM backends.
+- **Static crypto utilities expand.** Hashes, HMACs, PBKDF2, random fills and integers, timing-safe equality, and one-shot hashing compile through the native `node:crypto` surface with Node-compatible errors.
+- **Child-process stdin is writable.** `child.stdin` supports native writes, backpressure, ending, destruction, and lifecycle and error events across the C and LLVM backends.
+- **Commander 15 compiles statically.** The npm-static path now preserves the declaration and runtime behavior needed by Commander 15 command actions.
+- **TypeScript workspace sources compile statically.** Source-only workspace package entries now resolve through the program module graph while retaining the existing JavaScript package boundary.
+
+### Performance
+
+- **WASI release binaries are smaller.** Release links strip debug sections while development output retains its metadata.
+
+### Fixes
+
+- **Generated JSON record keys are valid.** Escaped and terminating property names now emit correctly in both native backends.
+- **Windows console output preserves UTF-8.** Attached consoles use UTF-8 without changing redirected byte output.
+- **Nested recursion and discarded conditionals lower correctly.** Mutual nested function references are initialized before capture, and discarded conditional expressions retain lazy control flow.
+- **Library archives retain section granularity.** Per-function and per-data sections now allow consumers to garbage-collect unreferenced archive members.
+
+<!-- release:end -->
+
 ## 0.1.2
 
 ### Features
@@ -21,8 +44,6 @@ All notable changes to scriptc will be documented in this file.
 
 - **TypeScript compatibility is more faithful.** Branded primitive types, leading BOM literals, TypeScript 7 project resolution, and Node type-link behavior now retain their expected semantics.
 - **Dynamic operations and runtime arguments are more reliable.** Dynamic `any`-local operators lower correctly, executable-path arguments remain intact, and URLSearchParams sorting scales without quadratic behavior.
-
-<!-- release:end -->
 
 ## 0.1.1
 
