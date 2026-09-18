@@ -474,6 +474,12 @@ interface Buffer<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> extends
   writeUIntLE(value: number, offset: number, byteLength: number): number;
   writeIntBE(value: number, offset: number, byteLength: number): number;
   writeIntLE(value: number, offset: number, byteLength: number): number;
+  writeBigInt64BE(value: bigint, offset?: number): number;
+  writeBigInt64LE(value: bigint, offset?: number): number;
+  writeBigUInt64BE(value: bigint, offset?: number): number;
+  writeBigUInt64LE(value: bigint, offset?: number): number;
+  writeBigUint64BE(value: bigint, offset?: number): number;
+  writeBigUint64LE(value: bigint, offset?: number): number;
   readUInt8(offset?: number): number;
   readUInt16BE(offset?: number): number;
   readUInt16LE(offset?: number): number;
@@ -492,6 +498,12 @@ interface Buffer<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> extends
   readUIntLE(offset: number, byteLength: number): number;
   readIntBE(offset: number, byteLength: number): number;
   readIntLE(offset: number, byteLength: number): number;
+  readBigInt64BE(offset?: number): bigint;
+  readBigInt64LE(offset?: number): bigint;
+  readBigUInt64BE(offset?: number): bigint;
+  readBigUInt64LE(offset?: number): bigint;
+  readBigUint64BE(offset?: number): bigint;
+  readBigUint64LE(offset?: number): bigint;
 }
 interface BufferConstructor {
   from(data: string, encoding?: BufferEncoding): Buffer;

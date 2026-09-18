@@ -127,6 +127,7 @@ function inspectSupport(lowerer: Lowerer, t: IrType, visiting: Set<string>, out:
     case "nullT":
     case "regex":
     case "symbol":
+    case "bigint":
     case "dyn":
     case "jsval":
       return null;
@@ -270,6 +271,8 @@ function inspectExpr(
       // inspect(sym) IS Symbol.prototype.toString's text ("Symbol(foo)")
       // — Node prints it unquoted at every depth.
       return { kind: "libCall", fn: "sym.toString", args: [value], type: STRING, loc };
+    case "bigint":
+      return { kind: "libCall", fn: "bigint.inspect", args: [value], type: STRING, loc };
     case "bytes":
       return { kind: "libCall", fn: "insp.buffer", args: [value], type: STRING, loc };
     case "dyn":
@@ -800,6 +803,8 @@ function formatValueExpr(lowerer: Lowerer, t: IrType, value: IrExpr, depth: numb
       return strLit("null", loc);
     case "symbol":
       return { kind: "libCall", fn: "sym.toString", args: [value], type: STRING, loc };
+    case "bigint":
+      return { kind: "libCall", fn: "bigint.inspect", args: [value], type: STRING, loc };
     case "dyn":
       return { kind: "libCall", fn: "insp.dynS", args: [value, numLit(depth, loc)], type: STRING, loc };
     case "union":
@@ -1074,6 +1079,7 @@ function formatSArg(lowerer: Lowerer, node: ts.Expression, depth: number, loc: S
   // %s of a symbol prints inspect's text ("Symbol(foo)") — String(sym)'s
   // answer too, one runtime call either way.
   if (t.kind === "symbol") return { kind: "libCall", fn: "sym.toString", args: [value], type: STRING, loc };
+  if (t.kind === "bigint") return { kind: "libCall", fn: "bigint.inspect", args: [value], type: STRING, loc };
   if (t.kind === "dyn") {
     return { kind: "libCall", fn: "insp.dynS", args: [value, numLit(depth, loc)], type: STRING, loc };
   }

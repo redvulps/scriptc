@@ -2,6 +2,7 @@ import { InternalCompilerError } from "../errors.js";
 import * as ts from "./ts7/adapter.js";
 import type { IrRecordShape, IrType, IrUnionDef } from "../ir/ir.js";
 import { arrayOf, BOOL, bytesOf, canConvertToDyn, CHILD_T, CRYPTOHASH_T, CRYPTOHMAC_T, DATE_T, DYN, F64, funcOf, isSupportedArrayElem, isSupportedIndexValue, isSupportedMapKey, isSupportedMapValue, isSupportedSetElem, isUnitType, JSVAL, mapOf, NULL_T, PROCSTREAM_T, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, setOf, STRING, SYMBOL_T, typeEquals, typeKey, UNDEFINED_T, VOID } from "../ir/ir.js";
+import { BIGINT_T } from "../ir/ir.js";
 
 import { isJsSourceFile, isNodeTypesPath } from "./program.js";
 import { accessorSlotProp } from "../ir/ir.js";
@@ -497,6 +498,8 @@ export function formatIrType(t: IrType, shapes: ShapeRegistry, unions: UnionRegi
       return "URLSearchParams";
     case "symbol":
       return "symbol";
+    case "bigint":
+      return "bigint";
     case "stats":
       return "Stats";
     case "fileHandle":
@@ -982,6 +985,7 @@ function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   // getBaseTypeOfLiteralType widens unique symbols, but check both flags)
   // map to the symbol identity kind.
   if (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) return SYMBOL_T;
+  if (flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) return BIGINT_T;
   // STANDALONE undefined (and void) map to VOID: return-type mapping flows
   // through here, and `(): void | undefined` functions must stay void.
   // Inside a union, undefined becomes the undefinedT unit ARM instead (see
@@ -3242,9 +3246,10 @@ function mapBrandedPrimitiveIntersection(widened: ts.Type, ctx: TypeMapperCtx): 
     if (base.flags & ts.TypeFlags.String) return STRING;
     if (base.flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) return BOOL;
     if (base.flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) return SYMBOL_T;
+    if (base.flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) return BIGINT_T;
     if (base.flags & ts.TypeFlags.TypeParameter) {
       const bound = resolveTypeParam?.(base) ?? null;
-      if (bound && (bound.kind === "f64" || bound.kind === "string" || bound.kind === "bool" || bound.kind === "symbol")) {
+      if (bound && (bound.kind === "f64" || bound.kind === "bigint" || bound.kind === "string" || bound.kind === "bool" || bound.kind === "symbol")) {
         contextResolutions++;
         return bound;
       }

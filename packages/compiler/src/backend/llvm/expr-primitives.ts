@@ -288,6 +288,14 @@ export function emitStringExpr(host: LlvmEmitterContext, e: ExprOf<"strConcat" |
                 B.line(`store ptr ${r}, ptr ${slot}`);
                 break;
               }
+              case "bigint": {
+                const p = host.unionPeek(v.name);
+                const r = B.tmp();
+                host.declare(`declare ptr @scr_bigint_to_string(ptr, double)`);
+                B.line(`${r} = call ptr @scr_bigint_to_string(ptr ${p}, double ${f64Lit(10)})`);
+                B.line(`store ptr ${r}, ptr ${slot}`);
+                break;
+              }
               case "bytes": {
                 // Buffer.toString() IS the utf8 decode (Node's default
                 // encoding) — the `Buffer | string` chunk idiom.

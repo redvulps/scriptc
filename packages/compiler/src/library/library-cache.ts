@@ -45,6 +45,7 @@ interface EarlyLibraryCacheStamp {
     assert: boolean;
     inspect: boolean;
     symbol: boolean;
+    bigint: boolean;
     searchParams: boolean;
     emitter: boolean;
     zlib: boolean;
@@ -60,6 +61,7 @@ export interface EarlyLibraryNativeFeatures {
   assert: boolean;
   inspect: boolean;
   symbol: boolean;
+  bigint: boolean;
   searchParams: boolean;
   emitter: boolean;
   zlib: boolean;
@@ -116,6 +118,7 @@ const BOOLEAN_NATIVE_KEYS = [
   "assert",
   "inspect",
   "symbol",
+  "bigint",
   "searchParams",
   "emitter",
   "zlib",

@@ -40,6 +40,8 @@ const optional = [
   ["scr_events_emitter.c", "emitter"],
   ["scr_dyn_handle.c", any("emitter", "netEffective")],
   ["scr_symbol.c", "symbol"],
+  ["scr_bigint.c", "bigint"],
+  ["scr_bigint_assert.c", all("assert", "bigint")],
   ["scr_url_params.c", "searchParams"],
   ["scr_qs.c", "qs"],
   ["scr_util.c", "parseArgs"],

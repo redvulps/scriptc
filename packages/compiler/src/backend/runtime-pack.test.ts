@@ -42,6 +42,7 @@ const BASE: NativeLinkFeatures = {
   events: false,
   emitter: false,
   symbol: false,
+  bigint: false,
   searchParams: false,
   qs: false,
   parseArgs: false,

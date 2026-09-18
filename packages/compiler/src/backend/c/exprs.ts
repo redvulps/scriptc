@@ -5111,6 +5111,62 @@ function emitPrimitiveLibCall(state: LibCallState): Temp {
             return finish(`scr_sym_for(${arg(0)})`);
           case "sym.toString":
             return finish(`scr_sym_to_string(${arg(0)})`);
+          case "bigint.parse":
+            return finish(`scr_bigint_parse(${arg(0)})`);
+          case "bigint.fromF64":
+            return finish(`scr_bigint_from_f64(${arg(0)})`);
+          case "bigint.neg":
+            return finish(`scr_bigint_neg(${arg(0)})`);
+          case "bigint.not":
+            return finish(`scr_bigint_not(${arg(0)})`);
+          case "bigint.add":
+            return finish(`scr_bigint_add(${arg(0)}, ${arg(1)})`);
+          case "bigint.sub":
+            return finish(`scr_bigint_sub(${arg(0)}, ${arg(1)})`);
+          case "bigint.mul":
+            return finish(`scr_bigint_mul(${arg(0)}, ${arg(1)})`);
+          case "bigint.div":
+            return finish(`scr_bigint_div(${arg(0)}, ${arg(1)})`);
+          case "bigint.mod":
+            return finish(`scr_bigint_mod(${arg(0)}, ${arg(1)})`);
+          case "bigint.pow":
+            return finish(`scr_bigint_pow(${arg(0)}, ${arg(1)})`);
+          case "bigint.and":
+            return finish(`scr_bigint_and(${arg(0)}, ${arg(1)})`);
+          case "bigint.or":
+            return finish(`scr_bigint_or(${arg(0)}, ${arg(1)})`);
+          case "bigint.xor":
+            return finish(`scr_bigint_xor(${arg(0)}, ${arg(1)})`);
+          case "bigint.shl":
+            return finish(`scr_bigint_shl(${arg(0)}, ${arg(1)})`);
+          case "bigint.shr":
+            return finish(`scr_bigint_shr(${arg(0)}, ${arg(1)})`);
+          case "bigint.eq":
+            return finish(`scr_bigint_eq(${arg(0)}, ${arg(1)})`);
+          case "bigint.cmp":
+            return finish(`scr_bigint_cmp_f64(${arg(0)}, ${arg(1)})`);
+          case "bigint.cmpNumber":
+            return finish(`scr_bigint_cmp_number(${arg(0)}, ${arg(1)})`);
+          case "bigint.truthy":
+            return finish(`scr_bigint_truthy(${arg(0)})`);
+          case "bigint.toString":
+            return finish(`scr_bigint_to_string(${arg(0)}, ${arg(1)})`);
+          case "bigint.inspect":
+            return finish(`scr_bigint_inspect(${arg(0)})`);
+          case "bigint.toF64":
+            return finish(`scr_bigint_to_f64(${arg(0)})`);
+          case "bigint.asUintN":
+            return finish(`scr_bigint_as_uint_n(${arg(0)}, ${arg(1)})`);
+          case "bigint.asIntN":
+            return finish(`scr_bigint_as_int_n(${arg(0)}, ${arg(1)})`);
+          case "bigint.bufferRead":
+            return finish(`scr_bigint_buffer_read(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)})`);
+          case "bigint.bufferWrite":
+            return finish(`scr_bigint_buffer_write(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)})`);
+          case "bigint.dataViewGet":
+            return finish(`scr_bigint_dataview_get(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)})`);
+          case "bigint.dataViewSet":
+            return finish(`scr_bigint_dataview_set(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)})`);
           case "sym.desc":
           case "sym.keyFor": {
             // `string | undefined` — the child.stdout pattern with a
@@ -8235,6 +8291,8 @@ function emitAssertInspectLibCall(state: LibCallState): Temp {
             return finish(`scr_assert_ok(${arg(0)}, ${arg(1)})`);
           case "assert.eqF64":
             return finish(`scr_assert_eq_f64(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${arg(5)})`);
+          case "assert.eqBigInt":
+            return finish(`scr_assert_eq_bigint(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${arg(5)})`);
           case "assert.eqStr":
             return finish(`scr_assert_eq_str(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${arg(5)})`);
           case "assert.eqBool":
@@ -8453,6 +8511,7 @@ function emitLibCallExpr(emitter: CEmitter, e: LibCallExpr): Temp {
     case "regexp":
     case "intl":
     case "sym":
+    case "bigint":
     case "perf":
     case "number":
     case "date":

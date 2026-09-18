@@ -45,6 +45,7 @@ export interface EarlyExecutableNativeFeatures {
   events: boolean;
   emitter: boolean;
   symbol: boolean;
+  bigint: boolean;
   searchParams: boolean;
   qs: boolean;
   parseArgs: boolean;
@@ -146,6 +147,7 @@ const BOOLEAN_NATIVE_KEYS = [
   "events",
   "emitter",
   "symbol",
+  "bigint",
   "searchParams",
   "qs",
   "parseArgs",

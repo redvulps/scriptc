@@ -19,7 +19,7 @@ type BoxNewPointerType = Extract<IrType, {
   kind: Exclude<PointerKind, "string" | "array" | "func" | "dyn" | "jsval" | "caught" | "promise" | "generator">
 }>;
 type RejectedArrayPointerType = Extract<IrType, {
-  kind: Exclude<PointerKind, "string" | "array" | "bytes" | "record" | "object" | "union" | "jsval" | "child" | "netServer" | "symbol" | "classval" | "func">
+  kind: Exclude<PointerKind, "string" | "bigint" | "array" | "bytes" | "record" | "object" | "union" | "jsval" | "child" | "netServer" | "symbol" | "classval" | "func">
 }>;
 
 export function cType(t: IrType): string {
@@ -31,6 +31,8 @@ export function cType(t: IrType): string {
       return "bool";
     case "string":
       return "ScrStr *";
+    case "bigint":
+      return "ScrBigInt *";
     case "array":
       return "ScrArr *";
     case "map":
@@ -264,7 +266,7 @@ export function elemKindC(elem: IrType): string {
       elem.kind !== "string" && elem.kind !== "array" && elem.kind !== "bytes" &&
       elem.kind !== "record" && elem.kind !== "object" && elem.kind !== "union" &&
       elem.kind !== "jsval" && elem.kind !== "child" && elem.kind !== "netServer" &&
-      elem.kind !== "symbol" && elem.kind !== "classval" && elem.kind !== "func") {
+      elem.kind !== "symbol" && elem.kind !== "bigint" && elem.kind !== "classval" && elem.kind !== "func") {
     throw new InternalCompilerError(`emitter bug: array of ${elem.kind} (frontend rejects these)`);
   }
   switch (elem.kind) {
@@ -296,6 +298,7 @@ export function elemKindC(elem: IrType): string {
     // Symbols (symbol[] — heterogeneous sentinel lists): refcounted
     // identity pointers holding only strings — no trace, no cycles ever.
     case "symbol":
+    case "bigint":
     // Class objects ((typeof Shape)[] — the registry idiom): immortal
     // statics behind no-op RC adapters — no trace, no cycles ever;
     // indexOf/includes/=== are the REF kind's pointer identity, exactly

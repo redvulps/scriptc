@@ -768,6 +768,7 @@ function emitRecordCloneC(
       elem.kind === "child" || // spawned child handles: scr_child_* adapters, no trace
       elem.kind === "netServer" || // server handles: scr_net_server_* adapters, no trace
       elem.kind === "symbol" || // symbol identities: scr_sym_* adapters, no trace
+      elem.kind === "bigint" || // immutable numeric values: scr_bigint_* adapters
       elem.kind === "classval" || // class objects: no-op adapters, no trace (immortal statics)
       // Closures: scr_closure_* adapters + scr_closure_trace_v (always
       // cycle-headered — captures can reach back through boxes).
@@ -796,7 +797,7 @@ function emitRecordCloneC(
       t.kind === "map" || t.kind === "set" || t.kind === "promise" ||
       t.kind === "generator" ||
       t.kind === "regex" || t.kind === "url" || t.kind === "searchParams" ||
-      t.kind === "symbol" || t.kind === "stats" ||
+      t.kind === "symbol" || t.kind === "bigint" || t.kind === "stats" ||
       t.kind === "fileHandle" ||
       t.kind === "spawnRes" || t.kind === "child" || t.kind === "bytes" ||
       t.kind === "netServer" || t.kind === "netSocket" ||

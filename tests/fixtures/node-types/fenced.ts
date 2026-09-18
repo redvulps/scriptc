@@ -3,7 +3,6 @@
  * the SC2020-family fence naming @types/node — never a raw TS error,
  * never a silently broken binary. */
 console.log(process.memoryUsage()); // uptime/cpuUsage/resourceUsage lower now; the V8-heap report does not
-const buf = Buffer.from("bytes").readBigUInt64BE(0); // from, fill, and the numeric families lower; the bigint reads fence
 console.log(Buffer.poolSize);
 /* setInterval lowers, and under @types/node its Timeout RETURN now maps
  * to the numeric handle — holding one and unref()/ref()/hasRef()/refresh()

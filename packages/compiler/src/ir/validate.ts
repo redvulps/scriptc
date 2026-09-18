@@ -19,6 +19,7 @@ import type {
   SrcLoc,
 } from "./ir.js";
 import { arrayOf, BOOL, BYTES_U8, bytesOf, canAdaptDynFuncTo, canConvertToDyn, canExitIslandToType, canMarshalIntoIsland, canMarshalTypedFuncIntoIsland, CHILD_T, CHILDSTREAM_T, CHILDWRITER_T, CRYPTOHASH_T, CRYPTOHMAC_T, DATE_T, DGRAMSOCK_T, DYN, DYN_HANDLE_KINDS, F64, ffiClassType, ffiSourceParamTypes, FILEHANDLE_T, FSWATCHER_T, HTTP2SESSION_T, HTTP2STREAM_T, HTTPCLIENTREQ_T, HTTPREQ_T, HTTPRES_T, islandPromisePayloadTag, isDynTypedRefType, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isJsonSafeType, isJsonStringifySafeType, isRefCounted, isSupportedArrayElem, isSupportedIndexValue, isSupportedMapKey, isSupportedMapValue, isSupportedSetElem, isUnitType, jsOpResultKind, JSVAL, NETSERVER_T, NETSOCKET_T, PROCSTREAM_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_EMITTER_CLASS, RUNTIME_ERROR_CLASSES, RUNTIME_STREAM_CLASSES, SEARCH_PARAMS_T, SECURECTX_T, shapeHasAccessorSlots, SPAWNRES_T, STATS_T, STRING, SYMBOL_T, TESTCTX_T, typeEquals, typeKey, unionFuncSetArmsOk, URL_T, VOID } from "./ir.js";
+import { BIGINT_T } from "./ir.js";
 
 /** Per-method signature for strIntrinsic: `argTypes` lists every argument
  * position (optional ones included); `minArgs` is how many may be omitted
@@ -258,6 +259,34 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
   "sym.keyFor": { argTypes: [SYMBOL_T], result: VOID },
   "sym.desc": { argTypes: [SYMBOL_T], result: VOID },
   "sym.toString": { argTypes: [SYMBOL_T], result: STRING },
+  "bigint.parse": { argTypes: [STRING], result: BIGINT_T },
+  "bigint.fromF64": { argTypes: [F64], result: BIGINT_T },
+  "bigint.neg": { argTypes: [BIGINT_T], result: BIGINT_T },
+  "bigint.not": { argTypes: [BIGINT_T], result: BIGINT_T },
+  "bigint.add": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.sub": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.mul": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.div": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.mod": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.pow": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.and": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.or": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.xor": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.shl": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.shr": { argTypes: [BIGINT_T, BIGINT_T], result: BIGINT_T },
+  "bigint.eq": { argTypes: [BIGINT_T, BIGINT_T], result: BOOL },
+  "bigint.cmp": { argTypes: [BIGINT_T, BIGINT_T], result: F64 },
+  "bigint.cmpNumber": { argTypes: [BIGINT_T, F64], result: F64 },
+  "bigint.truthy": { argTypes: [BIGINT_T], result: BOOL },
+  "bigint.toString": { argTypes: [BIGINT_T, F64], result: STRING },
+  "bigint.inspect": { argTypes: [BIGINT_T], result: STRING },
+  "bigint.toF64": { argTypes: [BIGINT_T], result: F64 },
+  "bigint.asUintN": { argTypes: [F64, BIGINT_T], result: BIGINT_T },
+  "bigint.asIntN": { argTypes: [F64, BIGINT_T], result: BIGINT_T },
+  "bigint.bufferRead": { argTypes: [BYTES_U8, F64, BOOL, BOOL], result: BIGINT_T },
+  "bigint.bufferWrite": { argTypes: [BYTES_U8, BIGINT_T, F64, BOOL, BOOL], result: F64 },
+  "bigint.dataViewGet": { argTypes: [BYTES_U8, F64, BOOL, BOOL], result: BIGINT_T },
+  "bigint.dataViewSet": { argTypes: [BYTES_U8, F64, BIGINT_T, BOOL], result: VOID },
   "url.new": { argTypes: [STRING], result: URL_T },
   "url.protocol": { argTypes: [URL_T], result: STRING },
   "url.host": { argTypes: [URL_T], result: STRING },
@@ -1017,6 +1046,7 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
   // message slot always carries a string ("" when hasMsg is false).
   "assert.ok": { argTypes: [BOOL, STRING], result: VOID },
   "assert.eqF64": { argTypes: [F64, F64, BOOL, BOOL, STRING, BOOL], result: VOID },
+  "assert.eqBigInt": { argTypes: [BIGINT_T, BIGINT_T, BOOL, BOOL, STRING, BOOL], result: VOID },
   "assert.eqStr": { argTypes: [STRING, STRING, BOOL, BOOL, STRING, BOOL], result: VOID },
   "assert.eqBool": { argTypes: [BOOL, BOOL, BOOL, BOOL, STRING, BOOL], result: VOID },
   "assert.deepResult": { argTypes: [BOOL, BOOL, STRING, BOOL], result: VOID },

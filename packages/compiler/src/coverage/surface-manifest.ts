@@ -169,6 +169,7 @@ export function generateSurfaceManifest(compilerVersion: string): SurfaceManifes
     });
   }
   for (const [id, name, note] of [
+    ["bigint-literals", "bigint literals", "arbitrary-precision values in decimal, binary, octal, and hexadecimal spelling"],
     ["async-generators", "typed async generator functions and methods", "lazy bodies with queued next/return/throw requests, await, direct yield, and Node-compatible completion promises"],
     ["for-await-async-generators", "for await over typed async generators", "awaits each IteratorResult and closes the generator on early break"],
     ["for-await-readable-streams", "for await over Node Readable and Web ReadableStream values", "closes on every abrupt completion, with destroyOnReturn and preventCancel literal options"],

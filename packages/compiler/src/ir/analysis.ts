@@ -49,6 +49,7 @@ export function dynDesc(
 ): string {
   switch (t.kind) {
     case "f64": return "number";
+    case "bigint": return "bigint";
     case "string": return "string";
     case "bool": return "boolean";
     case "record": return recordsById.get(t.shapeId)?.tuple ? "array" : "object";

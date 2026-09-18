@@ -43,6 +43,9 @@ import { OVERFLOW_MEMBER } from "./shapes.js";
         case "string":
           d.push(`  case ${i}: return ((ScrStr *)scr_union_peek(v))->len != 0;`);
           break;
+        case "bigint":
+          d.push(`  case ${i}: return scr_bigint_truthy((ScrBigInt *)scr_union_peek(v));`);
+          break;
         case "jsval":
           d.push(`  case ${i}: return scr_jsval_truthy((ScrJsval *)scr_union_peek(v)) != 0;`);
           break;
@@ -106,6 +109,9 @@ import { OVERFLOW_MEMBER } from "./shapes.js";
             `  case ${i}: return scr_str_eq((ScrStr *)scr_union_peek(a), (ScrStr *)scr_union_peek(b));`,
           );
           break;
+        case "bigint":
+          d.push(`  case ${i}: return scr_bigint_eq((ScrBigInt *)scr_union_peek(a), (ScrBigInt *)scr_union_peek(b));`);
+          break;
         default:
           // Ref arms: pointer identity, exactly JS object equality.
           d.push(`  case ${i}: return scr_union_peek(a) == scr_union_peek(b); /* ${arm.kind} */`);
@@ -153,6 +159,9 @@ import { OVERFLOW_MEMBER } from "./shapes.js";
           break;
         case "bool":
           d.push(`  case ${i}: return scr_bool_to_scrstr(scr_union_get_bool(v));`);
+          break;
+        case "bigint":
+          d.push(`  case ${i}: return scr_bigint_to_string((ScrBigInt *)scr_union_peek(v), 10);`);
           break;
         case "bytes": {
           // Buffer.toString() IS the utf8 decode (Node's default

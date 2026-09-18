@@ -98,10 +98,10 @@
       "entries": 103,
       "apiEntries": 98,
       "static": {
-        "supported": 0,
-        "partial": 0,
+        "supported": 8,
+        "partial": 1,
         "refused": 0,
-        "not-implemented": 98,
+        "not-implemented": 89,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -3968,8 +3968,12 @@
         "inherited": false
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "derived:descendants"
+        "status": "partial",
+        "evidence": "derived:descendants",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -5144,8 +5148,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.readBigInt64BE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -5174,8 +5182,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.readBigInt64LE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -5204,8 +5216,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.readBigUInt64BE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -5234,8 +5250,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.readBigUInt64LE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -6071,8 +6091,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.writeBigInt64BE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -6101,8 +6125,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.writeBigInt64LE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -6131,8 +6159,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.writeBigUInt64BE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -6161,8 +6193,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:buffer"
+        "status": "supported",
+        "evidence": "compiler-feature:buffer.buf.writeBigUInt64LE",
+        "tests": [
+          "tests/corpus/2902-bigint-bytes.ts",
+          "tests/corpus/2904-bigint-errors.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",

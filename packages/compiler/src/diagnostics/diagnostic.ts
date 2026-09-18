@@ -318,7 +318,7 @@ export const FENCE_CODES: Record<string, { name: string; status: "unsupported" |
   // signatures, SC2007 overloads, SC2008 intersections, SC2009 component
   // fences; standard-library types with no lowering report SC2020). What
   // remains here is the remainder the name enumerates.
-  SC2001: { name: "values of types outside the compilable set (bigint and symbol primitives, constructor objects, and library-derived or unresolved generic shapes)", status: "unsupported" },
+  SC2001: { name: "values of types outside the compilable set (constructor objects and library-derived or unresolved generic shapes)", status: "unsupported" },
   SC2002: { name: "record shape flows outside the width-copy rules (shapes must match exactly or width-coerce)", status: "unsupported" },
   SC2003: { name: "union-to-union conversions outside the re-tagging rule", status: "unsupported" },
   SC2004: { name: "uses of a binding whose declaration did not compile (cascade marker)", status: "unsupported" },
@@ -471,8 +471,8 @@ export function unsupportedTypeDiag(typeText: string, loc: SrcLoc): ScrDiagnosti
   // SC2005, index signatures — SC2006, overloads — SC2007, intersections —
   // SC2008, component fences — SC2009, standard-library types — SC2020)
   // all speak before badType reaches for this, so what lands here is the
-  // remainder the registry entry enumerates: bigint/symbol primitives,
-  // constructor objects, and library-derived or unresolved generic shapes.
+  // remainder the registry entry enumerates: constructor objects and
+  // library-derived or unresolved generic shapes.
   return {
     code: "SC2001",
     message:

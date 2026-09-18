@@ -23,6 +23,8 @@ const OPTIONAL = [
   ["scr_events.c", "events"], ["scr_readline.c", "events"],
   ["scr_events_emitter.c", "emitter"], ["scr_dyn_handle.c", any("emitter", "netEffective")],
   ["scr_symbol.c", "symbol"], ["scr_url_params.c", "searchParams"],
+  ["scr_bigint.c", "bigint"],
+  ["scr_bigint_assert.c", all("assert", "bigint")],
   ["scr_qs.c", "qs"], ["scr_util.c", "parseArgs"], ["scr_stream.c", "stream"],
   ["scr_loop_kqueue.c", any("netEffective", "dgram")],
   ["scr_loop_epoll.c", any("netEffective", "dgram")],

@@ -675,6 +675,15 @@ export function emitDynamicExpr(host: LlvmEmitterContext, e: ExprOf<"dynFrom" | 
               B.line(`store i1 ${t}, ptr ${slot}`);
               break;
             }
+            case "bigint": {
+              host.declare(`declare zeroext i1 @scr_bigint_eq(ptr, ptr)`);
+              const a = host.unionPeek(l.name);
+              const b = host.unionPeek(r.name);
+              const t = B.tmp();
+              B.line(`${t} = call zeroext i1 @scr_bigint_eq(ptr ${a}, ptr ${b})`);
+              B.line(`store i1 ${t}, ptr ${slot}`);
+              break;
+            }
             default: {
               // Ref arms: pointer identity, exactly JS object equality.
               const a = host.unionPeek(l.name);

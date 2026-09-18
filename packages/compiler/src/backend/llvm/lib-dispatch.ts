@@ -265,6 +265,7 @@ export function emitLibCall(host: LlvmEmitterContext, e: LibCallExpr): LlValue {
       case "strdec":
         return host.emitIoLibCall(e);
       case "util":
+      case "bigint":
       case "crypto":
       case "buffer":
       case "bytes":

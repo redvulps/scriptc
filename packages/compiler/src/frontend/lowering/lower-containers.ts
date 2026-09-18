@@ -619,7 +619,7 @@ function lowerArraySearchCall(
 
   // Preserve the existing fast path for an ordinary, non-union needle. Its
   // runtime implementation already has exact primitive/reference equality.
-  if (elem.kind !== "union" && typeEquals(needle.type, elem)) {
+  if (elem.kind !== "union" && elem.kind !== "bigint" && typeEquals(needle.type, elem)) {
     return {
       kind: "arrIntrinsic",
       method,

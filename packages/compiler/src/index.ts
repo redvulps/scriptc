@@ -53,6 +53,7 @@ import { validateSidecar } from "./library/sidecar-validate.js";
 import { entryFunctionExports, type EntryExportInfo } from "./frontend/lib-exports.js";
 import { entryContractFacts, type ContractFacts } from "./frontend/lib-contract.js";
 import { moduleLibAsyncSurface, moduleLibNondeterministicSurface, moduleEmbedsBuiltin, moduleEmbedsCompressedNpm, moduleUsesAssert, moduleUsesCopying, moduleUsesDc, moduleUsesDgram, moduleUsesDynAsync, moduleUsesDynInvoke, moduleUsesEmitter, moduleUsesFetch, moduleUsesFileHandle, moduleUsesFsWatch, moduleUsesHttp2, moduleUsesHttpServer, moduleUsesInspect, moduleUsesLegacyTextDecoder, moduleUsesNet, moduleUsesNodeTest, moduleUsesParseArgs, moduleUsesProcessEvents, moduleUsesQs, moduleUsesRegex, moduleUsesSearchParams, moduleUsesStream, moduleUsesSymbol, moduleUsesTls, moduleUsesTlsCa, moduleUsesZlib, type IrFfiImport, type IrLibSection, type IrModule, type IrRecordShape, type IrType, type SrcLoc } from "./ir/ir.js";
+import { moduleUsesBigInt } from "./ir/ir.js";
 import { serializeModule } from "./ir/serialize.js";
 import { validateModule } from "./ir/validate.js";
 import { canonicalBuiltinModule, checkPreflight, isNodeTypesPath, loadProgram, locOf, requiresOf, resolveNpmImport, type LoadResult } from "./frontend/program.js";
@@ -1049,6 +1050,7 @@ function executableNativeFeatures(
     events: moduleUsesProcessEvents(mod),
     emitter: moduleUsesEmitter(mod),
     symbol: moduleUsesSymbol(mod),
+    bigint: moduleUsesBigInt(mod),
     searchParams: moduleUsesSearchParams(mod),
     qs: moduleUsesQs(mod),
     parseArgs: moduleUsesParseArgs(mod),
@@ -1146,6 +1148,7 @@ async function compileExecutableNative(
       events: features.events,
       emitter: features.emitter,
       symbol: features.symbol,
+      bigint: features.bigint,
       searchParams: features.searchParams,
       qs: features.qs,
       parseArgs: features.parseArgs,
@@ -2261,6 +2264,7 @@ function libraryNativeFeatures(
     assert: moduleUsesAssert(mod),
     inspect: moduleUsesInspect(mod),
     symbol: moduleUsesSymbol(mod),
+    bigint: moduleUsesBigInt(mod),
     searchParams: moduleUsesSearchParams(mod),
     emitter: moduleUsesEmitter(mod),
     zlib: moduleUsesZlib(mod),
@@ -2345,6 +2349,7 @@ async function compileLibraryNative(
     assert: features.assert,
     inspect: features.inspect,
     symbol: features.symbol,
+    bigint: features.bigint,
     searchParams: features.searchParams,
     emitter: features.emitter,
     zlib: features.zlib,

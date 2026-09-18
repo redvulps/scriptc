@@ -36,7 +36,7 @@
     "syntax.for-await-class-async-iterators": ["tests/corpus/2863-class-async-iterator.ts"],
     "node-builtin.assert": ["tests/corpus/1600-assert-passing.ts", "tests/corpus/1609-assert-async.ts"],
     "node-builtin.async_hooks": ["tests/corpus/2213-async-local-storage.cjs"],
-    "node-builtin.buffer": ["tests/corpus/1402-buffer-encodings.ts", "tests/corpus/1660-buffer-read-write-num.ts"],
+    "node-builtin.buffer": ["tests/corpus/1402-buffer-encodings.ts", "tests/corpus/1660-buffer-read-write-num.ts", "tests/corpus/2902-bigint-bytes.ts", "tests/corpus/2904-bigint-errors.ts"],
     "node-builtin.child_process": ["tests/corpus/1361-spawn-events.ts", "tests/corpus/1565-spawn-pipe-streams.ts"],
     "node-builtin.cluster": ["tests/corpus/957-builtins-namespace.ts"],
     "node-builtin.crypto": ["tests/corpus/1358-crypto-random.ts", "tests/corpus/1534-crypto-hash-chain.ts", "tests/corpus/2556-crypto-introspection.ts", "tests/corpus/2890-crypto-static-utility.ts", "tests/harness/npm-static.test.ts"],
@@ -74,6 +74,7 @@
     "stdlib.abort": ["tests/harness/fetch-conformance.test.ts"]
   },
   "features": [
+    { "chapter": "buffer", "signatures": ["`buf.readBigInt64BE([offset])`", "`buf.readBigInt64LE([offset])`", "`buf.readBigUInt64BE([offset])`", "`buf.readBigUInt64LE([offset])`", "`buf.writeBigInt64BE(value[, offset])`", "`buf.writeBigInt64LE(value[, offset])`", "`buf.writeBigUInt64BE(value[, offset])`", "`buf.writeBigUInt64LE(value[, offset])`"], "status": "supported", "evidence": ["tests/corpus/2902-bigint-bytes.ts", "tests/corpus/2904-bigint-errors.ts"] },
     { "chapter": "environment_variables", "symbols": ["export"], "status": "not-applicable" },
     { "chapter": "globals", "symbols": ["fetch"], "status": "partial", "evidence": ["tests/harness/fetch-conformance.test.ts"] },
     { "chapter": "modules", "symbols": ["__dirname", "__filename", "exports", "require", "module.require", "main", "filename"], "status": "partial", "evidence": ["tests/corpus/1612-cjs-module-globals.cjs", "tests/corpus/1596-cjs-modules/main.js", "tests/corpus/1629-require-main-filename.cjs", "tests/corpus/2830-cjs-require-self-name/main.cjs", "tests/corpus/2880-cjs-module-graph/main.cjs"] },

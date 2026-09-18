@@ -2435,6 +2435,8 @@ class LlEmitter {
           B.line(`${valueName} = call zeroext i1 @scr_union_get_bool(ptr ${v.name})`);
         } else if (arm.kind === "string") {
           valueName = this.unionPeek(v.name);
+        } else if (arm.kind === "bigint") {
+          valueName = this.unionPeek(v.name);
         }
         const truthy = this.truthyOf(arm.kind, valueName, true);
         B.line(`store i1 ${truthy}, ptr ${slot}`);
@@ -2473,6 +2475,12 @@ class LlEmitter {
         B.line(`${lenp} = getelementptr inbounds %ScrStr, ptr ${valueName}, i64 0, i32 1`);
         B.line(`${len} = load ${this.sizeType}, ptr ${lenp}`);
         B.line(`${truthy} = icmp ne ${this.sizeType} ${len}, 0`);
+        return truthy;
+      }
+      case "bigint": {
+        this.declare(`declare zeroext i1 @scr_bigint_truthy(ptr)`);
+        const truthy = B.tmp();
+        B.line(`${truthy} = call zeroext i1 @scr_bigint_truthy(ptr ${valueName})`);
         return truthy;
       }
       case "date":

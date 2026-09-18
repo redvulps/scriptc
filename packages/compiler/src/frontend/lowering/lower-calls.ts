@@ -6,7 +6,7 @@ import { InternalCompilerError } from "../../errors.js";
 import * as ts from "../ts7/adapter.js";
 import type { Lowerer } from "./lowerer.js";
 import { lowerGenMethodCall } from "./lower-generators.js";
-import { BOOL, CAUGHT, DYN, F64, IrExpr, IrFunction, IrLocal, IrParam, IrStmt, IrType, JSVAL, STRING, SYMBOL_T, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, canDynCheckTo, canMarshalTypedFuncIntoIsland, ffiClassType, ffiSourceParamTypes, funcOf, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isUnitType, shapeHasAccessorSlots, typeEquals } from "../../ir/ir.js";
+import { BIGINT_T, BOOL, CAUGHT, DYN, F64, IrExpr, IrFunction, IrLocal, IrParam, IrStmt, IrType, JSVAL, STRING, SYMBOL_T, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, canDynCheckTo, canMarshalTypedFuncIntoIsland, ffiClassType, ffiSourceParamTypes, funcOf, isFfiCallbackParam, isFfiContextParam, isFfiReleaseParam, isUnitType, shapeHasAccessorSlots, typeEquals } from "../../ir/ir.js";
 import type { IrFfiCallbackParam, IrFfiCallbackParamClass, IrFfiImport, IrFfiReleaseParam } from "../../ir/ir.js";
 import { isJsSourceFile, locOf } from "../program.js";
 import { genResultRecord, isGenericCallableMemberType, typeKey } from "../type-mapper.js";
@@ -3531,6 +3531,36 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
     // on the SC2020 fence.
     if (
       ts.isIdentifier(expr.expression) &&
+      expr.expression.text === "BigInt" &&
+      lowerer.isStdlibSymbol(lowerer.resolveValueSymbol(expr.expression) ?? undefined)
+    ) {
+      if (expr.arguments.length !== 1) {
+        lowerer.noLowering(`BigInt with ${expr.arguments.length} arguments`, expr);
+      }
+      const argNode = expr.arguments[0]!;
+      const arg = lowerer.lowerExpr(argNode);
+      if (arg.type.kind === "bigint") return arg;
+      if (arg.type.kind === "string") {
+        return { kind: "libCall", fn: "bigint.parse", args: [arg], type: BIGINT_T, loc };
+      }
+      if (arg.type.kind === "f64") {
+        return { kind: "libCall", fn: "bigint.fromF64", args: [arg], type: BIGINT_T, loc };
+      }
+      if (arg.type.kind === "bool") {
+        return {
+          kind: "ternary",
+          cond: arg,
+          then: { kind: "libCall", fn: "bigint.parse", args: [{ kind: "strLit", value: "1", type: STRING, loc }], type: BIGINT_T, loc },
+          else_: { kind: "libCall", fn: "bigint.parse", args: [{ kind: "strLit", value: "0", type: STRING, loc }], type: BIGINT_T, loc },
+          type: BIGINT_T,
+          loc,
+        };
+      }
+      lowerer.noLowering(`BigInt of ${lowerer.fmt(arg.type)} values`, argNode, "string, number, boolean, and bigint arguments are supported");
+    }
+
+    if (
+      ts.isIdentifier(expr.expression) &&
       (expr.expression.text === "String" ||
         expr.expression.text === "Boolean" ||
         expr.expression.text === "Number") &&
@@ -3561,6 +3591,9 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
       if (name === "Boolean") return lowerer.lowerCondition(argNode);
       const arg = lowerer.lowerExpr(argNode);
       if (name === "String") return lowerer.ensureString(arg, argNode);
+      if (name === "Number" && arg.type.kind === "bigint") {
+        return { kind: "libCall", fn: "bigint.toF64", args: [arg], type: F64, loc };
+      }
       if (arg.type.kind === "f64") return arg;
       if (arg.type.kind === "bool") {
         return {
@@ -4425,6 +4458,8 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
         // by the receiver's own element.
         lowerer.lowerFilterNarrowCall(expr, expr.expression) ??
         lowerArrayIsArrayCall(lowerer, expr, expr.expression) ??
+        lowerBigIntStaticCall(lowerer, expr, expr.expression) ??
+        lowerBigIntMethodCall(lowerer, expr, expr.expression) ??
         lowerSymbolStaticCall(lowerer, expr, expr.expression) ??
         lowerSymbolMethodCall(lowerer, expr, expr.expression) ??
         lowerRegExpStaticCall(lowerer, expr, expr.expression) ??
@@ -7348,6 +7383,45 @@ export function lowerPromiseMethodCall(lowerer: Lowerer, call: ts.CallExpression
       call,
       `well-known symbols as values (Symbol.${member} — for-of, iteration protocols, and template literals compile through their language constructs; the reified symbol has no static lowering)`,
     );
+  }
+
+  function lowerBigIntStaticCall(lowerer: Lowerer, call: ts.CallExpression,
+    access: ts.PropertyAccessExpression,): IrExpr | null {
+    if (call.questionDotToken || access.questionDotToken) return null;
+    if (!lowerer.isStdlibGlobal(access.expression, "BigInt")) return null;
+    const name = access.name.text;
+    if (name !== "asUintN" && name !== "asIntN") return null;
+    if (call.arguments.length !== 2) {
+      lowerer.noLowering(`BigInt.${name} with ${call.arguments.length} arguments`, call);
+    }
+    const loc = locOf(call);
+    const bits = lowerer.lowerExprExpecting(call.arguments[0]!, F64);
+    const value = lowerer.lowerExprExpecting(call.arguments[1]!, BIGINT_T);
+    return {
+      kind: "libCall",
+      fn: name === "asUintN" ? "bigint.asUintN" : "bigint.asIntN",
+      args: [bits, value],
+      type: BIGINT_T,
+      loc,
+    };
+  }
+
+  function lowerBigIntMethodCall(lowerer: Lowerer, call: ts.CallExpression,
+    access: ts.PropertyAccessExpression,): IrExpr | null {
+    if (lowerer.mapTypeOf(lowerer.typeOf(access.expression))?.kind !== "bigint") return null;
+    if (!lowerer.isStdlibMember(access)) return null;
+    const name = access.name.text;
+    const loc = locOf(call);
+    const receiver = lowerer.lowerExpr(access.expression);
+    if (receiver.type.kind !== "bigint") return null;
+    if (name === "valueOf" && call.arguments.length === 0) return receiver;
+    if (name === "toString" && call.arguments.length <= 1) {
+      const radix: IrExpr = call.arguments[0]
+        ? lowerer.lowerExprExpecting(call.arguments[0], F64)
+        : { kind: "numLit", value: 10, type: F64, loc };
+      return { kind: "libCall", fn: "bigint.toString", args: [receiver, radix], type: STRING, loc };
+    }
+    return null;
   }
 
   /** Method calls on symbol-typed receivers: `.toString()` is the

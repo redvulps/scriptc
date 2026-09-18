@@ -206,7 +206,7 @@
     {
       "id": "diagnostic.sc2001",
       "kind": "diagnostic-fence",
-      "name": "values of types outside the compilable set (bigint and symbol primitives, constructor objects, and library-derived or unresolved generic shapes)",
+      "name": "values of types outside the compilable set (constructor objects and library-derived or unresolved generic shapes)",
       "status": "unsupported",
       "code": "SC2001"
     },
@@ -3559,6 +3559,13 @@
       "name": "block- and function-scoped await using declarations",
       "status": "static",
       "note": "LIFO asynchronous disposal through [Symbol.asyncDispose], with synchronous fallback"
+    },
+    {
+      "id": "syntax.bigint-literals",
+      "kind": "syntax",
+      "name": "bigint literals",
+      "status": "static",
+      "note": "arbitrary-precision values in decimal, binary, octal, and hexadecimal spelling"
     },
     {
       "id": "syntax.class-declarations-inside-functions",

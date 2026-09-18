@@ -314,6 +314,8 @@ function lowerAssertEqual(
     a.type.kind === b.type.kind
       ? a.type.kind === "f64"
         ? ("assert.eqF64" as const)
+        : a.type.kind === "bigint"
+          ? ("assert.eqBigInt" as const)
         : a.type.kind === "string"
           ? ("assert.eqStr" as const)
           : a.type.kind === "bool"
@@ -1223,6 +1225,7 @@ function bytesBrandOf(lowerer: Lowerer, node: ts.Expression): string | null {
 function deepUnsupportedReason(lowerer: Lowerer, t: IrType, visiting: Set<string>): string | null {
   switch (t.kind) {
     case "f64":
+    case "bigint":
     case "string":
     case "bool":
     case "undefinedT":
@@ -1319,6 +1322,9 @@ function deepEqHelper(lowerer: Lowerer, t: IrType, loc: SrcLoc): string {
   switch (t.kind) {
     case "f64":
       body = [ret({ kind: "libCall", fn: "assert.sameValue", args: [a(), b()], type: BOOL, loc })];
+      break;
+    case "bigint":
+      body = [ret({ kind: "libCall", fn: "bigint.eq", args: [a(), b()], type: BOOL, loc })];
       break;
     case "string":
       body = [ret({ kind: "strEq", negated: false, left: a(), right: b(), type: BOOL, loc })];

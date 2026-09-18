@@ -6265,6 +6265,36 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2901-bigint-core.ts": {
+   "order": [
+    "<repo>/tests/corpus/2901-bigint-core.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2902-bigint-bytes.ts": {
+   "order": [
+    "<repo>/tests/corpus/2902-bigint-bytes.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2903-bigint-storage.ts": {
+   "order": [
+    "<repo>/tests/corpus/2903-bigint-storage.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2904-bigint-errors.ts": {
+   "order": [
+    "<repo>/tests/corpus/2904-bigint-errors.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2905-bigint-edges.ts": {
+   "order": [
+    "<repo>/tests/corpus/2905-bigint-edges.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
@@ -7277,6 +7307,22 @@
     "<repo>/tests/diagnostics/async-iterator-handles.ts"
    ],
    "diags": []
+  },
+  "<repo>/tests/diagnostics/bigint-fences.ts": {
+   "order": [
+    "<repo>/tests/diagnostics/bigint-fences.ts"
+   ],
+   "diags": [
+    {
+     "code": "SC0001",
+     "message": "Expected 1 arguments, but got 2.",
+     "loc": {
+      "file": "<repo>/tests/diagnostics/bigint-fences.ts",
+      "start": 368,
+      "end": 384
+     }
+    }
+   ]
   },
   "<repo>/tests/diagnostics/blocked-binding-cascade.ts": {
    "order": [

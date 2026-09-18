@@ -296,6 +296,7 @@ export function arrNewCall(host: ShapeHost, elem: IrType, capText: string): stri
   const useRef =
     elem.kind === "record" || elem.kind === "object" || elem.kind === "union" || elem.kind === "func" ||
     elem.kind === "symbol" || // symbol identities: scr_sym_* adapters, no trace
+    elem.kind === "bigint" || // immutable numeric values: scr_bigint_* adapters
     elem.kind === "classval" || // class objects: no-op adapters, no trace (immortal statics)
     elem.kind === "promise" || // promise entries (Promise.all inputs): full REF story
     elem.kind === "child" || // spawned child handles: scr_child_* adapters, no trace
@@ -331,7 +332,7 @@ export function boxNewCall(host: ShapeHost, t: IrType): string {
   }
   if (
     t.kind === "record" || t.kind === "object" || t.kind === "classval" || t.kind === "union" ||
-    t.kind === "array" || t.kind === "map" || t.kind === "set" || t.kind === "symbol" || t.kind === "regex" ||
+    t.kind === "array" || t.kind === "map" || t.kind === "set" || t.kind === "symbol" || t.kind === "bigint" || t.kind === "regex" ||
     t.kind === "promise" || t.kind === "bytes" || t.kind === "url" || t.kind === "searchParams" ||
     t.kind === "stats" || t.kind === "fileHandle" || t.kind === "spawnRes" || t.kind === "child" || t.kind === "childStream" || t.kind === "childWriter" ||
     t.kind === "generator" ||

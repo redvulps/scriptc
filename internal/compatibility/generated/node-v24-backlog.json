@@ -4,11 +4,11 @@
   "nodeCommit": "848430679556aed0bd073f2bc263331ad84fa119",
   "summary": {
     "taskCount": 3368,
-    "tierItemCount": 6671,
+    "tierItemCount": 6663,
     "tiers": {
       "static": {
         "replace-refusal": 59,
-        "verify-gap": 2742,
+        "verify-gap": 2734,
         "audit-partial": 419,
         "classify": 2,
         "implement": 81
@@ -21,7 +21,7 @@
       }
     },
     "priorities": {
-      "high": 4508,
+      "high": 4500,
       "normal": 1411,
       "low": 752
     }
@@ -3488,14 +3488,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -3523,14 +3515,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -3558,14 +3542,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -3593,14 +3569,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -4571,14 +4539,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -4606,14 +4566,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -4641,14 +4593,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",
@@ -4676,14 +4620,6 @@
       },
       "priority": "high",
       "tiers": {
-        "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:buffer",
-          "tests": []
-        },
         "dynamic": {
           "status": "partial",
           "action": "audit-partial",

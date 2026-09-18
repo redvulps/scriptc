@@ -1,5 +1,5 @@
 import * as ts from "../../ts7/adapter.js";
-import { BOOL, BYTES_U8, DYN, F64, IrBytesElem, IrBytesIntrinsicMethod, IrExpr, IrType, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, bytesOf, typeEquals } from "../../../ir/ir.js";
+import { BIGINT_T, BOOL, BYTES_U8, DYN, F64, IrBytesElem, IrBytesIntrinsicMethod, IrExpr, IrType, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, bytesOf, typeEquals } from "../../../ir/ir.js";
 import { locOf } from "../../program.js";
 import type { Lowerer } from "../lowerer.js";
 import { dynUndefinedExpr, own } from "../lowerer.js";
@@ -507,6 +507,26 @@ export function lowerBytesMethodCall(lowerer: Lowerer, call: ts.CallExpression,
     const bufMethod = lowerBufferInstanceMethod(lowerer, call, access, name, loc);
     if (bufMethod) return bufMethod;
   }
+  const bigKind = own(BUF_BIGINT_METHODS, name);
+  if (bigKind !== undefined && declOnBuffer && receiverIr.elem === "u8") {
+    const write = name.startsWith("write");
+    const required = write ? 1 : 0;
+    if (nArgs < required || nArgs > required + 1) {
+      lowerer.noLowering(`.${name} with ${nArgs} arguments`, call);
+    }
+    const receiver = lowerer.lowerExpr(access.expression);
+    const offsetNode = call.arguments[required];
+    const offset: IrExpr = offsetNode
+      ? lowerer.lowerExprExpecting(offsetNode, F64)
+      : { kind: "numLit", value: 0, type: F64, loc };
+    const sign: IrExpr = { kind: "boolLit", value: bigKind.sign, type: BOOL, loc };
+    const le: IrExpr = { kind: "boolLit", value: bigKind.le, type: BOOL, loc };
+    if (!write) {
+      return { kind: "libCall", fn: "bigint.bufferRead", args: [receiver, offset, sign, le], type: BIGINT_T, loc };
+    }
+    const value = lowerer.lowerExprExpecting(call.arguments[0]!, BIGINT_T);
+    return { kind: "libCall", fn: "bigint.bufferWrite", args: [receiver, value, offset, sign, le], type: F64, loc };
+  }
   // The Buffer numeric read/write families — every fixed-width kind in
   // both endiannesses ("Uint" and "UInt" alike: Node aliases both), plus
   // the variable-width read/writeUIntLE quartet. The kind token rides as
@@ -549,31 +569,19 @@ export function lowerBytesMethodCall(lowerer: Lowerer, call: ts.CallExpression,
   // typed arrays and Buffers). The multi-byte kinds take the optional
   // littleEndian bool (omitted = big-endian, the JS default). All THROW
   // Node's RangeError on a bad offset (may-throw seeds).
+  const dvBigGetter = own(DV_BIG_GETTERS, name);
+  if (dvBigGetter !== undefined && receiverIr.elem === "u8") {
+    if (nArgs < 1 || nArgs > 2) lowerer.noLowering(`.${name} with ${nArgs} arguments`, call);
+    const receiver = lowerer.lowerExpr(access.expression);
+    const offset = lowerer.lowerExprExpecting(call.arguments[0]!, F64);
+    const sign: IrExpr = { kind: "boolLit", value: dvBigGetter.sign, type: BOOL, loc };
+    const le: IrExpr = call.arguments[1]
+      ? lowerer.lowerExprExpecting(call.arguments[1], BOOL)
+      : { kind: "boolLit", value: false, type: BOOL, loc };
+    return { kind: "libCall", fn: "bigint.dataViewGet", args: [receiver, offset, sign, le], type: BIGINT_T, loc };
+  }
   const dvGetter = own(DV_GETTERS, name);
   if (dvGetter !== undefined && receiverIr.elem === "u8") {
-    if (dvGetter.method === "dvGetBigUint64Number" || dvGetter.method === "dvGetBigInt64Number") {
-      // bigint values have no representation — only the COMPOSED
-      // `Number(view.getBigUint64/getBigInt64(...))` compiles (the
-      // randomBytesToString pattern): the 8-byte integer converts to
-      // double exactly as Number(bigint) would, and the bigint never
-      // exists as a value (the f64-typed intrinsic result IS what the
-      // identity Number(f64) lowering hands back).
-      const p = call.parent;
-      const composed =
-        ts.isCallExpression(p) &&
-        p.arguments.length === 1 &&
-        p.arguments[0] === call &&
-        ts.isIdentifier(p.expression) &&
-        p.expression.text === "Number" &&
-        lowerer.isStdlibSymbol(lowerer.resolveValueSymbol(p.expression) ?? undefined);
-      if (!composed) {
-        lowerer.noLowering(
-          `.${name} outside Number(...)`,
-          call,
-          `bigint values have no representation — Number(view.${name}(offset, littleEndian?)) is the lowered form`,
-        );
-      }
-    }
     const maxArgs = dvGetter.le ? 2 : 1;
     if (nArgs < 1 || nArgs > maxArgs) {
       lowerer.noLowering(`.${name} with ${nArgs} arguments`, call);
@@ -590,6 +598,16 @@ export function lowerBytesMethodCall(lowerer: Lowerer, call: ts.CallExpression,
   // representation and no composed form exists) — they keep the member
   // fence, as does setFloat16.
   const dvSetter = own(DV_SETTERS, name);
+  if ((name === "setBigUint64" || name === "setBigInt64") && receiverIr.elem === "u8") {
+    if (nArgs < 2 || nArgs > 3) lowerer.noLowering(`.${name} with ${nArgs} arguments`, call);
+    const receiver = lowerer.lowerExpr(access.expression);
+    const offset = lowerer.lowerExprExpecting(call.arguments[0]!, F64);
+    const value = lowerer.lowerExprExpecting(call.arguments[1]!, BIGINT_T);
+    const le: IrExpr = call.arguments[2]
+      ? lowerer.lowerExprExpecting(call.arguments[2], BOOL)
+      : { kind: "boolLit", value: false, type: BOOL, loc };
+    return { kind: "libCall", fn: "bigint.dataViewSet", args: [receiver, offset, value, le], type: VOID, loc };
+  }
   if (dvSetter !== undefined && receiverIr.elem === "u8") {
     const maxArgs = dvSetter.le ? 3 : 2;
     if (nArgs < 2 || nArgs > maxArgs) {
@@ -671,6 +689,21 @@ const BUF_NUM_METHODS: Record<string, string | undefined> = (() => {
   }
   return out;
 })();
+
+const BUF_BIGINT_METHODS: Record<string, { sign: boolean; le: boolean } | undefined> = {
+  readBigInt64BE: { sign: true, le: false },
+  readBigInt64LE: { sign: true, le: true },
+  readBigUInt64BE: { sign: false, le: false },
+  readBigUInt64LE: { sign: false, le: true },
+  readBigUint64BE: { sign: false, le: false },
+  readBigUint64LE: { sign: false, le: true },
+  writeBigInt64BE: { sign: true, le: false },
+  writeBigInt64LE: { sign: true, le: true },
+  writeBigUInt64BE: { sign: false, le: false },
+  writeBigUInt64LE: { sign: false, le: true },
+  writeBigUint64BE: { sign: false, le: false },
+  writeBigUint64LE: { sign: false, le: true },
+};
 
 /** The variable-width quartet (offset + byteLength) → sign/endian token. */
 const BUF_NUM_VAR_METHODS: Record<string, string | undefined> = {
@@ -878,10 +911,14 @@ function lowerBufferInstanceMethod(lowerer: Lowerer, call: ts.CallExpression,
   return null;
 }
 
-/** The DataView getter surface by source name. `le` marks the multi-byte
- * kinds whose lib signature declares the optional littleEndian parameter
- * (the 8-bit getters take none). The Big pair only compiles composed
- * inside Number(...) — see the use site. */
+const DV_BIG_GETTERS: Record<string, { sign: boolean } | undefined> = {
+  getBigInt64: { sign: true },
+  getBigUint64: { sign: false },
+};
+
+/** The number-returning DataView getter surface by source name. `le` marks
+ * the multi-byte kinds whose signature declares optional littleEndian;
+ * the BigInt pair routes through DV_BIG_GETTERS above. */
 const DV_GETTERS: Record<string, { method: IrBytesIntrinsicMethod; le: boolean } | undefined> = {
   getUint8: { method: "dvGetUint8", le: false },
   getInt8: { method: "dvGetInt8", le: false },
@@ -891,8 +928,6 @@ const DV_GETTERS: Record<string, { method: IrBytesIntrinsicMethod; le: boolean }
   getInt32: { method: "dvGetInt32", le: true },
   getFloat32: { method: "dvGetFloat32", le: true },
   getFloat64: { method: "dvGetFloat64", le: true },
-  getBigUint64: { method: "dvGetBigUint64Number", le: true },
-  getBigInt64: { method: "dvGetBigInt64Number", le: true },
 };
 
 const DV_SETTERS: Record<string, { method: IrBytesIntrinsicMethod; le: boolean } | undefined> = {

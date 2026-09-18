@@ -16,6 +16,8 @@ These are rejected at compile time with an `SC` code, a code frame, and usually 
 
 **Types and shapes**
 
+- Arbitrary-precision `bigint` values compile statically across literals, arithmetic and bitwise operators, comparisons, conversions, arrays, records, classes, closures, unions, promises, Buffer 64-bit reads/writes, and DataView 64-bit access. `BigInt64Array`/`BigUint64Array`, BigInt filesystem stats, JSON serialization, Map/Set keys, and crossing a BigInt through `unknown`, `any`, or the dynamic island remain fenced.
+
 - **Record shapes are exact structs.** Passing `{a, b}` where `{a}` is expected is SC2002. Where the compiler does accept a strict field-subset flow, it copies the record — see divergences below.
 - Union edges: unions used whole where a per-arm answer is needed (reading `u.length` on `string | string[]` — narrow first), union-into-union widening outside the re-tag and width rules, function arms beside data arms. (Printing a whole union is fine: `console.log(u)` dispatches per arm.)
 - Watch for **tuple inference**: `Promise.all([work(1), work(2)])` infers a tuple type, and tuple edges (like `.join` on a tuple) are fenced. Type the array first:

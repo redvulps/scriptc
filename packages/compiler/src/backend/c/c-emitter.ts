@@ -2059,7 +2059,7 @@ export class CEmitter {
    * their length — no runtime call, no ownership change. */
   truthyC(t: Temp): string {
     if (POINTER_KINDS.has(t.type.kind) &&
-        t.type.kind !== "string" && t.type.kind !== "union" &&
+        t.type.kind !== "string" && t.type.kind !== "bigint" && t.type.kind !== "union" &&
         t.type.kind !== "dyn" && t.type.kind !== "jsval" &&
         t.type.kind !== "caught") {
       // JS objects are ALWAYS truthy ([] and {} included). These are
@@ -2074,6 +2074,8 @@ export class CEmitter {
         return `${t.name} == ${t.name} && ${t.name} != 0`;
       case "string":
         return `${t.name}->len != 0`;
+      case "bigint":
+        return `scr_bigint_truthy(${t.name})`;
       case "date":
         // The scalar payload may be 0 or NaN, but the source Date object
         // is always truthy.

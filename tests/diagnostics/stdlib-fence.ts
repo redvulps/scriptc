@@ -83,10 +83,6 @@ function optionalDate(value: Date | undefined): number {
   return value === undefined ? -1 : value.getTime();
 }
 optionalDate(undefined);
-// The binding is READ so the fence stays observable (an unread bigint
-// declaration is a value Node builds and drops — it compiles to nothing).
-const big = 10n;
-console.log(big);
 function throwDate(): void {
   throw new Date(0); // the exception cell cannot preserve Date's object kind
 }

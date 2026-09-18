@@ -319,43 +319,20 @@ stdlib-fence.ts:85:1 - error SC2004: uses of 'optionalDate' inherit the blocker 
   84 | }
   85 | optionalDate(undefined);
      | ^~~~~~~~~~~~
-  86 | // The binding is READ so the fence stays observable (an unread bigint
+  86 | function throwDate(): void {
 
   hint: the declaration of 'optionalDate' did not compile — fix the diagnostic reported there and these sites clear with it
 
-stdlib-fence.ts:88:7 - error SC2001: values of type '10n' cannot be compiled yet (supported: number, string, boolean, arrays, Maps, Sets, RegExp, read-only Date values, functions, classes, records, unions of those, and 'unknown')
+stdlib-fence.ts:87:9 - error SC1090: throwing Date values (catch bindings cannot preserve Date's object kind; throw an Error or primitive instead) are not supported yet
 
-  87 | // declaration is a value Node builds and drops — it compiles to nothing).
-  88 | const big = 10n;
-     |       ^~~
-  89 | console.log(big);
-
-stdlib-fence.ts:88:13 - error SC1090: syntax 'BigIntLiteral' is not supported yet
-
-  87 | // declaration is a value Node builds and drops — it compiles to nothing).
-  88 | const big = 10n;
-     |             ^~~
-  89 | console.log(big);
-
-stdlib-fence.ts:89:13 - error SC2004: uses of 'big' inherit the blocker on its declaration
-
-  88 | const big = 10n;
-  89 | console.log(big);
-     |             ^~~
-  90 | function throwDate(): void {
-
-  hint: the declaration of 'big' did not compile — fix the diagnostic reported there and these sites clear with it
-
-stdlib-fence.ts:91:9 - error SC1090: throwing Date values (catch bindings cannot preserve Date's object kind; throw an Error or primitive instead) are not supported yet
-
-  90 | function throwDate(): void {
-  91 |   throw new Date(0); // the exception cell cannot preserve Date's object kind
+  86 | function throwDate(): void {
+  87 |   throw new Date(0); // the exception cell cannot preserve Date's object kind
      |         ^~~~~~~~~~~
+  88 | }
+
+stdlib-fence.ts:93:23 - error SC1090: .throw() with a Date value (the exception channel cannot preserve Date's object kind; throw an Error or primitive instead) is not supported yet
+
   92 | }
-
-stdlib-fence.ts:97:23 - error SC1090: .throw() with a Date value (the exception channel cannot preserve Date's object kind; throw an Error or primitive instead) is not supported yet
-
-  96 | }
-  97 | dateGenerator().throw(new Date(0));
+  93 | dateGenerator().throw(new Date(0));
      |                       ^~~~~~~~~~~
-  98 | // End of the diagnostic fixture.
+  94 | // End of the diagnostic fixture.

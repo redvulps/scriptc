@@ -32,6 +32,12 @@ export type IrBytesElem = "u8" | "u32" | "i32" | "f32";
 
 export type IrType =
   | { kind: "f64" }
+  /** An ECMAScript bigint primitive. Runtime values are immutable,
+   * arbitrary-precision signed integers (ScrBigInt) whose numeric value,
+   * not pointer identity, defines equality. The heap representation is an
+   * implementation detail: bigint remains a JS primitive for truthiness,
+   * typeof, comparison, inspection, and container semantics. */
+  | { kind: "bigint" }
   /** The supported ES Date value slice: a scalar TimeClip'd millisecond
    * value. Getters and toISOString observe only this slot, so copying it
    * through locals/params/fields is exact while Date mutation and object
@@ -367,6 +373,7 @@ export const HANDLE_KINDS = irKindSet(HANDLE_KIND_LIST);
 /** The IR kinds represented as pointers in both native backends. */
 const POINTER_KIND_LIST = [
   "string",
+  "bigint",
   "array",
   "map",
   "set",
@@ -396,6 +403,7 @@ export const POINTER_KINDS = irKindSet(POINTER_KIND_LIST);
  * until its one retain/release family is named here. */
 export const RUNTIME_RC_STEMS: Record<IrType["kind"], string> = {
   f64: "",
+  bigint: "scr_bigint",
   date: "",
   string: "scr_str",
   bool: "",
@@ -473,6 +481,7 @@ export const REF_TRUTHY_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 export const F64: IrType = { kind: "f64" };
+export const BIGINT_T: IrType = { kind: "bigint" };
 export const DATE_T: IrType = { kind: "date" };
 export const BYTES_U8: IrType = { kind: "bytes", elem: "u8" };
 export const STRING: IrType = { kind: "string" };
@@ -524,6 +533,7 @@ export function isUnitType(t: IrType): boolean {
 export function isSupportedArrayElem(t: IrType): boolean {
   switch (t.kind) {
     case "f64":
+    case "bigint":
     case "bool":
     case "string":
     case "array":
@@ -593,6 +603,7 @@ export function isSupportedSetElem(t: IrType): boolean {
 export function isSupportedMapValue(t: IrType): boolean {
   switch (t.kind) {
     case "f64":
+    case "bigint":
     case "string":
     case "bool":
     case "record":
@@ -690,6 +701,7 @@ export function typeKey(t: IrType): string {
   if (HANDLE_KINDS.has(t.kind)) return t.kind;
   switch (t.kind) {
     case "f64":
+    case "bigint":
     case "date":
     case "string":
     case "bool":
@@ -785,7 +797,7 @@ export function isRefCounted(t: IrType): boolean {
 
 export interface IrModule {
   /** Bumped on any breaking IR change; serialize.ts refuses mismatches. */
-  irVersion: 8;
+  irVersion: 9;
   sourceFile: string;
   functions: IrFunction[];
   /** Class shapes. Constructors and methods are ordinary module functions
@@ -2322,6 +2334,38 @@ export type IrLibFn =
   | "sym.keyFor"
   | "sym.desc"
   | "sym.toString"
+  /** Engine-free arbitrary-precision bigint operations (scr_bigint.c).
+   * parse accepts the ECMAScript BigInt string grammar; fromF64 accepts
+   * finite integral Numbers. Arithmetic returns fresh immutable values.
+   * cmp returns -1/0/1 as f64; toString accepts a numeric radix. */
+  | "bigint.parse"
+  | "bigint.fromF64"
+  | "bigint.neg"
+  | "bigint.not"
+  | "bigint.add"
+  | "bigint.sub"
+  | "bigint.mul"
+  | "bigint.div"
+  | "bigint.mod"
+  | "bigint.pow"
+  | "bigint.and"
+  | "bigint.or"
+  | "bigint.xor"
+  | "bigint.shl"
+  | "bigint.shr"
+  | "bigint.eq"
+  | "bigint.cmp"
+  | "bigint.cmpNumber"
+  | "bigint.truthy"
+  | "bigint.toString"
+  | "bigint.inspect"
+  | "bigint.toF64"
+  | "bigint.asUintN"
+  | "bigint.asIntN"
+  | "bigint.bufferRead"
+  | "bigint.bufferWrite"
+  | "bigint.dataViewGet"
+  | "bigint.dataViewSet"
   /** fs.statSync → a Stats value (may throw, like the other sync fs
    * calls); the stats.* getters are pure reads on it. */
   | "fs.statSync"
@@ -3818,8 +3862,8 @@ export type IrLibFn =
    *
    * assert.ok: (pass, message) — the frontend computed the truthiness AND
    * the full message (the user's, or the compile-time source-text form —
-   * assert.fail lowers here too with pass=false). assert.eqF64/eqStr/
-   * eqBool: (a, b, negated, deep, msg, hasMsg) — Object.is comparison,
+   * assert.fail lowers here too with pass=false). assert.eqF64/eqBigInt/
+   * eqStr/eqBool: (a, b, negated, deep, msg, hasMsg) — Object.is comparison,
    * covering strictEqual/notStrictEqual and the scalar deepStrictEqual
    * pair; msg is a typed dummy ("" literal) when hasMsg is false (Node
    * distinguishes an omitted message from an empty one per operator).
@@ -3867,6 +3911,7 @@ export type IrLibFn =
    * All arguments are borrowed. */
   | "assert.ok"
   | "assert.eqF64"
+  | "assert.eqBigInt"
   | "assert.eqStr"
   | "assert.eqBool"
   | "assert.eqSym"
@@ -5550,6 +5595,7 @@ function isJsonSafeAt(
     // Symbols are DROPPED by Node's stringify (undefined at the top level,
     // omitted as object values) — silent divergence banned; rejected.
     case "symbol":
+    case "bigint":
     // Typed arrays stringify as index-keyed objects ({"0":1,...}) and
     // Buffers as {type:"Buffer",data:[...]} in Node — neither shape is
     // representable type-directedly; rejected like Maps.
@@ -6556,6 +6602,31 @@ export function moduleUsesSymbol(mod: IrModule): boolean {
   return found;
 }
 
+/** True when bigint runtime operations or bigint-typed storage appears in
+ * the IR. The type check keeps retain/release references link-safe even
+ * when a producing statement was replaced by a runtime fence. */
+export function moduleUsesBigInt(mod: IrModule): boolean {
+  let found = false;
+  const visit = (v: unknown): void => {
+    if (found || v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      for (const item of v) visit(item);
+      return;
+    }
+    const node = v as { kind?: unknown; fn?: unknown };
+    if (
+      node.kind === "bigint" ||
+      (node.kind === "libCall" && typeof node.fn === "string" && node.fn.startsWith("bigint."))
+    ) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(v)) visit((v as Record<string, unknown>)[key]);
+  };
+  visit(mod);
+  return found;
+}
+
 /** True when the module uses the URLSearchParams surface — sp.* libCalls,
  * the url.searchParams getter, or a searchParams-kind type anywhere on
  * the IR (a fenced statement can leave a typed local whose release call
@@ -7098,6 +7169,20 @@ export function moduleLibNondeterministicSurface(mod: IrModule): string | null {
  * seed on `dynCheck` and `awaitExpr` nodes, which throw on validation
  * failure / promise rejection). */
 export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
+  "bigint.parse",
+  "bigint.fromF64",
+  "bigint.div",
+  "bigint.mod",
+  "bigint.pow",
+  "bigint.shl",
+  "bigint.shr",
+  "bigint.toString",
+  "bigint.asUintN",
+  "bigint.asIntN",
+  "bigint.bufferRead",
+  "bigint.bufferWrite",
+  "bigint.dataViewGet",
+  "bigint.dataViewSet",
   "fetch.responseNew",
   "fetch.abortTimeout",
   "fetch.abortAny",
@@ -7450,6 +7535,7 @@ export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
   // catchable AssertionError on failure.
   "assert.ok",
   "assert.eqF64",
+  "assert.eqBigInt",
   "assert.eqStr",
   "assert.eqBool",
   "assert.eqSym",

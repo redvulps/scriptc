@@ -10,7 +10,7 @@ import { dirname, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Lowerer } from "./lowerer.js";
 import { wasiGuestPath } from "../../wasi-paths.js";
-import { BOOL, CAUGHT, DYN, DYN_HANDLE_KINDS, F64, IrExpr, IrFunction, IrJsOp, IrLocal, IrRecordShape, IrStmt, IrType, JSVAL, NULL_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_ERROR_CLASSES, SEARCH_PARAMS_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canAdaptDynFuncTo, canBoxFuncIntoDyn, funcOf, isDynTypedRefType, isJsonSafeType, isSupportedArrayElem, isUnitType, jsOpResultKind, shapeHasAccessorSlots, typeEquals, typeKey, unionFuncSetArmsOk } from "../../ir/ir.js";
+import { BIGINT_T, BOOL, CAUGHT, DYN, DYN_HANDLE_KINDS, F64, IrExpr, IrFunction, IrJsOp, IrLocal, IrRecordShape, IrStmt, IrType, JSVAL, NULL_T, REF_TRUTHY_KINDS, REGEX, RUNTIME_ERROR_CLASSES, SEARCH_PARAMS_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canAdaptDynFuncTo, canBoxFuncIntoDyn, funcOf, isDynTypedRefType, isJsonSafeType, isSupportedArrayElem, isUnitType, jsOpResultKind, shapeHasAccessorSlots, typeEquals, typeKey, unionFuncSetArmsOk } from "../../ir/ir.js";
 import { cjsClassExprWholeExportOf, cjsExportAssignmentOf, cjsExportDiscardReason, isCjsExportTableLiteral, isCjsJsFile, isJsSourceFile, isModuleExportsAccess, isNodeEsmFile, locOf } from "../program.js";
 import { ARRAY_METHODS, builtinConstLit, builtinFenceHintOf, builtinModuleConstOf, builtinModulesArrayLit, builtinModuleFnOf, CompoundOp, ISLAND_SURFACE, isChildSurfaceMember, MAP_METHODS, NARROW_FIRST, SET_METHODS, STR_METHODS, UNSUPPORTED_EXPR, sideEffectFreeOptionValue, stdlibGlobalNameOf } from "./surfaces.js";
 import { UNSUPPORTED, blockedBindingUseDiag, requiresDynamicPackageDiag, unsupportedDiag } from "../../diagnostics/diagnostic.js";
@@ -181,6 +181,16 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
         return { kind: "numLit", value: Number(spelled), spelling: spelled, type: F64, loc };
       }
       return { kind: "numLit", value, type: F64, loc };
+    }
+    if (ts.isBigIntLiteral(expr)) {
+      const spelling = expr.getText().replace(/_/g, "").replace(/n$/i, "");
+      return {
+        kind: "libCall",
+        fn: "bigint.parse",
+        args: [{ kind: "strLit", value: spelling, type: STRING, loc }],
+        type: BIGINT_T,
+        loc,
+      };
     }
     if (expr.kind === ts.SyntaxKind.TrueKeyword) {
       return { kind: "boolLit", value: true, type: BOOL, loc };
@@ -649,7 +659,7 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
         operand = operand.value;
       }
       const FOLD: Partial<Record<string, string>> = {
-        f64: "number", string: "string", bool: "boolean", func: "function",
+        f64: "number", bigint: "bigint", string: "string", bool: "boolean", func: "function",
         array: "object", object: "object", record: "object",
         symbol: "symbol",
         map: "object", set: "object", promise: "object", bytes: "object",
@@ -1042,7 +1052,6 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
           // The families with a WHY: each hint states what makes the
           // surface genuinely non-static (or what to use instead).
           const globalHints: Record<string, string | undefined> = {
-            BigInt: "arbitrary-precision integers have no static representation — f64 is the one number type (Number.MAX_SAFE_INTEGER bounds exact integers)",
             Proxy: "property-access metaprogramming has no static lowering (every property read must resolve at compile time)",
             Reflect: "reflective property access has no static lowering — read and call members directly",
             Intl: "locale- and ICU-backed behavior lives outside the static runtime (the localeCompare stance: code-unit order, no collation/locale data) — what lowers: the composed new Intl.NumberFormat(\"en-US\").format(x) and x.toLocaleString(\"en-US\") with default options",
@@ -3144,6 +3153,9 @@ function lowerPromiseThenPresence(
     if (e.type.kind === "f64" || e.type.kind === "string") {
       return { kind: "toBool", operand: e, type: BOOL, loc: e.loc };
     }
+    if (e.type.kind === "bigint") {
+      return { kind: "libCall", fn: "bigint.truthy", args: [e], type: BOOL, loc: e.loc };
+    }
     if (e.type.kind === "dyn") {
       // ToBoolean over the checked-dynamic tree (`if (pkg)` on a JSON.parse result): every
       // dyn kind has a JS-exact answer — the truthy dynTest reads the kind
@@ -5218,6 +5230,15 @@ export function lowerOptionalNumber(
 
 export function ensureString(lowerer: Lowerer, e: IrExpr, node: ts.Node): IrExpr {
     if (e.type.kind === "string") return e;
+    if (e.type.kind === "bigint") {
+      return {
+        kind: "libCall",
+        fn: "bigint.toString",
+        args: [e, { kind: "numLit", value: 10, type: F64, loc: e.loc }],
+        type: STRING,
+        loc: e.loc,
+      };
+    }
     if (e.type.kind === "dyn") {
       // String(u) / `${u}`: a runtime dispatch over the dyn kind — Node's
       // String() exactly (undefined/null texts, JS number formatting,
@@ -5249,7 +5270,7 @@ export function ensureString(lowerer: Lowerer, e: IrExpr, node: ts.Node): IrExpr
       const stringable = def?.arms.every(
         (a) =>
           a.kind === "undefinedT" || a.kind === "nullT" ||
-          a.kind === "string" || a.kind === "f64" || a.kind === "bool",
+          a.kind === "string" || a.kind === "f64" || a.kind === "bigint" || a.kind === "bool",
       );
       if (stringable) {
         return { kind: "toString", operand: e, type: STRING, loc: e.loc };
@@ -5554,6 +5575,9 @@ export function lowerPrefixUnary(lowerer: Lowerer, expr: ts.PrefixUnaryExpressio
         if (raw.type.kind === "jsval") {
           return { kind: "jsOp", op: "neg", args: [raw], type: JSVAL, loc };
         }
+        if (raw.type.kind === "bigint") {
+          return { kind: "libCall", fn: "bigint.neg", args: [raw], type: BIGINT_T, loc };
+        }
         const operand = lowerOptionalNumber(lowerer, raw, loc, expr.operand);
         if (operand.type.kind !== "f64") lowerer.unsupported("SC1043", expr);
         if (operand.kind === "numLit") return { ...operand, value: -operand.value, loc };
@@ -5581,7 +5605,11 @@ export function lowerPrefixUnary(lowerer: Lowerer, expr: ts.PrefixUnaryExpressio
       }
       case ts.SyntaxKind.TildeToken: {
         // `~x`: ToInt32, complement, back to f64 (JS-exact, incl. NaN → -1).
-        const operand = lowerOptionalNumber(lowerer, lowerer.lowerExpr(expr.operand), loc, expr.operand);
+        const raw = lowerer.lowerExpr(expr.operand);
+        if (raw.type.kind === "bigint") {
+          return { kind: "libCall", fn: "bigint.not", args: [raw], type: BIGINT_T, loc };
+        }
+        const operand = lowerOptionalNumber(lowerer, raw, loc, expr.operand);
         if (operand.type.kind !== "f64") lowerer.unsupported("SC1043", expr);
         return { kind: "unary", op: "~", operand, type: F64, loc };
       }
@@ -6316,6 +6344,80 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
     if (left.type.kind === "jsval" || right.type.kind === "jsval") {
       return lowerAnyBinaryInIsland(lowerer, expr, left, right, loc);
     }
+    if (left.type.kind === "bigint" && right.type.kind === "bigint") {
+      const binary: Partial<Record<ts.SyntaxKind, "bigint.add" | "bigint.sub" | "bigint.mul" | "bigint.div" | "bigint.mod" | "bigint.pow" | "bigint.and" | "bigint.or" | "bigint.xor" | "bigint.shl" | "bigint.shr">> = {
+        [ts.SyntaxKind.PlusToken]: "bigint.add",
+        [ts.SyntaxKind.MinusToken]: "bigint.sub",
+        [ts.SyntaxKind.AsteriskToken]: "bigint.mul",
+        [ts.SyntaxKind.SlashToken]: "bigint.div",
+        [ts.SyntaxKind.PercentToken]: "bigint.mod",
+        [ts.SyntaxKind.AsteriskAsteriskToken]: "bigint.pow",
+        [ts.SyntaxKind.AmpersandToken]: "bigint.and",
+        [ts.SyntaxKind.BarToken]: "bigint.or",
+        [ts.SyntaxKind.CaretToken]: "bigint.xor",
+        [ts.SyntaxKind.LessThanLessThanToken]: "bigint.shl",
+        [ts.SyntaxKind.GreaterThanGreaterThanToken]: "bigint.shr",
+      };
+      const fn = binary[op];
+      if (fn) return { kind: "libCall", fn, args: [left, right], type: BIGINT_T, loc };
+      if (
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+      ) {
+        const equal: IrExpr = { kind: "libCall", fn: "bigint.eq", args: [left, right], type: BOOL, loc };
+        return op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+          ? { kind: "unary", op: "!", operand: equal, type: BOOL, loc }
+          : equal;
+      }
+      if (
+        op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken ||
+        op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken
+      ) {
+        const cmp: IrExpr = { kind: "libCall", fn: "bigint.cmp", args: [left, right], type: F64, loc };
+        const zero: IrExpr = { kind: "numLit", value: 0, type: F64, loc };
+        const cmpOp = op === ts.SyntaxKind.LessThanToken ? "<"
+          : op === ts.SyntaxKind.LessThanEqualsToken ? "<="
+          : op === ts.SyntaxKind.GreaterThanToken ? ">" : ">=";
+        return { kind: "bin", op: cmpOp, left: cmp, right: zero, type: BOOL, loc };
+      }
+    }
+    if (
+      (left.type.kind === "bigint" && right.type.kind === "f64") ||
+      (left.type.kind === "f64" && right.type.kind === "bigint")
+    ) {
+      if (
+        op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken ||
+        op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken
+      ) {
+        const big = left.type.kind === "bigint" ? left : right;
+        const num = left.type.kind === "f64" ? left : right;
+        const cmp: IrExpr = { kind: "libCall", fn: "bigint.cmpNumber", args: [big, num], type: F64, loc };
+        const cmpLocal = lowerer.declareHiddenLocal("%bigcmp", F64);
+        const cmpRef: IrExpr = { kind: "varRef", localId: cmpLocal.id, type: F64, loc };
+        const unordered: IrExpr = {
+          kind: "bin", op: "===", left: cmpRef,
+          right: { kind: "numLit", value: 2, type: F64, loc }, type: BOOL, loc,
+        };
+        const zero: IrExpr = { kind: "numLit", value: 0, type: F64, loc };
+        const leftBig = left.type.kind === "bigint";
+        const cmpOp = leftBig
+          ? op === ts.SyntaxKind.LessThanToken ? "<" : op === ts.SyntaxKind.LessThanEqualsToken ? "<=" : op === ts.SyntaxKind.GreaterThanToken ? ">" : ">="
+          : op === ts.SyntaxKind.LessThanToken ? ">" : op === ts.SyntaxKind.LessThanEqualsToken ? ">=" : op === ts.SyntaxKind.GreaterThanToken ? "<" : "<=";
+        const result: IrExpr = {
+          kind: "logical", op: "&&",
+          left: { kind: "unary", op: "!", operand: unordered, type: BOOL, loc },
+          right: { kind: "bin", op: cmpOp, left: cmpRef, right: zero, type: BOOL, loc },
+          type: BOOL, loc,
+        };
+        return {
+          kind: "seqExpr",
+          stmts: [{ kind: "varDecl", localId: cmpLocal.id, init: cmp, loc }],
+          result,
+          type: BOOL,
+          loc,
+        };
+      }
+    }
     // An unchecked array read keeps its undefined arm in the IR even when
     // the checker typed the binding as `string`. An optional string is not
     // itself a string operand for `+`: `undefined + 1` and
@@ -6818,6 +6920,7 @@ export function lowerBinary(lowerer: Lowerer, expr: ts.BinaryExpression): IrExpr
       case "undefinedT": return "undefined";
       case "func": return "function";
       case "symbol": return "symbol";
+      case "bigint": return "bigint";
       case "nullT":
       case "array": case "map": case "set": case "regex": case "bytes":
       case "url": case "searchParams": case "stats": case "fileHandle": case "spawnRes": case "child":
