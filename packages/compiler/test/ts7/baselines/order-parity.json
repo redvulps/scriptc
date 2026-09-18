@@ -6295,6 +6295,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2906-bigint-wasi-width.ts": {
+   "order": [
+    "<repo>/tests/corpus/2906-bigint-wasi-width.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
