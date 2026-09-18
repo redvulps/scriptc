@@ -133,7 +133,7 @@ test("the production cache root follows overrides, platform defaults, and the ha
   );
 });
 
-test("executable section elimination flags are target-aware and never enter library recipes", () => {
+test("executable section elimination flags are target-aware", () => {
   expect(executableSectionEliminationFlags("darwin")).toEqual({
     compile: [],
     link: ["-Wl,-dead_strip"],
@@ -148,6 +148,51 @@ test("executable section elimination flags are target-aware and never enter libr
   });
   expect(executableSectionEliminationFlags("wasi")).toEqual({ compile: [], link: [] });
 });
+
+test.skipIf(process.platform !== "linux")(
+  "ELF library members preserve consumer section-GC granularity",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scriptc-lib-section-gc-"));
+    scratch.push(dir);
+    const cPath = join(dir, "program.c");
+    const archivePath = join(dir, "program.lib.a");
+    const probePath = join(dir, "probe.c");
+    const binaryPath = join(dir, "probe");
+    const oldNoCache = process.env["SCRIPTC_NO_CACHE"];
+
+    try {
+      process.env["SCRIPTC_NO_CACHE"] = "1";
+      await writeFile(
+        cPath,
+        `int scriptc_kept_data = 41;
+int scriptc_dropped_data = 99;
+int scriptc_kept_fn(void) { return scriptc_kept_data + 1; }
+int scriptc_dropped_fn(void) { return scriptc_dropped_data; }
+`,
+      );
+      await writeFile(
+        probePath,
+        `#include <stdio.h>
+int scriptc_kept_fn(void);
+int main(void) { printf("%d\\n", scriptc_kept_fn()); return 0; }
+`,
+      );
+
+      await compileLibArchive({ cPath, outPath: archivePath });
+      execFileSync("clang", [probePath, archivePath, "-Wl,--gc-sections", "-o", binaryPath]);
+
+      expect(execFileSync(binaryPath, { encoding: "utf8" })).toBe("42\n");
+      const symbols = execFileSync("nm", [binaryPath], { encoding: "utf8" });
+      expect(symbols).toContain("scriptc_kept_fn");
+      expect(symbols).toContain("scriptc_kept_data");
+      expect(symbols).not.toContain("scriptc_dropped_fn");
+      expect(symbols).not.toContain("scriptc_dropped_data");
+    } finally {
+      if (oldNoCache === undefined) delete process.env["SCRIPTC_NO_CACHE"];
+      else process.env["SCRIPTC_NO_CACHE"] = oldNoCache;
+    }
+  },
+);
 
 test.skipIf(process.platform === "win32")(
   "the early executable identity follows a compiler selected behind a stable driver",

@@ -83,14 +83,14 @@ function stableTestMemo<T>(
 export const EXECUTABLE_RUNTIME_SOURCES = ["scr_number.c", "scr_string.c", "scr_array.c", "scr_bytes.c", "scr_bytes_io.c", "scr_map.c", "scr_closure.c", "scr_ffi.c", "scr_object.c", "scr_union.c", "scr_exception.c", "scr_error.c", "scr_console.c", "scr_lib.c", "scr_path.c", "scr_url.c", "scr_json.c", "scr_async.c", "scr_crypto_async.c", "scr_child.c", "scr_cycle.c"] as const;
 
 /**
- * Per-executable section-elimination recipe. This belongs beside the native
+ * Per-target section-elimination recipe. This belongs beside the native
  * driver rather than a particular build path: one-shot compilation, cached
  * runtime objects, external object recipes, and runtime packs must all agree
- * on what their final executable linker is allowed to discard.
+ * on what their final linker is allowed to discard.
  *
- * Archives and compile-only object/library recipes deliberately do not use
- * the link half. In particular, `--lib` preserves its established object and
- * archive contract; section GC is an executable-link optimization only.
+ * Executable recipes use both halves. Archive and compile-only recipes never
+ * use the link half, but `--lib` uses the compile half so its consumers retain
+ * the choice to eliminate unused sections when they perform the final link.
  */
 export function executableSectionEliminationFlags(platform: string): {
   compile: string[];
@@ -1176,6 +1176,7 @@ export async function compileLibArchive(opts: LibArchiveOptions): Promise<void> 
     ...(sanitize
       ? ["-O1", "-fsanitize=address", "-DSCR_RC_AUDIT"]
       : [optimization === "dev" ? "-O0" : "-O2"]),
+    ...executableSectionEliminationFlags(targetPlatform(driver)).compile,
     "-fno-math-errno",
     "-fno-strict-aliasing", // the emitted object model type-puns — see compileC's buildArgs
     "-Wno-deprecated-declarations",
