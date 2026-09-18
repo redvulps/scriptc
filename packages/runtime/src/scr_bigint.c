@@ -652,15 +652,49 @@ static bool bi_index(double bits, size_t *out) {
   return true;
 }
 
+/* Whether |value| < 2^bits, without materializing the power or multiplying
+ * the width. This is also the large-width fast path: Node returns a value
+ * that already fits without allocating storage proportional to `bits`. */
+static bool bi_abs_lt_pow2(const ScrBigInt *value, size_t bits) {
+  size_t full = bits / 32;
+  unsigned high = (unsigned)(bits % 32);
+  if (value->len <= full) return true;
+  if (!high || value->len != full + 1) return false;
+  return value->limb[full] < ((uint32_t)1u << high);
+}
+
+/* Whether |value| == 2^bits. The inclusive signed lower bound
+ * (-2^(bits-1)) needs this one extra case beyond bi_abs_lt_pow2. */
+static bool bi_abs_eq_pow2(const ScrBigInt *value, size_t bits) {
+  size_t word = bits / 32;
+  unsigned bit = (unsigned)(bits % 32);
+  if (value->len != word + 1 || value->limb[word] != ((uint32_t)1u << bit)) return false;
+  for (size_t i = 0; i < word; i++) {
+    if (value->limb[i] != 0) return false;
+  }
+  return true;
+}
+
+/* Ceil(bits / 32) without the `(bits + 31)` overflow that is reachable on
+ * wasm32. `bits` is nonzero, so a zero result is always an internal sizing
+ * failure and must be rejected before any n-1 indexing. */
+static size_t bi_twos_words(size_t bits, unsigned *high) {
+  *high = (unsigned)(bits % 32);
+  size_t n = bits / 32 + (*high != 0);
+  if (!n || n > SIZE_MAX / sizeof(uint32_t)) bi_oom();
+  return n;
+}
+
 ScrBigInt *scr_bigint_as_uint_n(double bits_value, ScrBigInt *value) {
   size_t bits;
   if (!bi_index(bits_value, &bits)) return NULL;
   if (!bits) return bi_zero();
-  size_t n = (bits + 31) / 32;
+  if (value->sign >= 0 && bi_abs_lt_pow2(value, bits)) return scr_bigint_retain(value);
+  unsigned high;
+  size_t n = bi_twos_words(bits, &high);
   uint32_t *twos = calloc(n, sizeof(uint32_t));
   if (!twos) bi_oom();
   bi_to_twos(value, twos, n);
-  unsigned high = (unsigned)(bits % 32);
   if (high) twos[n - 1] &= ((uint32_t)1u << high) - 1u;
   ScrBigInt *r = bi_from_twos(twos, n, false);
   free(twos);
@@ -671,11 +705,15 @@ ScrBigInt *scr_bigint_as_int_n(double bits_value, ScrBigInt *value) {
   size_t bits;
   if (!bi_index(bits_value, &bits)) return NULL;
   if (!bits) return bi_zero();
-  size_t n = (bits + 31) / 32;
+  size_t magnitude_bits = bits - 1;
+  bool fits = bi_abs_lt_pow2(value, magnitude_bits) ||
+    (value->sign < 0 && bi_abs_eq_pow2(value, magnitude_bits));
+  if (fits) return scr_bigint_retain(value);
+  unsigned high;
+  size_t n = bi_twos_words(bits, &high);
   uint32_t *twos = calloc(n, sizeof(uint32_t));
   if (!twos) bi_oom();
   bi_to_twos(value, twos, n);
-  unsigned high = (unsigned)(bits % 32);
   if (high) twos[n - 1] &= ((uint32_t)1u << high) - 1u;
   size_t sign_bit = (bits - 1) % 32;
   bool neg = (twos[n - 1] & ((uint32_t)1u << sign_bit)) != 0;
