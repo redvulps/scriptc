@@ -16,7 +16,17 @@ struct ScrBigInt {
   uint32_t limb[];
 };
 
+/* Node 24's V8 accepts widths above this when the input already fits, but
+ * refuses any operation that would materialize a wider BigInt. */
+#define BI_MAX_BITS ((size_t)1 << 30)
+
 static void bi_oom(void) { scr_trap("scriptc: out of memory\n"); }
+
+static bool bi_max_size_exceeded(void) {
+  static const char msg[] = "Maximum BigInt size exceeded";
+  scr_throw_error_msg(SCR_ERR_RANGE, msg, sizeof msg - 1);
+  return false;
+}
 
 static ScrBigInt *bi_alloc(size_t cap) {
   if (cap > (SIZE_MAX - sizeof(ScrBigInt)) / sizeof(uint32_t)) bi_oom();
@@ -170,12 +180,14 @@ ScrBigInt *scr_bigint_mul(ScrBigInt *a, ScrBigInt *b) {
 static size_t bi_bits(const ScrBigInt *a) {
   if (!a->len) return 0;
   uint32_t top = a->limb[a->len - 1];
-  size_t bits = (a->len - 1) * 32;
+  size_t high = 0;
   while (top) {
-    bits++;
+    high++;
     top >>= 1;
   }
-  return bits;
+  size_t words = a->len - 1;
+  if (words > (SIZE_MAX - high) / 32) bi_oom();
+  return words * 32 + high;
 }
 
 static unsigned bi_bit(const ScrBigInt *a, size_t bit) {
@@ -319,8 +331,7 @@ static ScrBigInt *bi_shift(ScrBigInt *a, ScrBigInt *count, bool left) {
       if (a->sign < 0) { r->len = 1; r->sign = -1; r->limb[0] = 1; }
       return r;
     }
-    static const char msg[] = "Maximum BigInt size exceeded";
-    scr_throw_error_msg(SCR_ERR_RANGE, msg, sizeof msg - 1);
+    bi_max_size_exceeded();
     return NULL;
   }
   if (direction) return bi_shl_abs(a, n);
@@ -602,6 +613,7 @@ ScrStr *scr_bigint_to_string(ScrBigInt *v, double radix_value) {
   unsigned radix = (unsigned)radix_value;
   if (!v->sign) return scr_str_new("0", 1);
   size_t bits = bi_bits(v);
+  if (bits > SIZE_MAX - 2 || v->len > SIZE_MAX / sizeof(uint32_t)) bi_oom();
   size_t cap = bits + 2; /* base 2 is longest, plus sign */
   char *buf = malloc(cap);
   uint32_t *tmp = malloc(v->len * sizeof(uint32_t));
@@ -676,13 +688,15 @@ static bool bi_abs_eq_pow2(const ScrBigInt *value, size_t bits) {
 }
 
 /* Ceil(bits / 32) without the `(bits + 31)` overflow that is reachable on
- * wasm32. `bits` is nonzero, so a zero result is always an internal sizing
- * failure and must be rejected before any n-1 indexing. */
-static size_t bi_twos_words(size_t bits, unsigned *high) {
+ * wasm32. Enforce Node's materialized-value limit before allocation and
+ * reject internal sizing failures before any n-1 indexing. */
+static bool bi_twos_words(size_t bits, size_t *out, unsigned *high) {
+  if (bits > BI_MAX_BITS) return bi_max_size_exceeded();
   *high = (unsigned)(bits % 32);
   size_t n = bits / 32 + (*high != 0);
   if (!n || n > SIZE_MAX / sizeof(uint32_t)) bi_oom();
-  return n;
+  *out = n;
+  return true;
 }
 
 ScrBigInt *scr_bigint_as_uint_n(double bits_value, ScrBigInt *value) {
@@ -691,7 +705,8 @@ ScrBigInt *scr_bigint_as_uint_n(double bits_value, ScrBigInt *value) {
   if (!bits) return bi_zero();
   if (value->sign >= 0 && bi_abs_lt_pow2(value, bits)) return scr_bigint_retain(value);
   unsigned high;
-  size_t n = bi_twos_words(bits, &high);
+  size_t n;
+  if (!bi_twos_words(bits, &n, &high)) return NULL;
   uint32_t *twos = calloc(n, sizeof(uint32_t));
   if (!twos) bi_oom();
   bi_to_twos(value, twos, n);
@@ -710,7 +725,8 @@ ScrBigInt *scr_bigint_as_int_n(double bits_value, ScrBigInt *value) {
     (value->sign < 0 && bi_abs_eq_pow2(value, magnitude_bits));
   if (fits) return scr_bigint_retain(value);
   unsigned high;
-  size_t n = bi_twos_words(bits, &high);
+  size_t n;
+  if (!bi_twos_words(bits, &n, &high)) return NULL;
   uint32_t *twos = calloc(n, sizeof(uint32_t));
   if (!twos) bi_oom();
   bi_to_twos(value, twos, n);

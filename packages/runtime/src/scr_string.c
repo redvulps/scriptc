@@ -194,6 +194,7 @@ static void scr_sidx_concat_append(const ScrStr *s, size_t oldlen) {
 /* ── allocation ─────────────────────────────────────────────────────── */
 
 static ScrStr *scr_str_alloc(size_t len, size_t cap) {
+  if (len > cap || cap > SIZE_MAX - sizeof(ScrStr) - 1) scr_oom();
   ScrStr *s = malloc(sizeof(ScrStr) + cap + 1);
   if (!s) scr_oom();
   s->rc = 1;
