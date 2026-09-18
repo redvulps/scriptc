@@ -17,13 +17,13 @@ import { isProvenanceSourceFile } from "../provenance-registry.js";
 import { ambientUndefVarRootOf, lowerImportEquals, nsUndefRead, nsWritableTarget, trapDeclRootOf } from "./lower-namespaces.js";
 import { expandoWritableTarget, lowerExpandoAssignStmt } from "./lower-expando.js";
 import { ForOfIterProjection, lowerForOfArrayIter, lowerForOfMap, lowerForOfSearchParams, lowerForOfSet, lowerSafeIndexRead, objectIterOverIndexShape, strCharsCall } from "./lower-containers.js";
-import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, implicitMethodCallInfersReturn, nullishExprUnitOf, nullishGenericBindingUnitOf, recordKeysArrayCall } from "./lower-calls.js";
+import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, implicitMethodCallInfersReturn, nullishExprUnitOf, nullishGenericBindingUnitOf, recordKeysArrayCall, registerOverloadedCallableAlias } from "./lower-calls.js";
 import { isMixinFnBinding, mixinResultBindingClassOf } from "./lower-mixins.js";
 import type { ClassInfo, ClassIteratorInfo } from "./lower-classes.js";
 import { genericIfaceBindingKeepsClass } from "./lower-classes.js";
 import { lowerStreamUnderscoreAssign, streamClassAliasDecl } from "./lower-stream.js";
 import { lowerHttpResPropertyAssignment, lowerHttpServerTimeoutAssignment, lowerServerCloseOverrideAssignment } from "./lower-server.js";
-import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireCalleeFileOf, createRequireNamespaceDecl, textCodecBindingDecl } from "./lower-builtins.js";
+import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireCalleeFileOf, createRequireNamespaceDecl, registerBuiltinCallableAlias, textCodecBindingDecl } from "./lower-builtins.js";
 import { lowerEnumDeclaration } from "./lower-enums.js";
 import { abstractPropertyDeclOf, aliasTypeofNarrows, isMatchSliceType, lowerAbsenceProbe, lowerGroupsProjection, lowerOptionalNumber, matchResultNamedGroupsOf, runtimeOptionalTrueIds, symbolFieldInfo, withRuntimeOptionalNarrowed } from "./lower-exprs.js";
 import { isSafeToRepeat } from "./expressions/evaluation-safety.js";
@@ -3469,13 +3469,10 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
       );
     }
 
-    // `const execFileAsync = promisify(execFile)` — the one lowered
-    // util.promisify shape: the binding registers (calls through it lower
-    // to the interned async-exec helper; value uses fence) and the
-    // declaration itself emits nothing — the promisified function value
-    // never exists at runtime. collectGlobals skipped registering a
-    // module global for it by the same test.
-    if (lowerer.promisifiedExecFileDecl(decl.name, decl.initializer)) return null;
+    // `const asyncFn = promisify(supportedBuiltin)`: the binding registers
+    // a static callable projection; calls route to the target's promise
+    // lowering and the declaration emits no runtime slot.
+    if (lowerer.registerPromisifiedBuiltinDecl(decl.name, decl.initializer)) return null;
 
     // `const inspect = require("util").inspect` — a named import in const
     // clothing: builtinImportOf resolves uses through the module tables;
@@ -3538,6 +3535,12 @@ export function lowerVarDecl(lowerer: Lowerer, decl: ts.VariableDeclaration, isL
     // statement emits nothing (collectGlobals skipped module-scope
     // globals by the same test; block-scoped aliases register here).
     if (bindingGenericFnAliasInfoOf(lowerer, decl)) return null;
+
+    // `const stored = overloadedDeclaration`: no runtime slot is needed;
+    // calls project onto the declaration's implementation ABI and value
+    // reads reuse its interned closure identity.
+    if (!isLet && registerOverloadedCallableAlias(lowerer, decl)) return null;
+    if (!isLet && registerBuiltinCallableAlias(lowerer, decl.name, decl.initializer)) return null;
 
     // `const knownBy = (cmd) => ...` — an IMPLICIT-ANY function-value
     // binding in npm-static JS (function-scope bindings register here, in

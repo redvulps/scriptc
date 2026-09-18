@@ -7,6 +7,22 @@ import { f64Lit } from "./common.js";
 
 export function emitChildProcessLibCall(host: LlvmEmitterContext, e: LibCallExpr): LlValue {
     const B = host.B;
+    if (e.fn === "cp.execFile") {
+      const callbackArg = e.args[2];
+      if (!callbackArg) throw new InternalCompilerError("llvm emitter bug: execFile callback missing");
+      const cbT = callbackArg.type;
+      if (cbT.kind !== "func") throw new InternalCompilerError("llvm emitter bug: execFile callback not a func");
+      const cmd = host.emitExpr(e.args[0]!);
+      const argv = host.emitExpr(e.args[1]!);
+      const cb = host.emitExpr(callbackArg);
+      host.moveTemp(cb);
+      const adapter = host.execFileThunkFor(cbT);
+      host.usesTimers = true;
+      host.declare(`declare ptr @scr_exec_file(ptr, ptr, ptr, ptr)`);
+      const out = B.tmp();
+      B.line(`${out} = call ptr @scr_exec_file(ptr ${cmd.name}, ptr ${argv.name}, ptr ${cb.name}, ptr @${adapter})`);
+      return host.own({ name: out, type: e.type });
+    }
     if (e.fn === "cp.spawn" || e.fn === "cp.spawnOpts") {
       // child_process.spawn: the child starts NOW (posix_spawnp); the
       // loop reaps it and fires its listeners. Never throws — spawn

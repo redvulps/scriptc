@@ -3056,7 +3056,7 @@ export function lowerTlsRootCertificates(lowerer: Lowerer, bi: { module: string;
 
 /** The `const requestFn = tls ? https.request : http.request` binding —
  * the module-function-as-value ternary between the two known clients
- * (the promisifiedExecFile registry's cousin, keyed per Lowerer pass).
+ * (the static-callable projection registry's cousin, keyed per Lowerer pass).
  * The declaration binds nothing; calls THROUGH the binding lower as the
  * runtime-secure client (lowerHttpClientCall's binding mode), and the
  * recorded condition re-evaluates at each call site — sound because the

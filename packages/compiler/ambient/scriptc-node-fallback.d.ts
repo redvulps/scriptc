@@ -1007,6 +1007,15 @@ declare module "node:fs" {
   export function readFileSync(fd: number): Buffer;
   /* The options-object spelling of the utf8 form. */
   export function readFileSync(path: string, options: { encoding: "utf8" | "utf-8" }): string;
+  /* Error-first callback target used by the static util.promisify
+   * projection. Its options stay unknown because direct calls remain
+   * outside the typed fs slice; this also lets checked-JS validation
+   * ladders observe invalid runtime encodings without contextual narrowing. */
+  export function readFile(
+    path: string,
+    options: unknown,
+    callback: (error: Error | null, data: string) => void,
+  ): void;
   /* The options form carries the mode (applied at CREATION only, like
    * Node — an existing file keeps its permissions) and/or the utf8
    * encoding spelling. */
@@ -1657,9 +1666,13 @@ declare module "child_process" {
   }
   export function execFileSync(file: string, args?: string[], options?: ExecSyncOptions): string;
   export function execSync(command: string, options?: ExecSyncOptions): string;
-  /* The callback form exists to be PROMISIFIED — `const execFileAsync =
-   * promisify(execFile)` is the one lowered use (see "util"); calling it
-   * directly with a callback has no lowering and fences per site. */
+  export type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+  /* The callback form starts an asynchronous child and captures utf8
+   * stdout/stderr. The no-callback overload remains for util.promisify's
+   * static target recognition; reached no-callback calls still fence. */
+  export function execFile(file: string, callback: ExecFileCallback): ChildProcess;
+  export function execFile(file: string, args: string[] | null, callback: ExecFileCallback): ChildProcess;
+  export function execFile(file: string, args: string[] | null, options: ExecSyncOptions, callback: ExecFileCallback): ChildProcess;
   export function execFile(
     file: string,
     args?: string[] | null,
@@ -1678,13 +1691,14 @@ declare module "node:child_process" {
   export * from "child_process";
 }
 
-/* node:util — promisify, for exactly ONE target: child_process.execFile.
- * `const execFileAsync = promisify(execFile)` binds an async exec whose
- * calls run the file (no shell, PATH-searched) and settle with
- * { stdout, stderr } — fulfilled on exit 0, rejected with Node's
- * Command-failed / spawn-ENOENT errors otherwise. Other promisify
- * targets and bare promisify values fence per site. */
+/* node:util — compile-time projections for child_process.execFile and
+ * fs.readFile. The former retains Node's custom { stdout, stderr } result;
+ * the latter resolves the callback's data argument. Other targets and bare
+ * promisify values fence per site. */
 declare module "util" {
+  export function promisify(
+    fn: typeof import("node:fs").readFile,
+  ): (path: string, encoding: "utf8" | "utf-8") => Promise<string>;
   export function promisify(
     fn: (file: string, args?: string[] | null, options?: object) => unknown,
   ): (

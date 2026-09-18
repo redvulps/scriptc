@@ -71,6 +71,34 @@ export interface FnSig {
   generator?: { yieldT: IrType; nextT: IrType; resultType: IrType & { kind: "record" } };
 }
 
+/** Registers `const alias = overloadedDeclaration` as a compile-time
+ * callable projection. The source function's one implementation ABI is
+ * already collected in fnSigsBySymbol; each direct call still uses the
+ * TS7-resolved overload result bridge. The alias owns no storage, and a
+ * value read materializes the source function's interned closure, so JS
+ * identity (`alias === source`) is preserved. */
+export function registerOverloadedCallableAlias(
+  lowerer: Lowerer,
+  decl: ts.VariableDeclaration,
+): boolean {
+  if (!ts.isIdentifier(decl.name) || !decl.initializer) return false;
+  let init: ts.Expression = decl.initializer;
+  while (ts.isParenthesizedExpression(init)) init = init.expression;
+  if (!ts.isIdentifier(init)) return false;
+  const aliasType = lowerer.typeOf(decl.name);
+  if (lowerer.checker.getCallSignatures(aliasType).length < 2) return false;
+  const sourceSymbol = lowerer.resolveValueSymbol(init);
+  if (!sourceSymbol) return false;
+  const sourceProjection = lowerer.staticCallables.get(sourceSymbol);
+  const signature = lowerer.fnSigsBySymbol.get(sourceSymbol) ??
+    (sourceProjection?.kind === "declared-function" ? sourceProjection.signature : undefined);
+  if (!signature) return false;
+  const aliasSymbol = lowerer.checker.getSymbolAtLocation(decl.name);
+  if (!aliasSymbol) return false;
+  lowerer.staticCallables.set(aliasSymbol, { kind: "declared-function", signature });
+  return true;
+}
+
 export function generatorMeta(
   lowerer: Lowerer,
   type: IrType & { kind: "generator" },
@@ -3109,6 +3137,54 @@ export function lowerFfiCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr 
     };
   }
 
+/** Full builtin dispatch for compile-time callable projections. A projected
+ * alias must traverse the same spoke/validation ladder as its direct import;
+ * jumping to the table tail would bypass checked-dynamic argument errors. */
+function lowerProjectedBuiltinCall(
+  lowerer: Lowerer,
+  expr: ts.CallExpression,
+  bi: { module: string; member: string },
+  loc: SrcLoc,
+): IrExpr {
+  if (bi.module === "child_process" && bi.member === "execFile") {
+    return lowerer.lowerExecFileCall(expr, loc);
+  }
+  if (bi.module === "timers") {
+    const timersServed = lowerTimersMemberCall(lowerer, expr, bi.member, loc);
+    if (timersServed) return timersServed;
+  }
+  const served = lowerer.lowerNetModuleCall(expr, bi, loc);
+  if (served) return served;
+  const dgramServed = lowerer.lowerDgramDnsModuleCall(expr, bi, loc);
+  if (dgramServed) return dgramServed;
+  const assertServed = lowerer.lowerAssertModuleCall(expr, bi, loc);
+  if (assertServed) return assertServed;
+  const testServed = lowerer.lowerNodeTestModuleCall(expr, bi, loc);
+  if (testServed) return testServed;
+  const utilServed = lowerer.lowerUtilModuleCall(expr, bi, loc);
+  if (utilServed) return utilServed;
+  const streamServed = lowerStreamModuleCall(lowerer, expr, bi, loc);
+  if (streamServed) return streamServed;
+  const fsTs = lowerer.lowerFsToUnixTimestampCall(expr, bi, loc);
+  if (fsTs) return fsTs;
+  const fsLadder = lowerer.lowerFsLadderCall(expr, bi, loc);
+  if (fsLadder) return fsLadder;
+  const cryptoServed = lowerer.lowerCryptoModuleCall(expr, bi, loc);
+  if (cryptoServed) return cryptoServed;
+  const timersInterval = lowerer.lowerTimersPromisesSetInterval(expr, bi, loc);
+  if (timersInterval) return timersInterval;
+  const builtinFn = builtinModuleFnOf(lowerer, bi.module, bi.member);
+  if (!builtinFn) {
+    lowerer.noLowering(
+      `${bi.module}.${bi.member}`,
+      expr,
+      builtinFenceHintOf(bi.module, bi.member),
+      ts.isIdentifier(expr.expression) ? lowerer.resolveValueSymbol(expr.expression) : undefined,
+    );
+  }
+  return lowerer.lowerBuiltinModuleCall(expr, bi, builtinFn, loc);
+}
+
 export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
     const loc = locOf(expr);
 
@@ -3767,14 +3843,30 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
     // supported form is fenced here per site. Members with no lowering at
     // all (fs.watch, os.cpus, ...) fence with the module-qualified name.
     if (ts.isIdentifier(expr.expression)) {
-      // A call through a `const execFileAsync = promisify(execFile)`
-      // binding — the one lowered util.promisify shape: the interned
-      // async-exec helper (Node's promisified execFile behind an
-      // already-settled promise).
+      // A call through a compile-time util.promisify projection. execFile
+      // keeps its custom result helper; ordinary builtins route through
+      // their existing promise-module lowering.
       {
         const sym = lowerer.resolveValueSymbol(expr.expression);
-        if (sym && lowerer.promisifiedExecFile.has(sym)) {
+        const projection = sym ? lowerer.staticCallables.get(sym) : undefined;
+        if (projection?.kind === "promisified-exec-file") {
           return lowerer.lowerExecFileAsyncCall(expr, loc);
+        }
+        if (projection?.kind === "promisified-builtin") {
+          return lowerProjectedBuiltinCall(
+            lowerer,
+            expr,
+            { module: projection.module, member: projection.member },
+            loc,
+          );
+        }
+        if (projection?.kind === "builtin-function") {
+          return lowerProjectedBuiltinCall(
+            lowerer,
+            expr,
+            { module: projection.module, member: projection.member },
+            loc,
+          );
         }
         // A call through a `const requestFn = tls ? https.request :
         // http.request` binding (the client-function ternary): the http
@@ -3784,6 +3876,9 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
       }
       const bi = lowerer.builtinImportOf(expr.expression);
       if (bi) {
+        if (bi.module === "child_process" && bi.member === "execFile") {
+          return lowerer.lowerExecFileCall(expr, loc);
+        }
         // The timers spoke: the node:timers module's exports ARE the
         // timer globals (Node re-exports them), so a named/destructured
         // import lands on the same shared lowering. Unknown members fall
@@ -6045,6 +6140,7 @@ function loweredTemplateStrings(
    * same collection lists top-level declarations ride. */
   export function isTopLevelFnSymbol(lowerer: Lowerer, ident: ts.Identifier): boolean {
     const symbol = lowerer.resolveValueSymbol(ident);
+    if (symbol && lowerer.staticCallables.get(symbol)?.kind === "declared-function") return true;
     const decl = symbol ? lowerer.checker.declarationsOf(symbol)[0] : undefined;
     return (
       !!decl &&

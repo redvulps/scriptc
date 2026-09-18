@@ -5,7 +5,7 @@
 // value).
 import { readFileSync } from "node:fs";
 
-const read = readFileSync;
+const read = readFileSync; console.log(read);
 const cwd = process.cwd;
 const p = process;
 const env = process.env;

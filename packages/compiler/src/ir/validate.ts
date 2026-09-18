@@ -722,6 +722,7 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
     result: SPAWNRES_T,
   },
   "cp.spawn": { argTypes: [STRING, arrayOf(STRING)], result: CHILD_T },
+  "cp.execFile": { argTypes: [STRING, arrayOf(STRING), null], result: CHILD_T },
   // spawn's options form: per-slot stdio modes (0 ignore / 1 inherit /
   // 2 fd) with the out/err fds for mode 2, detached, env replacement
   // pairs, cwd ("" = inherit).
@@ -4354,6 +4355,30 @@ function validateFunction(
             err(`libCall qs.parse must return the ParsedUrlQuery dictionary record`, e.loc);
           }
           break;
+        }
+        if (e.fn === "cp.execFile") {
+          const cb = e.args[2]?.type;
+          if (cb?.kind !== "func" || cb.rest === true || cb.params.length > 3 || cb.ret.kind !== "void") {
+            err(`libCall cp.execFile callback must be a non-rest void function with at most three parameters`, e.loc);
+          } else {
+            const error = cb.params[0];
+            if (error !== undefined) {
+              const def = error.kind === "union" ? unions.get(error.unionId) : undefined;
+              if (!def || def.arms.length !== 2 ||
+                  !def.arms.some((arm) => arm.kind === "nullT") ||
+                  !def.arms.some((arm) => arm.kind === "object" && arm.className === "%Error")) {
+                err(`libCall cp.execFile callback error parameter must be Error | null`, e.loc);
+              }
+            }
+            const stdout = cb.params[1];
+            if (stdout !== undefined && stdout.kind !== "string") {
+              err(`libCall cp.execFile callback stdout parameter must be string`, e.loc);
+            }
+            const stderr = cb.params[2];
+            if (stderr !== undefined && stderr.kind !== "string") {
+              err(`libCall cp.execFile callback stderr parameter must be string`, e.loc);
+            }
+          }
         }
         if (e.fn === "child.onExit" || e.fn === "child.onError") {
           // The listener: a closure with no params, or exactly the

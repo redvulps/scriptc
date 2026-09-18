@@ -2502,6 +2502,66 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     };
   }
 
+/** `execFile(file[, args], callback)` — the first asynchronous callback
+ * slice. The child starts immediately with stdin/stdout/stderr piped; the
+ * runtime captures both outputs and invokes the error-first callback after
+ * settlement. The callback may ignore a suffix of `(error, stdout,
+ * stderr)`, but every declared parameter must have the Node shape. Options
+ * remain fenced until their timeout/env/cwd lifecycle can share this same
+ * asynchronous core without falling back to the old blocking capture. */
+  export function lowerExecFileCall(lowerer: Lowerer, expr: ts.CallExpression, loc: SrcLoc): IrExpr {
+    if (expr.arguments.some(ts.isSpreadElement) || expr.arguments.length < 2 || expr.arguments.length > 3) {
+      lowerer.noLowering(
+        `execFile with ${expr.arguments.length} arguments`,
+        expr,
+        "the supported callback forms are execFile(file, callback) and execFile(file, args, callback)",
+      );
+    }
+    const cmd = lowerer.lowerExprExpecting(expr.arguments[0]!, STRING);
+    const argsNode = expr.arguments.length === 3 ? expr.arguments[1] : undefined;
+    const callbackNode = expr.arguments[expr.arguments.length - 1]!;
+    const argv = lowerer.lowerChildArgsArg(argsNode, loc);
+    const callback = lowerer.lowerExpr(callbackNode);
+    if (callback.type.kind !== "func" || callback.type.rest === true || callback.type.params.length > 3) {
+      lowerer.unsupported(
+        "SC1090",
+        callbackNode,
+        "execFile callbacks take (error), (error, stdout), (error, stdout, stderr), or no parameters",
+      );
+    }
+    if (callback.type.ret.kind !== "void") {
+      lowerer.unsupported(
+        "SC1090",
+        callbackNode,
+        "execFile callbacks returning a value (make the callback body a block, or return nothing)",
+      );
+    }
+    const errorParam = callback.type.params[0];
+    if (errorParam !== undefined) {
+      const def = errorParam.kind === "union" ? lowerer.unions.get(errorParam.unionId) : undefined;
+      const valid = !!def && def.arms.length === 2 &&
+        def.arms.some((arm) => arm.kind === "nullT") &&
+        def.arms.some((arm) => arm.kind === "object" && arm.className === "%Error");
+      if (!valid) {
+        lowerer.unsupported(
+          "SC1090",
+          callbackNode,
+          `execFile callbacks whose first parameter is not 'Error | null' (got '${lowerer.fmt(errorParam)}')`,
+        );
+      }
+    }
+    for (let i = 1; i < callback.type.params.length; i++) {
+      if (callback.type.params[i]!.kind !== "string") {
+        lowerer.unsupported(
+          "SC1090",
+          callbackNode,
+          `execFile callbacks whose ${i === 1 ? "stdout" : "stderr"} parameter is not 'string'`,
+        );
+      }
+    }
+    return { kind: "libCall", fn: "cp.execFile", args: [cmd, argv, callback], type: CHILD_T, loc };
+  }
+
 /** `execFileSync(file, args?, options?)` / `execSync(command, options?)`
    * → the ONE cp.execSync libCall. execSync wraps the command in
    * `/bin/sh -c` (Node's shell semantics — a single command string, no
@@ -3041,13 +3101,10 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     return name;
   }
 
-/** `const execFileAsync = promisify(execFile)` — the ONE lowered
-   * util.promisify shape. Returns true (and registers the declared symbol
-   * so call sites lower and value uses fence) when `init` is a promisify
-   * call over a child_process.execFile import binding; a promisify call
-   * over anything else fences HERE with the supported-target hint (the
-   * declaration is where the target is visible). False for non-promisify
-   * initializers, so the ordinary declaration paths apply. */
+/** Compile-time util.promisify projections. The immutable result binding
+   * owns no runtime slot: calls rewrite to the target's promise lowering,
+   * while value uses remain explicit fences. Unsupported targets report at
+   * the declaration, where their identity is still visible. */
   export function isPromisifyCall(lowerer: Lowerer, init: ts.Expression): ts.CallExpression | null {
     let e: ts.Expression = init;
     while (ts.isParenthesizedExpression(e)) e = e.expression;
@@ -3058,7 +3115,37 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     return e;
   }
 
-  export function promisifiedExecFileDecl(lowerer: Lowerer, nameNode: ts.Node, init: ts.Expression | undefined): boolean {
+  /** Immutable aliases of table-backed builtin functions. The alias is a
+   * compile-time call target, so direct calls keep the builtin's validated
+   * lowering without materializing a JavaScript function object. Value
+   * uses remain fenced until an escaping closure adapter exists. */
+  export function registerBuiltinCallableAlias(
+    lowerer: Lowerer,
+    nameNode: ts.Node,
+    init: ts.Expression | undefined,
+  ): boolean {
+    if (!ts.isIdentifier(nameNode) || !init) return false;
+    let targetExpr = init;
+    while (ts.isParenthesizedExpression(targetExpr)) targetExpr = targetExpr.expression;
+    if (!ts.isIdentifier(targetExpr)) return false;
+    const sourceSymbol = lowerer.resolveValueSymbol(targetExpr);
+    const existing = sourceSymbol ? lowerer.staticCallables.get(sourceSymbol) : undefined;
+    const target = existing?.kind === "builtin-function"
+      ? { module: existing.module, member: existing.member }
+      : lowerer.builtinImportOf(targetExpr);
+    if (!target || !builtinModuleFnOf(lowerer, target.module, target.member)) return false;
+    if (lowerer.checker.getCallSignatures(lowerer.typeOf(nameNode)).length === 0) return false;
+    const symbol = lowerer.checker.getSymbolAtLocation(nameNode);
+    if (!symbol) return false;
+    lowerer.staticCallables.set(symbol, {
+      kind: "builtin-function",
+      module: target.module,
+      member: target.member,
+    });
+    return true;
+  }
+
+  export function registerPromisifiedBuiltinDecl(lowerer: Lowerer, nameNode: ts.Node, init: ts.Expression | undefined): boolean {
     if (!init) return false;
     // The OTHER special const-binding form this decl hook serves: the
     // `const requestFn = tls ? https.request : http.request` client
@@ -3069,15 +3156,21 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     if (!e) return false;
     const argNode = e.arguments.length === 1 ? e.arguments[0]! : null;
     const target = argNode && ts.isIdentifier(argNode) ? lowerer.builtinImportOf(argNode) : null;
-    if (!target || target.module !== "child_process" || target.member !== "execFile") {
+    const projection =
+      target?.module === "child_process" && target.member === "execFile"
+        ? { kind: "promisified-exec-file" as const }
+        : target?.module === "fs" && target.member === "readFile"
+          ? { kind: "promisified-builtin" as const, module: "fs/promises", member: "readFile" }
+          : null;
+    if (!projection) {
       lowerer.noLowering(
         "util.promisify of this target",
         argNode ?? e,
-        "child_process.execFile is the one promisifiable target: const execFileAsync = promisify(execFile)",
+        "child_process.execFile and fs.readFile are the supported targets",
       );
     }
     const symbol = lowerer.checker.getSymbolAtLocation(nameNode);
-    if (symbol) lowerer.promisifiedExecFile.add(symbol);
+    if (symbol) lowerer.staticCallables.set(symbol, projection);
     return true;
   }
 

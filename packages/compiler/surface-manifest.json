@@ -461,7 +461,7 @@
       "name": "child_process.execFile",
       "status": "unsupported",
       "code": "SC2020",
-      "note": "the callback form has no lowering — promisify it: const execFileAsync = promisify(execFile) (from node:util), or use execFileSync"
+      "note": "the callback forms execFile(file, callback) and execFile(file, args, callback) lower; options and reached no-callback calls remain fenced, while util.promisify(execFile) retains its wider options slice"
     },
     {
       "id": "node-builtin.child_process.execFileSync",
@@ -1822,7 +1822,7 @@
       "name": "util.promisify",
       "status": "unsupported",
       "code": "SC2020",
-      "note": "the one lowered shape is a const binding over child_process.execFile: const execFileAsync = promisify(execFile), then call execFileAsync directly"
+      "note": "the lowered shapes are const bindings over child_process.execFile and fs.readFile; call the bound function directly"
     },
     {
       "id": "node-builtin.util.types",

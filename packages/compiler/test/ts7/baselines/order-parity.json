@@ -6301,6 +6301,30 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2910-overloaded-callable-alias.ts": {
+   "order": [
+    "<repo>/tests/corpus/2910-overloaded-callable-alias.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2911-execfile-callback.ts": {
+   "order": [
+    "<repo>/tests/corpus/2911-execfile-callback.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2912-promisify-fs-readfile.ts": {
+   "order": [
+    "<repo>/tests/corpus/2912-promisify-fs-readfile.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2913-builtin-callable-alias.ts": {
+   "order": [
+    "<repo>/tests/corpus/2913-builtin-callable-alias.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
@@ -9040,6 +9064,12 @@
   "<repo>/tests/fixtures/node-types/argv-env.ts": {
    "order": [
     "<repo>/tests/fixtures/node-types/argv-env.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/fixtures/node-types/child-execfile.ts": {
+   "order": [
+    "<repo>/tests/fixtures/node-types/child-execfile.ts"
    ],
    "diags": []
   },

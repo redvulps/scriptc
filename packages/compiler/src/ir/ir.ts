@@ -2415,6 +2415,11 @@ export type IrLibFn =
    * with the code (f64 arm) or null (signal death); "error" fires only
    * for spawn failure, exactly Node's split. */
   | "cp.spawn"
+  /** child_process.execFile's callback slice: starts an all-piped child,
+   * captures stdout/stderr, and moves the error-first callback into the
+   * child registry. The callback shape is program-dependent and checked
+   * by the validator/backends. */
+  | "cp.execFile"
   | "child.onExit"
   | "child.onError"
   /** The ChildProcess lifecycle members (scr_child.c), Node's shapes

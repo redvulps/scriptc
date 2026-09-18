@@ -1054,6 +1054,54 @@ export function emitterInvokeThunkFor(emitter: CEmitter, cbT: IrType): string {
   return sym;
 }
 
+/** child_process.execFile's error-first callback adapter. The runtime owns
+ * one +1 callback plus +1 error/output values at settlement; the adapter
+ * wraps the nullable error with this program's union tags, transfers every
+ * declared argument into the compiled closure, and releases ignored suffix
+ * values for callbacks that declare fewer than three parameters. */
+export function execFileThunkFor(emitter: CEmitter, cbT: IrType & { kind: "func" }): string {
+  const key = `exec:${typeKey(cbT)}`;
+  let sym = emitter.childExitThunks.get(key);
+  if (sym) return sym;
+  sym = mangleChildExitThunk(emitter.childExitThunks.size);
+  emitter.childExitThunks.set(key, sym);
+  const errorParam = cbT.params[0];
+  let errorExpr: string | null = null;
+  if (errorParam !== undefined) {
+    if (errorParam.kind !== "union") throw new InternalCompilerError("emitter bug: execFile error param not a union");
+    const def = emitter.unionsById.get(errorParam.unionId);
+    const errorTag = def ? def.arms.findIndex((arm) => arm.kind === "object" && arm.className === "%Error") : -1;
+    const nullTag = def ? def.arms.findIndex((arm) => arm.kind === "nullT") : -1;
+    const errorArm = errorTag >= 0 ? def?.arms[errorTag] : undefined;
+    if (nullTag < 0 || !errorArm) throw new InternalCompilerError("emitter bug: execFile error union lacks its arms");
+    errorExpr = `sc_err ? scr_union_new_ref(${errorTag}, sc_err, &scr_error_retain_v, &scr_error_release_v, ${emitter.traceArgC(errorArm)}) : ${emitter.unitInstanceRef(errorParam.unionId, nullTag)}`;
+  }
+  const callbackArgs = [
+    "sc_cb",
+    ...(errorExpr === null ? [] : ["sc_e"]),
+    ...(cbT.params.length >= 2 ? ["sc_out"] : []),
+    ...(cbT.params.length >= 3 ? ["sc_stderr"] : []),
+  ];
+  const callbackTypes = [
+    "ScrClosure *",
+    ...(errorExpr === null ? [] : ["ScrUnion *"]),
+    ...(cbT.params.length >= 2 ? ["ScrStr *"] : []),
+    ...(cbT.params.length >= 3 ? ["ScrStr *"] : []),
+  ];
+  emitter.walkerProtos.push(
+    `static void ${sym}(ScrClosure *sc_cb, ScrError *sc_err, ScrStr *sc_out, ScrStr *sc_stderr);`,
+  );
+  emitter.walkerDefs.push(
+    `static void ${sym}(ScrClosure *sc_cb, ScrError *sc_err, ScrStr *sc_out, ScrStr *sc_stderr) {`,
+    ...(errorExpr === null ? [`  scr_error_release(sc_err);`] : [`  ScrUnion *sc_e = ${errorExpr};`]),
+    ...(cbT.params.length < 2 ? [`  scr_str_release(sc_out);`] : []),
+    ...(cbT.params.length < 3 ? [`  scr_str_release(sc_stderr);`] : []),
+    `  ((void (*)(${callbackTypes.join(", ")}))sc_cb->fn)(${callbackArgs.join(", ")});`,
+    `}`,
+  );
+  return sym;
+}
+
 /** The stream completion-callback closure fn for one done func type: the
  * `callback` a user's write/final/destroy/transform/flush receives. The
  * closure's one capture box holds the stream (+1); calling it unwraps the

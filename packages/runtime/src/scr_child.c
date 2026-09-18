@@ -1115,6 +1115,9 @@ struct ScrChildStream {
   size_t rc;
   HANDLE h; /* the pipe's read end; NULL after EOF or spawn failure */
   bool eof;
+  bool capture;
+  uint8_t *capture_data;
+  size_t capture_len, capture_cap;
   ScrChildStreamDataL *data_ls;
   size_t n_data, cap_data;
   ScrChildStreamEndL *end_ls;
@@ -1176,6 +1179,9 @@ struct ScrChild {
   size_t n_exit, cap_exit;
   ScrChildErrEntry *err_cbs;
   size_t n_err, cap_err;
+  ScrClosure *exec_cb;
+  ScrExecFileFn exec_fn;
+  ScrStr *exec_display;
   ScrChildStream *out_stream;
   ScrChildStream *err_stream;
   ScrChildWriter *in_stream;
@@ -1198,6 +1204,9 @@ static void scr_child_drop_listeners(ScrChild *c) {
   c->exit_cbs = NULL;
   c->err_cbs = NULL;
   c->n_exit = c->n_err = c->cap_exit = c->cap_err = 0;
+  scr_closure_release(c->exec_cb);
+  c->exec_cb = NULL;
+  c->exec_fn = NULL;
 }
 
 ScrChild *scr_child_retain(ScrChild *c) {
@@ -1210,6 +1219,7 @@ void scr_child_release(ScrChild *c) {
   if (--c->rc == 0) {
     scr_child_drop_listeners(c); /* only reachable pre-settle via leaks */
     scr_str_release(c->err_msg);
+    scr_str_release(c->exec_display);
     scr_child_stream_release(c->out_stream);
     scr_child_stream_release(c->err_stream);
     scr_child_writer_release(c->in_stream);
@@ -1243,6 +1253,7 @@ void scr_child_stream_release(ScrChildStream *s) {
   if (--s->rc == 0) {
     scr_child_stream_drop_listeners(s); /* only reachable pre-'end' via leaks */
     if (s->h != NULL) CloseHandle(s->h);
+    free(s->capture_data);
     free(s);
   }
 }
@@ -1252,7 +1263,7 @@ void scr_child_stream_release_v(void *p) { scr_child_stream_release((ScrChildStr
 
 /* True while the stream has a consumer and can still deliver. */
 static bool scr_child_stream_watching(const ScrChildStream *s) {
-  return !s->eof && s->h != NULL && s->n_data > 0;
+  return !s->eof && s->h != NULL && (s->n_data > 0 || s->capture);
 }
 
 /* A fresh piped stream over the pipe's read end, registered with the
@@ -1270,6 +1281,35 @@ static ScrChildStream *scr_child_stream_new(HANDLE h) {
   s->next = scr_child_streams;
   scr_child_streams = scr_child_stream_retain(s);
   return s;
+}
+
+static void scr_child_stream_capture_begin(ScrChildStream *s) {
+  if (s == NULL || s->eof || s->h == NULL || s->capture) return;
+  bool was_watching = scr_child_stream_watching(s);
+  s->capture = true;
+  if (!was_watching) scr_child_streams_watching++;
+}
+
+static void scr_child_stream_capture_append(ScrChildStream *s, const char *data,
+                                            size_t len) {
+  if (!s->capture || len == 0) return;
+  size_t need = s->capture_len + len;
+  if (need > s->capture_cap) {
+    size_t cap = s->capture_cap ? s->capture_cap : 256;
+    while (cap < need) cap *= 2;
+    uint8_t *grown = realloc(s->capture_data, cap);
+    if (!grown) scr_child_oom();
+    s->capture_data = grown;
+    s->capture_cap = cap;
+  }
+  memcpy(s->capture_data + s->capture_len, data, len);
+  s->capture_len = need;
+}
+
+static ScrStr *scr_child_stream_capture_value(ScrChildStream *s) {
+  return s == NULL || s->capture_len == 0
+      ? scr_str_new("", 0)
+      : scr_str_new((const char *)s->capture_data, s->capture_len);
 }
 
 static void scr_child_stream_finish(ScrChildStream *s, bool fire_end) {
@@ -1311,9 +1351,11 @@ static bool scr_child_stream_pump(ScrChildStream *s) {
     char buf[65536];
     DWORD got = 0;
     if (!ReadFile(s->h, buf, avail, &got, NULL) || got == 0) return true;
+    scr_child_stream_capture_append(s, buf, (size_t)got);
+    size_t nd = s->n_data;
+    if (nd == 0) continue;
     ScrBytes *chunk = scr_bytes_new(SCR_BYTES_U8, (double)got);
     memcpy(chunk->data, buf, (size_t)got);
-    size_t nd = s->n_data;
     ScrChildStreamDataL *snap = malloc(nd * sizeof *snap);
     if (!snap) scr_child_oom();
     for (size_t i = 0; i < nd; i++) {
@@ -1328,7 +1370,7 @@ static bool scr_child_stream_pump(ScrChildStream *s) {
             memmove(s->data_ls + j, s->data_ls + j + 1,
                     (s->n_data - j - 1) * sizeof *s->data_ls);
             s->n_data--;
-            if (s->n_data == 0) scr_child_streams_watching--;
+            if (s->n_data == 0 && !s->capture) scr_child_streams_watching--;
             break;
           }
         }
@@ -1386,6 +1428,7 @@ void scr_child_stream_on_data(ScrChildStream *s, ScrClosure *cb /*moves*/,
     scr_closure_release(cb);
     return;
   }
+  bool was_watching = scr_child_stream_watching(s);
   if (s->n_data == s->cap_data) {
     s->cap_data = s->cap_data ? s->cap_data * 2 : 2;
     s->data_ls = realloc(s->data_ls, s->cap_data * sizeof *s->data_ls);
@@ -1395,7 +1438,7 @@ void scr_child_stream_on_data(ScrChildStream *s, ScrClosure *cb /*moves*/,
   s->data_ls[s->n_data].fn = fn;
   s->data_ls[s->n_data].once = once;
   s->n_data++;
-  if (s->n_data == 1) scr_child_streams_watching++;
+  if (!was_watching) scr_child_streams_watching++;
 }
 
 void scr_child_stream_on_end(ScrChildStream *s, ScrClosure *cb /*moves*/, bool once) {
@@ -1935,6 +1978,51 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
   return c;
 }
 
+static ScrError *scr_exec_file_error(ScrChild *c, ScrStr *stderr_value) {
+  if (c->state == SCR_CHILD_SPAWN_FAILED) {
+    ScrError *error = scr_error_new(0, c->err_msg);
+    scr_error_set_code(error, c->spawn_errname);
+    return error;
+  }
+  if (c->has_code && c->code == 0) return NULL;
+  size_t cap = 16 + c->exec_display->len + 1 + stderr_value->len + 1;
+  char *msg = malloc(cap);
+  if (!msg) scr_child_oom();
+  size_t at = (size_t)snprintf(msg, cap, "Command failed: %s", c->exec_display->data);
+  msg[at++] = '\n';
+  memcpy(msg + at, stderr_value->data, stderr_value->len);
+  at += stderr_value->len;
+  ScrStr *message = scr_str_new(msg, at);
+  free(msg);
+  ScrError *error = scr_error_new(0, message);
+  scr_str_release(message);
+  return error;
+}
+
+static void scr_exec_file_fire(ScrChild *c) {
+  if (c->exec_cb == NULL || c->exec_fn == NULL) return;
+  ScrStr *out = scr_child_stream_capture_value(c->out_stream);
+  ScrStr *err = scr_child_stream_capture_value(c->err_stream);
+  ScrError *error = scr_exec_file_error(c, err);
+  c->exec_fn(c->exec_cb, error, out, err); /* error/out/err move */
+}
+
+ScrChild *scr_exec_file(ScrStr *cmd, ScrArr *args, ScrClosure *cb,
+                        ScrExecFileFn fn) {
+  ScrStr *empty = scr_str_new("", 0);
+  ScrChild *c = scr_spawn_opts(cmd, args, 3, 3, 3, 0, 0, false, false,
+                               NULL, empty);
+  scr_str_release(empty);
+  c->exec_cb = cb;
+  c->exec_fn = fn;
+  char *display = scr_exec_display(cmd, args, false);
+  c->exec_display = scr_str_new(display, strlen(display));
+  free(display);
+  scr_child_stream_capture_begin(c->out_stream);
+  scr_child_stream_capture_begin(c->err_stream);
+  return c;
+}
+
 /* ── the lifecycle members ───────────────────────────────────────────── */
 
 bool scr_child_has_pid(ScrChild *c) { return c->state != SCR_CHILD_SPAWN_FAILED; }
@@ -2179,7 +2267,7 @@ static void scr_child_settle(ScrChild *c) {
     return;
   }
   if (c->state == SCR_CHILD_SPAWN_FAILED) {
-    if (c->n_err == 0) {
+    if (c->n_err == 0 && c->exec_cb == NULL) {
       fflush(stdout);
       fprintf(stderr, "Unhandled 'error' event: Error: %s\n", c->err_msg->data);
       _Exit(1);
@@ -2190,11 +2278,13 @@ static void scr_child_settle(ScrChild *c) {
       if (scr_exc_pending()) break; /* the loop surfaces it */
     }
     scr_child_err_code = NULL;
+    if (!scr_exc_pending()) scr_exec_file_fire(c);
   } else {
     for (size_t i = 0; i < c->n_exit; i++) {
       c->exit_cbs[i].fn(c->exit_cbs[i].cb, c->has_code, c->code, c->exit_signal);
       if (scr_exc_pending()) break;
     }
+    if (!scr_exc_pending()) scr_exec_file_fire(c);
   }
   scr_child_drop_listeners(c);
   scr_child_release(c); /* the registry's reference */
@@ -3093,6 +3183,9 @@ struct ScrChildStream {
   size_t rc;
   int fd;   /* the pipe's read end; -1 after EOF or spawn failure */
   bool eof; /* 'end' delivered (or the stream never opened) */
+  bool capture;
+  uint8_t *capture_data;
+  size_t capture_len, capture_cap;
   bool armed;     /* EVFILT_READ registered on the child kqueue */
   bool uncounted; /* counted into scr_children_unwatched (arm failure) */
   ScrChildStreamDataL *data_ls;
@@ -3154,6 +3247,9 @@ struct ScrChild {
   size_t n_exit, cap_exit;
   ScrChildErrEntry *err_cbs;
   size_t n_err, cap_err;
+  ScrClosure *exec_cb;
+  ScrExecFileFn exec_fn;
+  ScrStr *exec_display;
   /* Piped stdio (stdio mode 3): the stream handles child.stdout /
    * child.stderr answer — owned (+1 each), NULL when not piped. */
   ScrChildStream *out_stream;
@@ -3315,6 +3411,9 @@ static void scr_child_drop_listeners(ScrChild *c) {
   c->exit_cbs = NULL;
   c->err_cbs = NULL;
   c->n_exit = c->n_err = c->cap_exit = c->cap_err = 0;
+  scr_closure_release(c->exec_cb);
+  c->exec_cb = NULL;
+  c->exec_fn = NULL;
 }
 
 ScrChild *scr_child_retain(ScrChild *c) {
@@ -3327,6 +3426,7 @@ void scr_child_release(ScrChild *c) {
   if (--c->rc == 0) {
     scr_child_drop_listeners(c); /* only reachable pre-settle via leaks */
     scr_str_release(c->err_msg);
+    scr_str_release(c->exec_display);
     scr_child_stream_release(c->out_stream);
     scr_child_stream_release(c->err_stream);
     scr_child_writer_release(c->in_stream);
@@ -3379,6 +3479,7 @@ void scr_child_stream_release(ScrChildStream *s) {
   if (--s->rc == 0) {
     scr_child_stream_drop_listeners(s); /* only reachable pre-'end' via leaks */
     if (s->fd >= 0) close(s->fd);
+    free(s->capture_data);
     free(s);
   }
 }
@@ -3387,10 +3488,11 @@ void *scr_child_stream_retain_v(void *p) { return scr_child_stream_retain((ScrCh
 void scr_child_stream_release_v(void *p) { scr_child_stream_release((ScrChildStream *)p); }
 
 static void scr_child_stream_dearm(ScrChildStream *s);
+static void scr_child_stream_arm(ScrChildStream *s);
 
 /* True while the stream has a consumer and can still deliver. */
 static bool scr_child_stream_watching(const ScrChildStream *s) {
-  return !s->eof && s->fd >= 0 && s->n_data > 0;
+  return !s->eof && s->fd >= 0 && (s->n_data > 0 || s->capture);
 }
 
 /* A fresh piped stream over the pipe's read end (nonblocking, cloexec);
@@ -3410,6 +3512,38 @@ static ScrChildStream *scr_child_stream_new(int fd) {
   s->next = scr_child_streams;
   scr_child_streams = scr_child_stream_retain(s);
   return s;
+}
+
+static void scr_child_stream_capture_begin(ScrChildStream *s) {
+  if (s == NULL || s->eof || s->fd < 0 || s->capture) return;
+  bool was_watching = scr_child_stream_watching(s);
+  s->capture = true;
+  if (!was_watching) {
+    scr_child_streams_watching++;
+    scr_child_stream_arm(s);
+  }
+}
+
+static void scr_child_stream_capture_append(ScrChildStream *s, const char *data,
+                                            size_t len) {
+  if (!s->capture || len == 0) return;
+  size_t need = s->capture_len + len;
+  if (need > s->capture_cap) {
+    size_t cap = s->capture_cap ? s->capture_cap : 256;
+    while (cap < need) cap *= 2;
+    uint8_t *grown = realloc(s->capture_data, cap);
+    if (!grown) scr_child_oom();
+    s->capture_data = grown;
+    s->capture_cap = cap;
+  }
+  memcpy(s->capture_data + s->capture_len, data, len);
+  s->capture_len = need;
+}
+
+static ScrStr *scr_child_stream_capture_value(ScrChildStream *s) {
+  return s == NULL || s->capture_len == 0
+      ? scr_str_new("", 0)
+      : scr_str_new((const char *)s->capture_data, s->capture_len);
 }
 
 /* EOF/error tail: 'end' fires over a snapshot, everything drops, the fd
@@ -3460,9 +3594,11 @@ static bool scr_child_stream_pump(ScrChildStream *s) {
       return errno != EAGAIN;
     }
     if (n == 0) return true;
+    scr_child_stream_capture_append(s, buf, (size_t)n);
+    size_t nd = s->n_data;
+    if (nd == 0) continue;
     ScrBytes *chunk = scr_bytes_new(SCR_BYTES_U8, (double)n);
     memcpy(chunk->data, buf, (size_t)n);
-    size_t nd = s->n_data;
     ScrChildStreamDataL *snap = malloc(nd * sizeof *snap);
     if (!snap) scr_child_oom();
     for (size_t i = 0; i < nd; i++) {
@@ -3477,7 +3613,7 @@ static bool scr_child_stream_pump(ScrChildStream *s) {
             memmove(s->data_ls + j, s->data_ls + j + 1,
                     (s->n_data - j - 1) * sizeof *s->data_ls);
             s->n_data--;
-            if (s->n_data == 0) {
+            if (s->n_data == 0 && !s->capture) {
               scr_child_streams_watching--;
               scr_child_stream_dearm(s);
               if (s->uncounted) {
@@ -3603,6 +3739,7 @@ void scr_child_stream_on_data(ScrChildStream *s, ScrClosure *cb /*moves*/,
     scr_closure_release(cb);
     return;
   }
+  bool was_watching = scr_child_stream_watching(s);
   if (s->n_data == s->cap_data) {
     s->cap_data = s->cap_data ? s->cap_data * 2 : 2;
     s->data_ls = realloc(s->data_ls, s->cap_data * sizeof *s->data_ls);
@@ -3612,7 +3749,7 @@ void scr_child_stream_on_data(ScrChildStream *s, ScrClosure *cb /*moves*/,
   s->data_ls[s->n_data].fn = fn;
   s->data_ls[s->n_data].once = once;
   s->n_data++;
-  if (s->n_data == 1) {
+  if (!was_watching) {
     scr_child_streams_watching++;
     scr_child_stream_arm(s);
   }
@@ -4195,6 +4332,51 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
   return c;
 }
 
+static ScrError *scr_exec_file_error(ScrChild *c, ScrStr *stderr_value) {
+  if (c->state == SCR_CHILD_SPAWN_FAILED) {
+    ScrError *error = scr_error_new(0, c->err_msg);
+    scr_error_set_code(error, scr_errname(c->spawn_errno));
+    return error;
+  }
+  if (c->has_code && c->code == 0) return NULL;
+  size_t cap = 16 + c->exec_display->len + 1 + stderr_value->len + 1;
+  char *msg = malloc(cap);
+  if (!msg) scr_child_oom();
+  size_t at = (size_t)snprintf(msg, cap, "Command failed: %s", c->exec_display->data);
+  msg[at++] = '\n';
+  memcpy(msg + at, stderr_value->data, stderr_value->len);
+  at += stderr_value->len;
+  ScrStr *message = scr_str_new(msg, at);
+  free(msg);
+  ScrError *error = scr_error_new(0, message);
+  scr_str_release(message);
+  return error;
+}
+
+static void scr_exec_file_fire(ScrChild *c) {
+  if (c->exec_cb == NULL || c->exec_fn == NULL) return;
+  ScrStr *out = scr_child_stream_capture_value(c->out_stream);
+  ScrStr *err = scr_child_stream_capture_value(c->err_stream);
+  ScrError *error = scr_exec_file_error(c, err);
+  c->exec_fn(c->exec_cb, error, out, err); /* error/out/err move */
+}
+
+ScrChild *scr_exec_file(ScrStr *cmd, ScrArr *args, ScrClosure *cb,
+                        ScrExecFileFn fn) {
+  ScrStr *empty = scr_str_new("", 0);
+  ScrChild *c = scr_spawn_opts(cmd, args, 3, 3, 3, 0, 0, false, false,
+                               NULL, empty);
+  scr_str_release(empty);
+  c->exec_cb = cb;
+  c->exec_fn = fn;
+  char *display = scr_exec_display(cmd, args, false);
+  c->exec_display = scr_str_new(display, strlen(display));
+  free(display);
+  scr_child_stream_capture_begin(c->out_stream);
+  scr_child_stream_capture_begin(c->err_stream);
+  return c;
+}
+
 /* ── the lifecycle members (child.pid/exitCode/killed/kill/unref) ──────── */
 
 /* child.pid — undefined exactly when the spawn failed (Node's shape). */
@@ -4469,7 +4651,7 @@ static void scr_child_settle(ScrChild *c) {
     return;
   }
   if (c->state == SCR_CHILD_SPAWN_FAILED) {
-    if (c->n_err == 0) {
+    if (c->n_err == 0 && c->exec_cb == NULL) {
       /* Node: an 'error' event with no listener is an uncaught throw.
        * _Exit skips atexit handlers (the RC audit above all) on purpose —
        * the loop dies mid-turn with frames and registries still live,
@@ -4486,11 +4668,13 @@ static void scr_child_settle(ScrChild *c) {
       if (scr_exc_pending()) break; /* the loop surfaces it */
     }
     scr_child_err_code = NULL;
+    if (!scr_exc_pending()) scr_exec_file_fire(c);
   } else {
     for (size_t i = 0; i < c->n_exit; i++) {
       c->exit_cbs[i].fn(c->exit_cbs[i].cb, c->has_code, c->code, c->exit_signal);
       if (scr_exc_pending()) break;
     }
+    if (!scr_exc_pending()) scr_exec_file_fire(c);
   }
   scr_child_drop_listeners(c);
   scr_child_release(c); /* the registry's reference */

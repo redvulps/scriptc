@@ -3,7 +3,7 @@
 // exactly, so most misuse is a type error before lowering; these are the
 // forms that TYPECHECK and fence per site.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 
 // The default and explicit "pipe" forms use piped streams.
 // Keep both adjacent to the remaining rejection cases.
@@ -26,4 +26,8 @@ const c = spawn("true", [], { stdio: "ignore" });
 c.on("exit", (): number => 5);
 // Methods have no bound-value form — call on directly.
 const f = c.on;
+// The callback slice is deliberately narrower than Node's complete
+// options/optional-callback overload family.
+execFile("true");
+execFile("true", [], { encoding: "utf8" }, () => {});
 // Keep each fence on its own statement so diagnostics remain site-specific.

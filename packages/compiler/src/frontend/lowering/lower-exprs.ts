@@ -714,16 +714,24 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
       if (expr.text === "arguments" && lowerer.ctx.argumentsLocal) {
         return { kind: "varRef", localId: lowerer.ctx.argumentsLocal.id, type: DYN, loc };
       }
-      // A `const x = promisify(execFile)` binding as a VALUE: the
-      // promisified function never exists at runtime (its calls lower to
-      // the interned async-exec helper) — call it directly.
+      // A compiler-projected adapter as a VALUE: the adapter has no
+      // runtime function object (its calls rewrite directly) — call it
+      // through its immutable binding instead.
       {
         const sym = lowerer.resolveValueSymbol(expr);
-        if (sym && lowerer.promisifiedExecFile.has(sym)) {
+        const projection = sym ? lowerer.staticCallables.get(sym) : undefined;
+        if (projection?.kind === "promisified-exec-file" || projection?.kind === "promisified-builtin") {
           lowerer.unsupported(
             "SC1090",
             expr,
-            `a promisified execFile as a value (call '${expr.text}' directly)`,
+            `a promisified builtin as a value (call '${expr.text}' directly)`,
+          );
+        }
+        if (projection?.kind === "builtin-function") {
+          lowerer.unsupported(
+            "SC1090",
+            expr,
+            `a builtin function alias as an escaping value (call '${expr.text}' directly)`,
           );
         }
       }

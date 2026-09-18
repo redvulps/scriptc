@@ -1303,10 +1303,7 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
   },
   util: {
     promisify:
-      "the one lowered shape is a const binding over child_process.execFile: " +
-      "const execFileAsync = promisify(execFile), then call execFileAsync directly",
-    // child_process.execFile itself exists to be promisified — the same
-    // story from the other end.
+      "the lowered shapes are const bindings over child_process.execFile and fs.readFile; call the bound function directly",
   },
   "stream/consumers": {
     arrayBuffer:
@@ -1331,8 +1328,8 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
   },
   child_process: {
     execFile:
-      "the callback form has no lowering — promisify it: " +
-      "const execFileAsync = promisify(execFile) (from node:util), or use execFileSync",
+      "the callback forms execFile(file, callback) and execFile(file, args, callback) lower; " +
+      "options and reached no-callback calls remain fenced, while util.promisify(execFile) retains its wider options slice",
   },
   crypto: {
     ...Object.fromEntries(

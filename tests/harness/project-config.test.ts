@@ -116,6 +116,20 @@ test("node-types: refined spawn returns expose writable child stdin", async () =
   expect(stdout).toBe("typed child stdin\n");
 });
 
+test("node-types: callback execFile uses the typed error-first overload", async () => {
+  const dir = outDirFor("node-child-execfile");
+  const entry = join(nodeTypesDir, "child-execfile.ts");
+  const result = await compile(entry, {
+    outPath: join(dir, "child-execfile"),
+    outDir: dir,
+    sanitize,
+  });
+  expect(result.ok, !result.ok ? JSON.stringify(result.diagnostics, null, 2) : "").toBe(true);
+  if (!result.ok) return;
+  const { stdout } = await execFileAsync(result.binaryPath);
+  expect(stdout).toBe("typed-execfile true\n");
+});
+
 test("node-types: unsupported child stdin and spawn options forms remain named fences", async () => {
   const dir = outDirFor("node-child-stdin-fences");
   const entry = join(nodeTypesDir, "child-stdin-fences.ts");

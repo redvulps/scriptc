@@ -43,6 +43,7 @@ export interface LlvmEmitterContext extends ShapeHost {
   childDataThunkFor(param: IrType): string;
   childExitSignalThunkFor(codeParam: IrType, sigParam: IrType): string;
   childExitThunkFor(param: IrType): string;
+  execFileThunkFor(cbT: IrType & { kind: "func" }): string;
   classFieldPtr(objName: string, className: string, field: string): { ptr: string; type: IrType };
   classMeta: Map<string, LlClassMeta>;
   classMetaOf(className: string): LlClassMeta;

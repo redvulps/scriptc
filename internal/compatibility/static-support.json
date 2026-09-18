@@ -37,7 +37,7 @@
     "node-builtin.assert": ["tests/corpus/1600-assert-passing.ts", "tests/corpus/1609-assert-async.ts"],
     "node-builtin.async_hooks": ["tests/corpus/2213-async-local-storage.cjs"],
     "node-builtin.buffer": ["tests/corpus/1402-buffer-encodings.ts", "tests/corpus/1660-buffer-read-write-num.ts", "tests/corpus/2902-bigint-bytes.ts", "tests/corpus/2904-bigint-errors.ts"],
-    "node-builtin.child_process": ["tests/corpus/1361-spawn-events.ts", "tests/corpus/1565-spawn-pipe-streams.ts"],
+    "node-builtin.child_process": ["tests/corpus/1361-spawn-events.ts", "tests/corpus/1565-spawn-pipe-streams.ts", "tests/corpus/2911-execfile-callback.ts"],
     "node-builtin.cluster": ["tests/corpus/957-builtins-namespace.ts"],
     "node-builtin.crypto": ["tests/corpus/1358-crypto-random.ts", "tests/corpus/1534-crypto-hash-chain.ts", "tests/corpus/2556-crypto-introspection.ts", "tests/corpus/2890-crypto-static-utility.ts", "tests/harness/npm-static.test.ts"],
     "node-builtin.dgram": ["tests/corpus/2597-dgram-send-ladders.cjs"],
@@ -63,7 +63,7 @@
     "node-builtin.tls": ["tests/corpus/2331-tls-server-options-typed.ts", "tests/corpus/2557-tls-ca-store.ts"],
     "node-builtin.tty": ["tests/corpus/1448-stream-columns.ts"],
     "node-builtin.url": ["tests/corpus/1794-searchparams-url-live.ts"],
-    "node-builtin.util": ["tests/corpus/2440-console-inspect-args.ts"],
+    "node-builtin.util": ["tests/corpus/2440-console-inspect-args.ts", "tests/corpus/2912-promisify-fs-readfile.ts"],
     "node-builtin.worker_threads": ["tests/corpus/957-builtins-namespace.ts"],
     "node-builtin.zlib": ["tests/corpus/1404-zlib-crypto-bytes.ts"],
     "stdlib.fetch": ["tests/harness/fetch-conformance.test.ts"],
@@ -89,6 +89,7 @@
     { "chapter": "packages", "symbols": ["package.json", "\"name\"", "\"main\"", "\"type\"", "\"exports\"", "\"imports\""], "status": "partial", "evidence": ["tests/corpus/2092-package-imports/main.ts", "tests/corpus/2120-package-self-import/main.ts", "tests/corpus/2124-imports-field-wildcard/main.ts", "tests/corpus/2390-dot-requires/main.cjs", "tests/corpus/2830-cjs-require-self-name/main.cjs"] },
     { "chapter": "packages", "symbols": ["--input-type"], "status": "not-applicable" },
     { "chapter": "child_process", "signatures": ["`subprocess[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
+    { "chapter": "child_process", "signatures": ["`child_process.execFile(file[, args][, options][, callback])`"], "status": "partial", "evidence": ["tests/corpus/2911-execfile-callback.ts"] },
     { "chapter": "child_process", "signatures": ["`stdin` Type: {stream.Writable|null|undefined}"], "status": "partial", "evidence": ["tests/corpus/2893-child-stdin-duplex.ts", "tests/corpus/2894-child-stdin-backpressure.ts", "tests/corpus/2895-child-stdin-write-after-end.ts", "tests/corpus/2896-child-stdin-write-after-finish.ts", "tests/corpus/2897-child-stdin-destroy.ts", "tests/corpus/2898-child-stdin-spawn-failure.ts"] },
     { "chapter": "fs", "signatures": ["`filehandle[Symbol.asyncDispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
     { "chapter": "readline", "signatures": ["`rl[Symbol.dispose]()`"], "status": "partial", "evidence": ["tests/corpus/2844-node-disposable-resources.ts"] },
@@ -98,6 +99,7 @@
     { "chapter": "stream", "signatures": ["`writable` Type: {boolean}"], "status": "partial", "evidence": ["tests/corpus/2893-child-stdin-duplex.ts", "tests/corpus/2895-child-stdin-write-after-end.ts"] },
     { "chapter": "stream", "signatures": ["Event: `'drain'`"], "status": "partial", "evidence": ["tests/corpus/2894-child-stdin-backpressure.ts"] },
     { "chapter": "webstreams", "signatures": ["`readableStream.values([options])`"], "status": "partial", "evidence": ["tests/corpus/2862-web-readable-async-iteration.ts"] },
+    { "chapter": "util", "signatures": ["`util.promisify(original)`"], "status": "partial", "evidence": ["tests/corpus/1473-promisify-execfile.ts", "tests/corpus/1573-promisify-execfile-env-spread.ts", "tests/corpus/2912-promisify-fs-readfile.ts"] },
     { "chapter": "typescript", "symbols": ["type"], "status": "supported", "evidence": ["tests/corpus/2702-type-import-link-static/main.ts", "tests/corpus/2703-type-import-link-static-reexport/main.ts", "tests/corpus/2704-type-import-link-static-success/main.ts", "tests/corpus/2707-type-import-link-static-default-reexport/main.ts", "tests/harness/errors.test.ts"] }
   ],
   "dedicated": [

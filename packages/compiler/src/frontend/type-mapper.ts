@@ -873,6 +873,17 @@ function classExprNeverRegisters(decl: ts.ClassLikeDeclaration): boolean {
 
 function mapTypeInner(type: ts.Type, ctx: TypeMapperCtx): IrType | null {
   const { checker, unions, classNamer, resolveTypeParam } = ctx;
+  // @types/node spells child_process.ExecFileException as an intersection
+  // type alias over two Error-derived metadata interfaces. The value is
+  // still one ordinary Error; recognize the owned alias before generic
+  // intersection mapping decomposes it into unsupported utility types.
+  const directAlias = type.getAliasSymbol();
+  if (
+    directAlias?.name === "ExecFileException" &&
+    checker.declarationsOf(directAlias).some((decl) => ctx.isStdlibFile(decl.getSourceFile()))
+  ) {
+    return { kind: "object", className: "%Error" };
+  }
   if (resolveTypeParam && type.flags & ts.TypeFlags.TypeParameter) {
     const bound = resolveTypeParam(type);
     if (bound) {

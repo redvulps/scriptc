@@ -19,7 +19,7 @@ child-process.ts:28:7 - error SC2007: values of type '{ (event: "exit", listener
   27 | // Methods have no bound-value form — call on directly.
   28 | const f = c.on;
      |       ^
-  29 | // Keep each fence on its own statement so diagnostics remain site-specific.
+  29 | // The callback slice is deliberately narrower than Node's complete
 
   hint: annotate the slot with the ONE signature the program actually calls (e.g. '(x: number) => string'), or wrap the overloaded function in a single-signature arrow
 
@@ -28,4 +28,22 @@ child-process.ts:28:11 - error SC1090: child methods as values (call 'on' direct
   27 | // Methods have no bound-value form — call on directly.
   28 | const f = c.on;
      |           ^~~~
-  29 | // Keep each fence on its own statement so diagnostics remain site-specific.
+  29 | // The callback slice is deliberately narrower than Node's complete
+
+child-process.ts:31:1 - error SC2020: 'execFile with 1 arguments' is part of the standard library types but has no scriptc lowering yet
+
+  30 | // options/optional-callback overload family.
+  31 | execFile("true");
+     | ^~~~~~~~~~~~~~~~
+  32 | execFile("true", [], { encoding: "utf8" }, () => {});
+
+  hint: the supported callback forms are execFile(file, callback) and execFile(file, args, callback)
+
+child-process.ts:32:1 - error SC2020: 'execFile with 4 arguments' is part of the standard library types but has no scriptc lowering yet
+
+  31 | execFile("true");
+  32 | execFile("true", [], { encoding: "utf8" }, () => {});
+     | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  33 | // Keep each fence on its own statement so diagnostics remain site-specific.
+
+  hint: the supported callback forms are execFile(file, callback) and execFile(file, args, callback)

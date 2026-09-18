@@ -5618,6 +5618,17 @@ function emitChildProcessLibCall(state: LibCallState): Temp {
             return finish(
               `scr_spawn_opts(${arg(0)}, ${arg(1)}, ${arg(2)}, ${arg(3)}, ${arg(4)}, ${arg(5)}, ${arg(6)}, ${arg(7)}, ${arg(8)}, ${arg(9)}, ${arg(10)})`,
             );
+          case "cp.execFile": {
+            const callbackArg = e.args[2];
+            const cb = args[2];
+            if (!callbackArg || !cb) throw new InternalCompilerError("emitter bug: execFile callback missing");
+            const cbT = callbackArg.type;
+            if (cbT.kind !== "func") throw new InternalCompilerError("emitter bug: execFile callback not a func");
+            emitter.moveTemp(cb);
+            const adapter = emitter.execFileThunkFor(cbT);
+            emitter.usesTimers = true;
+            return finish(`scr_exec_file(${arg(0)}, ${arg(1)}, ${cb.name}, &${adapter})`);
+          }
           case "child.onExit": {
             // The callback MOVES into the child's registry; the third
             // ingredient is the ADAPTER — emitted per callback shape,

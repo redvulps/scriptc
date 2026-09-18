@@ -3,22 +3,4 @@ overload-fences.ts:12:13 - error SC1090: calls selecting an overload signature o
   11 | }
   12 | console.log(twice("q").length);
      |             ^~~~~~~~~~
-  13 | 
-
-overload-fences.ts:22:7 - error SC2007: values of type '{ (x: "a"): string; (x: "b"): number; }' cannot be compiled: the type declares multiple call signatures (overloads), and a compiled function value is always one concrete signature
-
-  21 | // directly compiles (corpus 1851).
-  22 | const asValue = pick;
-     |       ^~~~~~~
-  23 | console.log(typeof asValue);
-
-  hint: annotate the slot with the ONE signature the program actually calls (e.g. '(x: number) => string'), or wrap the overloaded function in a single-signature arrow
-
-overload-fences.ts:23:20 - error SC2004: uses of 'asValue' inherit the blocker on its declaration
-
-  22 | const asValue = pick;
-  23 | console.log(typeof asValue);
-     |                    ^~~~~~~
-  24 | 
-
-  hint: the declaration of 'asValue' did not compile — fix the diagnostic reported there and these sites clear with it
+  13 | function pick(x: "a"): string;

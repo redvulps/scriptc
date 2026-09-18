@@ -14,8 +14,8 @@ import type { CycleEdge } from "../program.js";
 import { invalidJsonModuleDiag, npmEmbedFailedDiag, requiresDynamicImportDiag } from "../../diagnostics/diagnostic.js";
 import { BOOL, DYN, IrClassDef, IrExpr, IrFunction, IrGlobal, IrRecordShape, IrStmt, IrType, IrUnionDef, JSVAL, RUNTIME_ERROR_CLASSES, STRING, SrcLoc, VOID, arrayOf, canConvertToDyn, isUnitType } from "../../ir/ir.js";
 import { ENTRY_NAME, PoisonError, boundIdentifiersOf, dynFallbackType, dynUndefinedExpr, importCallHandleType, newFnCtx, uncheckedOverloadHandleCall } from "./lowerer.js";
-import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireNamespaceDecl, createRequireSpecOf, isPromisifyCall, textCodecBindingDecl } from "./lower-builtins.js";
-import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, nullishGenericBindingUnitOf } from "./lower-calls.js";
+import { builtinMemberRequireDecl, builtinNamespaceDestructureModuleOf, createRequireBindingDecl, createRequireNamespaceDecl, createRequireSpecOf, isPromisifyCall, registerBuiltinCallableAlias, textCodecBindingDecl } from "./lower-builtins.js";
+import { bindingContextualGenericFnNodeOf, bindingGenericFnAliasInfoOf, bindingGenericFnInfoOf, bindingGenericFnNodeOf, deadUnmappableBinding, implicitLocalFnInfoOf, implicitLocalFnNodeOf, nullishGenericBindingUnitOf, registerOverloadedCallableAlias } from "./lower-calls.js";
 import { isVarDeclared, numericIteratorSourceOf, provenanceElidedConstDecl } from "./lower-stmts.js";
 import { streamClassAliasDecl } from "./lower-stream.js";
 import { stdlibGlobalAliasDecl } from "./surfaces.js";
@@ -1194,6 +1194,11 @@ export function collectGlobals(lowerer: Lowerer, sf: ts.SourceFile, topStmts: ts
           }
           if (aliased) continue;
         }
+        // An immutable alias of an overloaded declared function is a
+        // compile-time callable projection: calls retain per-site overload
+        // resolution and value reads reuse the source's interned closure.
+        if (isConst && registerOverloadedCallableAlias(lowerer, decl)) continue;
+        if (isConst && registerBuiltinCallableAlias(lowerer, decl.name, decl.initializer)) continue;
         // `const f = (x) => ...` at file scope of an npm-static JS file
         // whose params are implicit-any: the implicit-monomorphization
         // twin of the generic binding above — no global exists; calls and
@@ -1242,7 +1247,7 @@ export function collectGlobals(lowerer: Lowerer, sf: ts.SourceFile, topStmts: ts
         // lowering poisons too, like every collectGlobals failure).
         if (ts.isIdentifier(decl.name) && decl.initializer && isPromisifyCall(lowerer, decl.initializer)) {
           try {
-            lowerer.promisifiedExecFileDecl(decl.name, decl.initializer);
+            lowerer.registerPromisifiedBuiltinDecl(decl.name, decl.initializer);
           } catch (e) {
             if (!(e instanceof PoisonError)) throw e;
           }

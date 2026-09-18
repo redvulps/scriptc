@@ -195,8 +195,8 @@
       "apiEntries": 39,
       "static": {
         "supported": 0,
-        "partial": 7,
-        "refused": 1,
+        "partial": 8,
+        "refused": 0,
         "not-implemented": 31,
         "by-design": 0,
         "unreviewed": 0,
@@ -1323,8 +1323,8 @@
       "apiEntries": 105,
       "static": {
         "supported": 0,
-        "partial": 4,
-        "refused": 1,
+        "partial": 5,
+        "refused": 0,
         "not-implemented": 100,
         "by-design": 0,
         "unreviewed": 0,
@@ -14030,7 +14030,8 @@
           "tests/corpus/2895-child-stdin-write-after-end.ts",
           "tests/corpus/2896-child-stdin-write-after-finish.ts",
           "tests/corpus/2897-child-stdin-destroy.ts",
-          "tests/corpus/2898-child-stdin-spawn-failure.ts"
+          "tests/corpus/2898-child-stdin-spawn-failure.ts",
+          "tests/corpus/2911-execfile-callback.ts"
         ]
       },
       "dynamic": {
@@ -14138,8 +14139,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.child_process.execFile"
+        "status": "partial",
+        "evidence": "compiler-feature:child_process.child_process.execFile",
+        "tests": [
+          "tests/corpus/2911-execfile-callback.ts"
+        ]
       },
       "dynamic": {
         "status": "refused",
@@ -14196,7 +14200,8 @@
         "evidence": "surface-manifest:node-builtin.child_process.spawn",
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
-          "tests/corpus/1565-spawn-pipe-streams.ts"
+          "tests/corpus/1565-spawn-pipe-streams.ts",
+          "tests/corpus/2911-execfile-callback.ts"
         ]
       },
       "dynamic": {
@@ -14308,7 +14313,8 @@
         "evidence": "surface-manifest:node-builtin.child_process.execFileSync",
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
-          "tests/corpus/1565-spawn-pipe-streams.ts"
+          "tests/corpus/1565-spawn-pipe-streams.ts",
+          "tests/corpus/2911-execfile-callback.ts"
         ]
       },
       "dynamic": {
@@ -14339,7 +14345,8 @@
         "evidence": "surface-manifest:node-builtin.child_process.execSync",
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
-          "tests/corpus/1565-spawn-pipe-streams.ts"
+          "tests/corpus/1565-spawn-pipe-streams.ts",
+          "tests/corpus/2911-execfile-callback.ts"
         ]
       },
       "dynamic": {
@@ -14370,7 +14377,8 @@
         "evidence": "surface-manifest:node-builtin.child_process.spawnSync",
         "tests": [
           "tests/corpus/1361-spawn-events.ts",
-          "tests/corpus/1565-spawn-pipe-streams.ts"
+          "tests/corpus/1565-spawn-pipe-streams.ts",
+          "tests/corpus/2911-execfile-callback.ts"
         ]
       },
       "dynamic": {
@@ -109498,7 +109506,10 @@
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
-          "tests/corpus/2440-console-inspect-args.ts"
+          "tests/corpus/1473-promisify-execfile.ts",
+          "tests/corpus/1573-promisify-execfile-env-spread.ts",
+          "tests/corpus/2440-console-inspect-args.ts",
+          "tests/corpus/2912-promisify-fs-readfile.ts"
         ]
       },
       "dynamic": {
@@ -111118,7 +111129,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.util.parseArgs",
         "tests": [
-          "tests/corpus/2440-console-inspect-args.ts"
+          "tests/corpus/2440-console-inspect-args.ts",
+          "tests/corpus/2912-promisify-fs-readfile.ts"
         ]
       },
       "dynamic": {
@@ -111151,7 +111163,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.util.parseArgs",
         "tests": [
-          "tests/corpus/2440-console-inspect-args.ts"
+          "tests/corpus/2440-console-inspect-args.ts",
+          "tests/corpus/2912-promisify-fs-readfile.ts"
         ]
       },
       "dynamic": {
@@ -111208,8 +111221,13 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.util.promisify"
+        "status": "partial",
+        "evidence": "compiler-feature:util.util.promisify",
+        "tests": [
+          "tests/corpus/1473-promisify-execfile.ts",
+          "tests/corpus/1573-promisify-execfile-env-spread.ts",
+          "tests/corpus/2912-promisify-fs-readfile.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -111466,7 +111484,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.util.types",
         "tests": [
-          "tests/corpus/2440-console-inspect-args.ts"
+          "tests/corpus/2440-console-inspect-args.ts",
+          "tests/corpus/2912-promisify-fs-readfile.ts"
         ]
       },
       "dynamic": {

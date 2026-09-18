@@ -218,8 +218,8 @@
       "apiEntries": 39,
       "static": {
         "supported": 0,
-        "partial": 7,
-        "refused": 1,
+        "partial": 8,
+        "refused": 0,
         "not-implemented": 31,
         "by-design": 0,
         "unreviewed": 0,
@@ -1202,8 +1202,8 @@
       "apiEntries": 105,
       "static": {
         "supported": 0,
-        "partial": 4,
-        "refused": 1,
+        "partial": 5,
+        "refused": 0,
         "not-implemented": 100,
         "by-design": 0,
         "unreviewed": 0,
@@ -11505,9 +11505,9 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "detail": "Explicitly rejected by a named compiler diagnostic.",
-        "verification": "explicit-refusal"
+        "status": "partial",
+        "detail": "Implemented for the documented scriptc module-loader subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "refused",
@@ -85514,9 +85514,9 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "detail": "Explicitly rejected by a named compiler diagnostic.",
-        "verification": "explicit-refusal"
+        "status": "partial",
+        "detail": "Implemented for the documented scriptc module-loader subset.",
+        "verification": "test-backed"
       },
       "dynamic": {
         "status": "partial",

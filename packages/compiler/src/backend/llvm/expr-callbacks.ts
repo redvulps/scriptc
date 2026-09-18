@@ -436,6 +436,70 @@ export function childExitSignalThunkFor(host: LlvmEmitterContext, codeParam: IrT
     return sym;
   }
 
+export function execFileThunkFor(host: LlvmEmitterContext, cbT: IrType & { kind: "func" }): string {
+    const key = `exec:${typeKey(cbT)}`;
+    let sym = host.resolveThunks.get(key);
+    if (sym) return sym;
+    sym = `sc_exec_${host.resolveThunks.size}`;
+    host.resolveThunks.set(key, sym);
+    const errorParam = cbT.params[0];
+    let errorTag = -1;
+    let nullTag = -1;
+    let errorArm: IrType | null = null;
+    let errorTrace = "null";
+    if (errorParam !== undefined) {
+      if (errorParam.kind !== "union") throw new InternalCompilerError("llvm emitter bug: execFile error param not a union");
+      const def = host.unionsById.get(errorParam.unionId);
+      errorTag = def ? def.arms.findIndex((arm) => arm.kind === "object" && arm.className === "%Error") : -1;
+      nullTag = def ? def.arms.findIndex((arm) => arm.kind === "nullT") : -1;
+      errorArm = errorTag >= 0 ? def?.arms[errorTag] ?? null : null;
+      if (errorTag < 0 || nullTag < 0 || errorArm === null) {
+        throw new InternalCompilerError("llvm emitter bug: execFile error union lacks its arms");
+      }
+      errorTrace = traceArg(host, errorArm);
+      host.declare(`declare ptr @scr_union_new_ref(i32, ptr, ptr, ptr, ptr)`);
+      host.declare(`declare ptr @scr_error_retain_v(ptr)`);
+      host.declare(`declare void @scr_error_release_v(ptr)`);
+    } else {
+      host.declare(`declare void @scr_error_release(ptr)`);
+    }
+    if (cbT.params.length < 3) host.declare(`declare void @scr_str_release(ptr)`);
+    const d: string[] = [
+      `define internal void @${sym}(ptr %cb, ptr %err, ptr %out, ptr %stderr) ${FN_ATTRS} { ; execFile callback ${typeKey(cbT)}`,
+      `entry:`,
+    ];
+    if (errorParam !== undefined) {
+      d.push(
+        `  %eslot = alloca ptr`,
+        `  %haserr = icmp ne ptr %err, null`,
+        `  br i1 %haserr, label %errsome, label %errnone`,
+        `errsome:`,
+        `  %eu = call ptr @scr_union_new_ref(i32 ${errorTag}, ptr %err, ptr @scr_error_retain_v, ptr @scr_error_release_v, ptr ${errorTrace})`,
+        `  store ptr %eu, ptr %eslot`,
+        `  br label %go`,
+        `errnone:`,
+        `  store ptr ${host.unitInstanceRef(errorParam.unionId, nullTag)}, ptr %eslot`,
+        `  br label %go`,
+        `go:`,
+        `  %e = load ptr, ptr %eslot`,
+      );
+    } else {
+      d.push(`  call void @scr_error_release(ptr %err)`);
+    }
+    if (cbT.params.length < 2) d.push(`  call void @scr_str_release(ptr %out)`);
+    if (cbT.params.length < 3) d.push(`  call void @scr_str_release(ptr %stderr)`);
+    d.push(
+      `  %fnp = getelementptr inbounds %ScrClosure, ptr %cb, i64 0, i32 1`,
+      `  %fn = load ptr, ptr %fnp`,
+      `  call void %fn(ptr %cb${errorParam !== undefined ? ", ptr %e" : ""}${cbT.params.length >= 2 ? ", ptr %out" : ""}${cbT.params.length >= 3 ? ", ptr %stderr" : ""})`,
+      `  ret void`,
+      `}`,
+      ``,
+    );
+    host.resolveThunkDefs.push(...d);
+    return sym;
+  }
+
 export function childDataThunkFor(host: LlvmEmitterContext, param: IrType): string {
     if (param.kind !== "union") throw new InternalCompilerError("llvm emitter bug: stream data listener param not a union");
     const key = `cd:${param.unionId}`;

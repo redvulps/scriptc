@@ -7,9 +7,9 @@
     "tierItemCount": 6663,
     "tiers": {
       "static": {
-        "replace-refusal": 59,
+        "replace-refusal": 57,
         "verify-gap": 2734,
-        "audit-partial": 419,
+        "audit-partial": 421,
         "classify": 2,
         "implement": 81
       },
@@ -5643,12 +5643,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.child_process.execFile",
-          "tests": []
+          "source": "compiler-feature:child_process.child_process.execFile",
+          "tests": [
+            "tests/corpus/2911-execfile-callback.ts"
+          ]
         },
         "dynamic": {
           "status": "refused",
@@ -5716,7 +5718,8 @@
           "source": "surface-manifest:node-builtin.child_process.spawn",
           "tests": [
             "tests/corpus/1361-spawn-events.ts",
-            "tests/corpus/1565-spawn-pipe-streams.ts"
+            "tests/corpus/1565-spawn-pipe-streams.ts",
+            "tests/corpus/2911-execfile-callback.ts"
           ]
         },
         "dynamic": {
@@ -5818,7 +5821,8 @@
           "source": "surface-manifest:node-builtin.child_process.execFileSync",
           "tests": [
             "tests/corpus/1361-spawn-events.ts",
-            "tests/corpus/1565-spawn-pipe-streams.ts"
+            "tests/corpus/1565-spawn-pipe-streams.ts",
+            "tests/corpus/2911-execfile-callback.ts"
           ]
         },
         "dynamic": {
@@ -5854,7 +5858,8 @@
           "source": "surface-manifest:node-builtin.child_process.execSync",
           "tests": [
             "tests/corpus/1361-spawn-events.ts",
-            "tests/corpus/1565-spawn-pipe-streams.ts"
+            "tests/corpus/1565-spawn-pipe-streams.ts",
+            "tests/corpus/2911-execfile-callback.ts"
           ]
         },
         "dynamic": {
@@ -5890,7 +5895,8 @@
           "source": "surface-manifest:node-builtin.child_process.spawnSync",
           "tests": [
             "tests/corpus/1361-spawn-events.ts",
-            "tests/corpus/1565-spawn-pipe-streams.ts"
+            "tests/corpus/1565-spawn-pipe-streams.ts",
+            "tests/corpus/2911-execfile-callback.ts"
           ]
         },
         "dynamic": {
@@ -94260,7 +94266,8 @@
           "confidence": "high",
           "source": "surface-manifest:node-builtin.util.parseArgs",
           "tests": [
-            "tests/corpus/2440-console-inspect-args.ts"
+            "tests/corpus/2440-console-inspect-args.ts",
+            "tests/corpus/2912-promisify-fs-readfile.ts"
           ]
         },
         "dynamic": {
@@ -94297,7 +94304,8 @@
           "confidence": "high",
           "source": "surface-manifest:node-builtin.util.parseArgs",
           "tests": [
-            "tests/corpus/2440-console-inspect-args.ts"
+            "tests/corpus/2440-console-inspect-args.ts",
+            "tests/corpus/2912-promisify-fs-readfile.ts"
           ]
         },
         "dynamic": {
@@ -94361,12 +94369,16 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.util.promisify",
-          "tests": []
+          "source": "compiler-feature:util.util.promisify",
+          "tests": [
+            "tests/corpus/1473-promisify-execfile.ts",
+            "tests/corpus/1573-promisify-execfile-env-spread.ts",
+            "tests/corpus/2912-promisify-fs-readfile.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -94639,7 +94651,8 @@
           "confidence": "high",
           "source": "surface-manifest:node-builtin.util.types",
           "tests": [
-            "tests/corpus/2440-console-inspect-args.ts"
+            "tests/corpus/2440-console-inspect-args.ts",
+            "tests/corpus/2912-promisify-fs-readfile.ts"
           ]
         },
         "dynamic": {

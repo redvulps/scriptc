@@ -101,7 +101,7 @@ import { lowerBufferStaticCall, lowerBytesMethodCall, lowerBytesNew } from "./co
 import { lowerRegexMethodCall, lowerStringMethodCall } from "./containers/string-and-regexp.js";
 import { lowerStreamModuleCall } from "./lower-stream.js";
 import { lowerEmitOverrideSpec, type EmitSpecCtx, type EmitSpecRequest } from "./lower-event-emitter.js";
-import { builtinImportOf, createRequireBindingDecl, createRequireNamespaceDecl, createRequireSpecOf, stripTypeCasts, lowerBuiltinModuleCall, lowerTimersPromisesSetInterval, lowerFsToUnixTimestampCall, lowerFsLadderCall, lowerChildArgsArg, lowerSpawnSyncCall, lowerSpawnCall, lowerExecSyncCall, recordToEnvPairs, lowerJsonMethodCall, fencedBuiltinImportOf, lowerCryptoComposedCall, lowerUrlMethodCall, lowerSearchParamsMethodCall, lowerStatsMethodCall, lowerChildMethodCall, lowerAtomicsCall, lowerBuiltinExtraProperty, promisifiedExecFileDecl, lowerExecFileAsyncCall, execFileAsyncHelper, lowerStringDecoderMethodCall, strdecHelper, lowerReadlineMethodCall, lowerDcChannelMethodCall, lowerDcChannelProperty, lowerAlsMethodCall, lowerDcTracingChannelMethodCall, lowerDcTracingChannelProperty, lowerJsonProperty, lowerErrorCodeProperty, lowerProcessProperty, isProcessEnv, envValueType, lowerProcessEnvGet, lowerProcessMethodCall, lowerProcessOptionalMethodCall, lowerTimeoutMethodCall, envSnapshotHelper, isConsoleLog, consoleCallMember, lowerNumberStaticCall, lowerNumberStaticProperty, lowerDateCall, lowerTextCodecCall, lowerCryptoModuleCall, lowerFsConstantsProperty, lowerBuiltinConstantsProperty, builtinConstantBindingOf, builtinConstantsDestructureDecl, lowerProcessStreamProperty, lowerStringStaticCall, lowerStringLastIndexOfCall, lowerPromiseStaticCall, textCodecBindingClassOf } from "./lower-builtins.js";
+import { builtinImportOf, createRequireBindingDecl, createRequireNamespaceDecl, createRequireSpecOf, stripTypeCasts, lowerBuiltinModuleCall, lowerTimersPromisesSetInterval, lowerFsToUnixTimestampCall, lowerFsLadderCall, lowerChildArgsArg, lowerSpawnSyncCall, lowerSpawnCall, lowerExecFileCall, lowerExecSyncCall, recordToEnvPairs, lowerJsonMethodCall, fencedBuiltinImportOf, lowerCryptoComposedCall, lowerUrlMethodCall, lowerSearchParamsMethodCall, lowerStatsMethodCall, lowerChildMethodCall, lowerAtomicsCall, lowerBuiltinExtraProperty, registerPromisifiedBuiltinDecl, lowerExecFileAsyncCall, execFileAsyncHelper, lowerStringDecoderMethodCall, strdecHelper, lowerReadlineMethodCall, lowerDcChannelMethodCall, lowerDcChannelProperty, lowerAlsMethodCall, lowerDcTracingChannelMethodCall, lowerDcTracingChannelProperty, lowerJsonProperty, lowerErrorCodeProperty, lowerProcessProperty, isProcessEnv, envValueType, lowerProcessEnvGet, lowerProcessMethodCall, lowerProcessOptionalMethodCall, lowerTimeoutMethodCall, envSnapshotHelper, isConsoleLog, consoleCallMember, lowerNumberStaticCall, lowerNumberStaticProperty, lowerDateCall, lowerTextCodecCall, lowerCryptoModuleCall, lowerFsConstantsProperty, lowerBuiltinConstantsProperty, builtinConstantBindingOf, builtinConstantsDestructureDecl, lowerProcessStreamProperty, lowerStringStaticCall, lowerStringLastIndexOfCall, lowerPromiseStaticCall, textCodecBindingClassOf } from "./lower-builtins.js";
 import { fenceFetchObjectAssignment, fenceFetchObjectBinding, fenceStaticAbortControllerMemberRead, fenceStaticHeadersIteration, fenceStaticHeadersMember, fenceStaticReadableStreamMember, fenceStaticResponseMember, fenceUnsupportedFetchConstructorMember, isIslandExpr, islandFuncValueFence, islandRegexpOf, jsvalIn, requireDynamicApi, islandGlobalFnOf, lowerAbortControllerNew, lowerDynamicHeadersIteratorCall, lowerDynamicHeadersSpread, lowerDynamicImportCall, lowerFetchCall, lowerFetchElementMethodCall, lowerResponseNew, lowerStaticFetchCompanionCall, lowerStaticAbortControllerCall, lowerStaticAbortSignalListenerCall, lowerStaticReadableStreamCancelCall, lowerStaticReadableStreamControllerCall, lowerStaticReadableStreamNew, lowerStaticReadableStreamReaderCall, lowerStaticResponseCall, lowerIslandMethodCall, lowerMathProperty, npmPackageOf, npmMemberFence, npmPackageOfSymbol } from "./lower-island.js";
 import { lowerHttpHeadersElement, lowerNetModuleCall, lowerServerMethodCall, lowerServerProperty, lowerTlsRootCertificates } from "./lower-server.js";
 import { lowerDgramDnsModuleCall, lowerDgramMethodCall } from "./lower-dgram.js";
@@ -149,6 +149,16 @@ export type WidthLift =
   | { how: "funcAdapt" };
 
 export class PoisonError extends Error {}
+
+/** A function-shaped value that exists only in the compiler's static
+ * projection graph. Declared-function aliases point at the original
+ * immortal closure/direct-call target; adapters describe a call rewrite
+ * whose JavaScript function object does not otherwise need storage. */
+export type StaticCallableProjection =
+  | { kind: "declared-function"; signature: FnSig }
+  | { kind: "builtin-function"; module: string; member: string }
+  | { kind: "promisified-exec-file" }
+  | { kind: "promisified-builtin"; module: string; member: string };
 
 /** Own-property lookup for the surface tables. They are plain object
  * literals, so a bare `table[name]` would also find Object.prototype
@@ -942,6 +952,10 @@ export class Lowerer {
   readonly checker: ts.TypeChecker;
   readonly diags: ScrDiagnostic[] = [];
   readonly fnSigsBySymbol = new Map<ts.Symbol, FnSig>();
+  /** Immutable callable aliases and compiler-generated adapters. The map
+   * is symbol-keyed, so shadowing and cross-module imports keep the same
+   * exact binding discipline as globals/functions. */
+  readonly staticCallables = new Map<ts.Symbol, StaticCallableProjection>();
   readonly genericFnsBySymbol = new Map<ts.Symbol, GenericFnInfo>();
   /** Object-literal GENERIC methods (`{ m<T>(x: T) {...} }`), interned by
    * their function-like node — instances ride the same monomorphization
@@ -1487,11 +1501,6 @@ export class Lowerer {
    * adapter helper MUST add its name here, or the identity guard silently
    * reopens and the mismatch surfaces as a runtime release trap instead. */
   readonly freshClosureAdapters = new Set<string>();
-  /** Symbols bound by `const x = promisify(execFile)` — the one lowered
-   * util.promisify shape. Declarations register here and emit nothing;
-   * calls through the binding lower (lowerExecFileAsyncCall) and value
-   * uses fence. */
-  readonly promisifiedExecFile = new Set<ts.Symbol>();
   /** Symbols bound by `const process = globalThis.process` (and the other
    * stdlib-global snapshot spellings): pure alias plumbing — receiver
    * checks resolve through this map (stdlibGlobalNameOf), declarations
@@ -2396,7 +2405,10 @@ export class Lowerer {
 
   fnSigOf(ident: ts.Identifier): FnSig | null {
     const symbol = this.resolveValueSymbol(ident);
-    return symbol ? (this.fnSigsBySymbol.get(symbol) ?? null) : null;
+    if (!symbol) return null;
+    const projection = this.staticCallables.get(symbol);
+    return this.fnSigsBySymbol.get(symbol) ??
+      (projection?.kind === "declared-function" ? projection.signature : null);
   }
 
   globalOf(ident: ts.Identifier): IrGlobal | null {
@@ -9817,6 +9829,12 @@ export class Lowerer {
   lowerNamespaceBuiltinCall(call: ts.CallExpression, access: ts.PropertyAccessExpression): IrExpr | null {
     const bi = this.builtinMemberOf(access);
     if (!bi) return null;
+    // child_process.execFile's callback forms are special-cased rather
+    // than table-backed, but namespace imports share the named-import
+    // implementation and runtime callback adapter.
+    if (bi.module === "child_process" && bi.member === "execFile") {
+      return this.lowerExecFileCall(call, locOf(access));
+    }
     // The timers spoke: `timers.setTimeout(...)` through a namespace or
     // require binding IS the global (Node's timers module re-exports
     // them) — the shared member lowering serves both spellings.
@@ -9976,6 +9994,10 @@ export class Lowerer {
 
   lowerSpawnCall(expr: ts.CallExpression, loc: SrcLoc): IrExpr {
     return lowerSpawnCall(this, expr, loc);
+  }
+
+  lowerExecFileCall(expr: ts.CallExpression, loc: SrcLoc): IrExpr {
+    return lowerExecFileCall(this, expr, loc);
   }
 
   lowerExecSyncCall(expr: ts.CallExpression, shell: boolean, loc: SrcLoc): IrExpr {
@@ -10194,8 +10216,8 @@ export class Lowerer {
     return lowerTimeoutMethodCall(this, call, access);
   }
 
-  promisifiedExecFileDecl(nameNode: ts.Node, init: ts.Expression | undefined): boolean {
-    return promisifiedExecFileDecl(this, nameNode, init);
+  registerPromisifiedBuiltinDecl(nameNode: ts.Node, init: ts.Expression | undefined): boolean {
+    return registerPromisifiedBuiltinDecl(this, nameNode, init);
   }
 
   lowerExecFileAsyncCall(expr: ts.CallExpression, loc: SrcLoc): IrExpr {

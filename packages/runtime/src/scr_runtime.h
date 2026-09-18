@@ -2640,6 +2640,11 @@ typedef void (*ScrChildStreamDataFn)(ScrClosure *cb, ScrBytes *chunk);
 typedef void (*ScrChildExitFn)(ScrClosure *cb, bool has_code, double code,
                                const char *signal_name);
 typedef void (*ScrChildErrFn)(ScrClosure *cb, ScrStr *msg);
+/* execFile's fixed runtime firing ABI. error/stdout/stderr arrive as +1
+ * values and MOVE through the compiler-emitted adapter into the callback
+ * (or are released there when the callback omits a suffix). */
+typedef void (*ScrExecFileFn)(ScrClosure *cb, ScrError *error,
+                              ScrStr *stdout_value, ScrStr *stderr_value);
 
 ScrChild *scr_spawn(ScrStr *cmd, ScrArr *args); /* +1, never throws */
 /* The options form (cp.spawnOpts): PER-SLOT stdio modes — 0 = ignore
@@ -2654,6 +2659,11 @@ ScrChild *scr_spawn_opts(ScrStr *cmd, ScrArr *args, double in_mode,
                           double out_mode, double err_mode, double out_fd,
                           double err_fd, bool detached, bool has_env,
                           ScrArr *env_pairs, ScrStr *cwd);
+/* The callback slice: file + args, default options. The returned child has
+ * all three stdio slots piped; stdout/stderr are captured internally and
+ * the callback moves into the child registry until settlement. */
+ScrChild *scr_exec_file(ScrStr *cmd, ScrArr *args, ScrClosure *cb /*moves*/,
+                        ScrExecFileFn fn);
 ScrChild *scr_child_retain(ScrChild *c);
 void scr_child_release(ScrChild *c);
 void *scr_child_retain_v(void *p);
