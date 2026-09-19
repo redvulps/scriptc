@@ -1537,6 +1537,11 @@ export class Lowerer {
    * here by name so every reference is the SAME zero-capture closure and
    * `opt.type === String` is JS identity (see primitiveCtorClosure). */
   readonly primitiveCtorFns = new Map<string, string>();
+  /** Builtin-module FUNCTIONS admitted as values by their surface-table
+   * entries. The resolved runtime function plus ABI is the identity key,
+   * so named imports, namespace reads, CommonJS bindings, and alias chains
+   * all reuse one immortal zero-capture closure. */
+  readonly builtinCallableValueFns = new Map<string, string>();
   /** Optional-chain lowering state. While a chain body lowers, the guarded
    * receiver NODE reads as a chainRecv (typed by the narrowed arm) instead
    * of re-lowering, its checker type reads non-nullish (typeOf), and the
@@ -9938,6 +9943,13 @@ export class Lowerer {
       const roots = lowerTlsRootCertificates(this, bi, loc);
       if (roots) return roots;
     }
+    // TypeScript builtin values admitted by an explicit surface-table
+    // contract materialize as interned closures. JavaScript sources retain
+    // their established builtin identity-token/fence policy.
+    if (!isJsSourceFile(expr.getSourceFile())) {
+      const callable = this.lowerBuiltinCallableValue(bi, loc);
+      if (callable) return callable;
+    }
     if (bi.member === "constants" && bi.module === "fs") {
       // A bare `fs.constants` read (not one of the baked bits above).
       this.noLowering(`fs.constants`, expr, "F_OK, R_OK, W_OK, and X_OK are the lowered constants");
@@ -9955,6 +9967,68 @@ export class Lowerer {
       builtinFenceHintOf(bi.module, bi.member),
       this.checker.getSymbolAtLocation(expr.name),
     );
+  }
+
+  /** Materialize one explicitly value-callable table entry as an interned
+   * synthetic module function. Direct calls never use this path: they keep
+   * their existing validated libCall lowering. The descriptor opt-in is
+   * deliberately narrower than table membership because many table rows
+   * are only dispatch sentinels for call-site-specific lowering. */
+  lowerBuiltinCallableValue(
+    bi: { module: string; member: string },
+    loc: SrcLoc,
+  ): IrExpr | null {
+    const fn = builtinModuleFnOf(this, bi.module, bi.member);
+    if (fn?.valueCallable !== true) return null;
+    if (fn.variadicPack || fn.defaults !== undefined) {
+      throw new InternalCompilerError(
+        `builtin callable value '${bi.module}.${bi.member}' has a variable-width descriptor`,
+      );
+    }
+    const funcType = { kind: "func" as const, params: fn.params, ret: fn.result };
+    const key = `${fn.fn}:${typeKey(funcType)}`;
+    let fnName = this.builtinCallableValueFns.get(key);
+    if (!fnName) {
+      fnName = `%builtin.value.${fn.fn}.${this.builtinCallableValueFns.size}`;
+      this.builtinCallableValueFns.set(key, fnName);
+      const params = fn.params.map((type, index) => ({
+        localId: `arg.${index}`,
+        name: `arg${index}`,
+        type,
+      }));
+      const args: IrExpr[] = params.map((param) => ({
+        kind: "varRef",
+        localId: param.localId,
+        type: param.type,
+        loc,
+      }));
+      const call: IrExpr = { kind: "libCall", fn: fn.fn, args, type: fn.result, loc };
+      const body: IrStmt[] = fn.result.kind === "void"
+        ? [
+            { kind: "exprStmt", expr: call, loc },
+            { kind: "return", value: null, loc },
+          ]
+        : [{ kind: "return", value: call, loc }];
+      this.liftedFns.push({
+        name: fnName,
+        params,
+        returnType: fn.result,
+        locals: params.map((param) => ({
+          id: param.localId,
+          name: param.name,
+          type: param.type,
+          mutable: false,
+        })),
+        body,
+        loc,
+      });
+    }
+    return { kind: "closure", fnName, captures: [], type: funcType, loc };
+  }
+
+  isBuiltinCallableValue(expr: IrExpr): boolean {
+    return expr.kind === "closure" &&
+      [...this.builtinCallableValueFns.values()].some((name) => name === expr.fnName);
   }
 
   lowerBuiltinModuleCall(expr: ts.CallExpression,

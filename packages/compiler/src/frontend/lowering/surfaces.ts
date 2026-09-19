@@ -569,6 +569,11 @@ export interface BuiltinModuleFn {
   result: IrType;
   variadicPack?: boolean;
   defaults?: string[];
+  /** This exact fixed-width table entry may materialize as an interned
+   * zero-capture closure when the builtin escapes call position. Entries
+   * with call-site-specific validation, optional completion, or rest
+   * packing stay call-only until they have an equally exact adapter. */
+  valueCallable?: true;
 }
 
 /** The lowerable surface of the supported node builtin modules, keyed by
@@ -586,13 +591,13 @@ export interface BuiltinModuleFn {
 const PATH_MODULE_FNS: Record<string, BuiltinModuleFn | undefined> = {
   join: { fn: "path.join", params: [STRING], result: STRING, variadicPack: true },
   resolve: { fn: "path.resolve", params: [STRING], result: STRING, variadicPack: true },
-  normalize: { fn: "path.normalize", params: [STRING], result: STRING },
-  dirname: { fn: "path.dirname", params: [STRING], result: STRING },
+  normalize: { fn: "path.normalize", params: [STRING], result: STRING, valueCallable: true },
+  dirname: { fn: "path.dirname", params: [STRING], result: STRING, valueCallable: true },
   basename: { fn: "path.basename", params: [STRING, STRING], result: STRING, defaults: [""] },
-  extname: { fn: "path.extname", params: [STRING], result: STRING },
-  isAbsolute: { fn: "path.isAbsolute", params: [STRING], result: BOOL },
-  relative: { fn: "path.relative", params: [STRING, STRING], result: STRING },
-  toNamespacedPath: { fn: "path.toNamespacedPath", params: [STRING], result: STRING },
+  extname: { fn: "path.extname", params: [STRING], result: STRING, valueCallable: true },
+  isAbsolute: { fn: "path.isAbsolute", params: [STRING], result: BOOL, valueCallable: true },
+  relative: { fn: "path.relative", params: [STRING, STRING], result: STRING, valueCallable: true },
+  toNamespacedPath: { fn: "path.toNamespacedPath", params: [STRING], result: STRING, valueCallable: true },
 };
 
 /** The win32 twins (scr_path.c's Node-v24 path.win32 port, byte-for-byte):
@@ -601,13 +606,13 @@ const PATH_MODULE_FNS: Record<string, BuiltinModuleFn | undefined> = {
 const PATH_WIN32_MODULE_FNS: Record<string, BuiltinModuleFn | undefined> = {
   join: { fn: "path.win32Join", params: [STRING], result: STRING, variadicPack: true },
   resolve: { fn: "path.win32Resolve", params: [STRING], result: STRING, variadicPack: true },
-  normalize: { fn: "path.win32Normalize", params: [STRING], result: STRING },
-  dirname: { fn: "path.win32Dirname", params: [STRING], result: STRING },
+  normalize: { fn: "path.win32Normalize", params: [STRING], result: STRING, valueCallable: true },
+  dirname: { fn: "path.win32Dirname", params: [STRING], result: STRING, valueCallable: true },
   basename: { fn: "path.win32Basename", params: [STRING, STRING], result: STRING, defaults: [""] },
-  extname: { fn: "path.win32Extname", params: [STRING], result: STRING },
-  isAbsolute: { fn: "path.win32IsAbsolute", params: [STRING], result: BOOL },
-  relative: { fn: "path.win32Relative", params: [STRING, STRING], result: STRING },
-  toNamespacedPath: { fn: "path.win32ToNamespacedPath", params: [STRING], result: STRING },
+  extname: { fn: "path.win32Extname", params: [STRING], result: STRING, valueCallable: true },
+  isAbsolute: { fn: "path.win32IsAbsolute", params: [STRING], result: BOOL, valueCallable: true },
+  relative: { fn: "path.win32Relative", params: [STRING, STRING], result: STRING, valueCallable: true },
+  toNamespacedPath: { fn: "path.win32ToNamespacedPath", params: [STRING], result: STRING, valueCallable: true },
 };
 
 export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn | undefined> | undefined> = {

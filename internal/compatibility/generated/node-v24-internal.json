@@ -82352,6 +82352,8 @@
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts",
           "tests/corpus/957-builtins-namespace.ts"
         ]
       },
@@ -82412,7 +82414,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.basename",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82445,7 +82449,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.dirname",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82478,7 +82484,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.extname",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82568,7 +82576,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.isAbsolute",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82601,7 +82611,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.join",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82634,7 +82646,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.normalize",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82697,7 +82711,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.relative",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82730,7 +82746,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.resolve",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82763,7 +82781,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.toNamespacedPath",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82796,7 +82816,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.delimiter",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82829,7 +82851,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.posix",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82862,7 +82886,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.sep",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {
@@ -82895,7 +82921,9 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.path.win32",
         "tests": [
-          "tests/corpus/957-builtins-namespace.ts"
+          "tests/corpus/957-builtins-namespace.ts",
+          "tests/corpus/2915-path-function-values.ts",
+          "tests/corpus/2916-path-function-values-cjs.ts"
         ]
       },
       "dynamic": {

@@ -6325,6 +6325,18 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2915-path-function-values.ts": {
+   "order": [
+    "<repo>/tests/corpus/2915-path-function-values.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2916-path-function-values-cjs.ts": {
+   "order": [
+    "<repo>/tests/corpus/2916-path-function-values-cjs.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

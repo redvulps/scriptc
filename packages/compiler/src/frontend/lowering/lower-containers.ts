@@ -911,6 +911,20 @@ function arraySearchHelper(
       }
       lowerer.implicitParamTypes = previousImplicit;
     }
+    // Array storage widens indexed reads with undefined so holes remain
+    // observable. The HOF helper guards every callback behind arrayHas,
+    // so an exact-ABI builtin closure may safely adapt from its declared
+    // parameter to that guarded union. Keep this exception scoped to the
+    // compiler-generated builtin values; ordinary callback-value policy is
+    // unchanged.
+    if (
+      fnArg.type.kind === "func" && lowerer.isBuiltinCallableValue(fnArg)
+    ) {
+      const callbackType = funcOf(full.slice(0, fnArg.type.params.length), fnArg.type.ret);
+      if (!typeEquals(fnArg.type, callbackType)) {
+        fnArg = lowerer.coerceToExpected(fnArg, callbackType);
+      }
+    }
     if (
       fnArg.type.kind !== "func" ||
       fnArg.type.params.length > full.length ||
