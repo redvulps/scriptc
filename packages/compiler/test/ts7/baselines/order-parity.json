@@ -6325,6 +6325,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2914-fixed-tuple-call-spread.ts": {
+   "order": [
+    "<repo>/tests/corpus/2914-fixed-tuple-call-spread.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

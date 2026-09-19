@@ -3725,8 +3725,8 @@
       "id": "syntax.spread-arguments",
       "kind": "syntax",
       "name": "spread arguments",
-      "status": "unsupported",
-      "code": "SC1090"
+      "status": "static",
+      "note": "non-empty fixed tuples flatten into fixed signatures with evaluate-once ordering; arrays, Sets, and statically represented class iterables spread into typed rest parameters"
     },
     {
       "id": "syntax.typeof-expressions",

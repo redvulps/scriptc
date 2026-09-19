@@ -148,6 +148,12 @@ export function generateSurfaceManifest(compilerVersion: string): SurfaceManifes
   for (const table of [UNSUPPORTED_STMT, UNSUPPORTED_EXPR]) {
     for (const entry of Object.values(table)) {
       const name = entry.feature ?? UNSUPPORTED[entry.code]!.feature;
+      // Spread arguments have a positive static surface: fixed tuples
+      // flatten into fixed signatures, while typed arrays/Sets/class
+      // iterables already pack into rest parameters. The fallback table
+      // remains the per-site fence for genuinely runtime-arity static
+      // calls that reach no supported lane.
+      if (name === "spread arguments") continue;
       add({
         id: `syntax.${kebab(name)}`,
         kind: "syntax",
@@ -178,6 +184,7 @@ export function generateSurfaceManifest(compilerVersion: string): SurfaceManifes
     ["await-using-declarations", "block- and function-scoped await using declarations", "LIFO asynchronous disposal through [Symbol.asyncDispose], with synchronous fallback"],
     ["for-using-of", "for (using ... of ...) over arrays", "each array element is disposed at the end of its iteration, including break and continue paths"],
     ["finally-abrupt-completions", "abrupt completions through finally", "return, throw, break, continue, and labeled jumps run crossed finally blocks; a finally completion replaces the pending one"],
+    ["spread-arguments", "spread arguments", "non-empty fixed tuples flatten into fixed signatures with evaluate-once ordering; arrays, Sets, and statically represented class iterables spread into typed rest parameters"],
   ] as const) {
     add({ id: `syntax.${id}`, kind: "syntax", name, status: "static", note });
   }
