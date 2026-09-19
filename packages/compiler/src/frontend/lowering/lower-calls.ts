@@ -49,12 +49,15 @@ export type ParamMode = "required" | "omittable" | "rest" | "dynRest" | "islandR
  * `type` is the ABI type — what the emitted C parameter carries: the
  * checker's `T | undefined` union for `x?: T`, a synthesized `T | undefined`
  * union for `x: T = e`, `T[]` for `...xs: T[]`, the plain declared type
- * otherwise. `bodyType` is present exactly for DEFAULTED params: the plain T
- * the body sees after the prologue applies the default (see declareParams). */
+ * otherwise. `bodyType` is present exactly for DEFAULTED program params:
+ * the plain T the body sees after the prologue applies the default (see
+ * declareParams). `callDefault` is the compile-time default value for a
+ * table-backed builtin's omittable slot. */
 export interface ParamShape {
   type: IrType;
   mode: ParamMode;
   bodyType?: IrType;
+  callDefault?: IrExpr;
 }
 
 export interface FnSig {
@@ -429,6 +432,20 @@ export interface GenericInstance {
    * explicitly-passed `undefined` wraps to — both trigger a default, JS-
    * exact); a rest param packs the surplus args (possibly zero) into one
    * array literal, evaluated in source order at the call site. */
+  function fixedTupleSpreadInfo(
+    lowerer: Lowerer,
+    node: ts.Expression,
+  ): { type: IrType & { kind: "record" }; fields: { name: string; type: IrType }[] } | null {
+    const type = lowerer.mapTypeOf(lowerer.typeOf(node));
+    if (type?.kind !== "record") return null;
+    const shape = lowerer.shapes.get(type.shapeId);
+    if (!shape?.tuple || shape.fields.length === 0) return null;
+    return {
+      type,
+      fields: [...shape.fields].sort((a, b) => Number(a.name) - Number(b.name)),
+    };
+  }
+
   export function completeArgs(lowerer: Lowerer, argNodes: readonly ts.Expression[],
     shapes: readonly ParamShape[],
     loc: SrcLoc,
@@ -442,8 +459,60 @@ export interface GenericInstance {
     type ArgSource = ts.Expression | { ir: IrExpr };
     const isIr = (s: ArgSource | undefined): s is { ir: IrExpr } =>
       s !== undefined && !("kind" in s);
-    const sources: readonly ArgSource[] =
-      leading && leading.length > 0 ? [...leading.map((ir) => ({ ir })), ...argNodes] : argNodes;
+    const sources: ArgSource[] = leading?.map((ir) => ({ ir })) ?? [];
+    for (const arg of argNodes) {
+      if (!ts.isSpreadElement(arg)) {
+        sources.push(arg);
+        continue;
+      }
+      const tuple = fixedTupleSpreadInfo(lowerer, arg.expression);
+      if (!tuple) {
+        sources.push(arg);
+        continue;
+      }
+      // A fixed tuple has a compile-time argument count, so flatten it into
+      // the callee's ordinary positional ABI. The operand itself still
+      // evaluates exactly once and at the spread's source-order position:
+      // the first extracted field carries a seqExpr that initializes one
+      // hidden tuple local, and every later field reads that same local.
+      // Tuple fields are owned reads, so the call receives the same +1
+      // values as separately written arguments while the saved tuple stays
+      // alive through the call.
+      const spreadLoc = locOf(arg);
+      const value = lowerer.coerceInto(
+        arg.expression,
+        lowerer.lowerExpr(arg.expression),
+        tuple.type,
+      );
+      const saved = lowerer.declareHiddenLocal("%callSpread", tuple.type);
+      const savedRef = (): IrExpr => ({
+        kind: "varRef",
+        localId: saved.id,
+        type: tuple.type,
+        loc: spreadLoc,
+      });
+      tuple.fields.forEach((field, i) => {
+        const read: IrExpr = {
+          kind: "recordGet",
+          obj: savedRef(),
+          shapeId: tuple.type.shapeId,
+          field: field.name,
+          type: field.type,
+          loc: spreadLoc,
+        };
+        sources.push({
+          ir: i === 0
+            ? {
+                kind: "seqExpr",
+                stmts: [{ kind: "varDecl", localId: saved.id, init: value, loc: spreadLoc }],
+                result: read,
+                type: field.type,
+                loc: spreadLoc,
+              }
+            : read,
+        });
+      });
+    }
     const restAt = shapes.findIndex((s) => s.mode === "rest" || s.mode === "dynRest" || s.mode === "islandRest");
     const positional = restAt >= 0 ? shapes.slice(0, restAt) : [...shapes];
     const out: IrExpr[] = positional.map((shape, i) => {
@@ -474,6 +543,7 @@ export interface GenericInstance {
         // reaching here means a call form we don't model — defensive.
         lowerer.unsupported("SC1090", blame, "this call form");
       }
+      if (shape.callDefault) return shape.callDefault;
       return lowerer.undefinedArgFor(shape.type, loc, blame);
     });
     if (restAt >= 0 && shapes[restAt]!.mode === "islandRest") {
@@ -4267,7 +4337,7 @@ export function lowerCall(lowerer: Lowerer, expr: ts.CallExpression): IrExpr {
         // list — the value path's boxed thunk delivers JS arity instead.
         if (generic && !(jsSpreadArgs && generic.implicitParams)) return lowerer.lowerGenericCall(expr, generic);
         const sig = generic ? null : lowerer.fnSigOf(expr.expression);
-        if (sig && !(jsSpreadArgs && spreadNeedsRuntimeArity(sig.params, expr.arguments))) {
+        if (sig && !(jsSpreadArgs && spreadNeedsRuntimeArity(lowerer, sig.params, expr.arguments))) {
           lowerer.noteEdge(sig.name);
           const args = lowerer.completeArgs(expr.arguments, sig.params, loc, expr);
           return reconcileOverloadReturn(lowerer, expr, { kind: "call", callee: sig.name, args, type: sig.returnType, loc });
@@ -5060,12 +5130,25 @@ function lowerOptionalStringNumber(
    * (dynRest/islandRest, whose packs are built per-argument): the shapes
    * the runtime-arity lane (lowerSpreadArgsCall) serves. Typed `rest`
    * slots keep completeArgs' same-element spread packing. */
-  function spreadNeedsRuntimeArity(shapes: readonly ParamShape[], argNodes: readonly ts.Expression[]): boolean {
+  function spreadNeedsRuntimeArity(
+    lowerer: Lowerer,
+    shapes: readonly ParamShape[],
+    argNodes: readonly ts.Expression[],
+  ): boolean {
     const restAt = shapes.findIndex((s) => s.mode === "rest" || s.mode === "dynRest" || s.mode === "islandRest");
-    return argNodes.some(
-      (a, i) =>
-        ts.isSpreadElement(a) && (restAt < 0 || i < restAt || shapes[restAt]!.mode !== "rest"),
-    );
+    let position = 0;
+    for (const arg of argNodes) {
+      if (ts.isSpreadElement(arg)) {
+        const tuple = fixedTupleSpreadInfo(lowerer, arg.expression);
+        if (tuple) {
+          position += tuple.fields.length;
+          continue;
+        }
+        if (restAt < 0 || position < restAt || shapes[restAt]!.mode !== "rest") return true;
+      }
+      position++;
+    }
+    return false;
   }
 
 /** METHOD calls on dyn receivers (`pkg.name.replace(...)`, `rawName.split`,

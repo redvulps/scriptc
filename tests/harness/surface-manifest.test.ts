@@ -124,6 +124,7 @@ interface Probe {
 const PROBES: Probe[] = [
   // status static — these must compile to a binary
   { id: "syntax.compound-assignment.plus", source: 'let x = 1;\nx += 2;\nconsole.log(x);\n' },
+  { id: "syntax.spread-arguments", source: 'function add(a: number, b: number): number { return a + b; }\nconst args: [number, number] = [1, 2];\nconsole.log(add(...args));\n' },
   { id: "stdlib.string.charCodeAt", source: 'console.log("abc".charCodeAt(0));\n' },
   { id: "stdlib.array.push", source: "const xs: number[] = [1];\nxs.push(2);\nconsole.log(xs.length);\n" },
   { id: "stdlib.array.unshift", source: "const xs: number[] = [2];\nconsole.log(xs.unshift(1), xs[0]);\n" },

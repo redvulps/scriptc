@@ -34,7 +34,7 @@ import { isSafeToDiscard } from "./expressions/evaluation-safety.js";
 import { defaultAfterUndefined, lowerStaticallyUndefinedArgument } from "./optional-arguments.js";
 import { HTTP2_CONSTANTS } from "./http2-constants.js";
 import { CRYPTO_CIPHERS, CRYPTO_CONSTANTS, CRYPTO_CURVES, CRYPTO_HASHES } from "./crypto-tables.js";
-import { generatorMeta, timerStyleCallback } from "./lower-calls.js";
+import { generatorMeta, timerStyleCallback, type ParamShape } from "./lower-calls.js";
 import { registerHttpClientFnBinding, voidizedCallback } from "./lower-server.js";
 import { pairsSnapshotHelper } from "./pairs-snapshot.js";
 import { BOOL, BYTES_U8, CHILD_T, CHILDSTREAM_T, CHILDWRITER_T, CRYPTOHASH_T, CRYPTOHMAC_T, DYN, F64, FILEHANDLE_T, FSWATCHER_T, PROCSTREAM_T, IrExpr, IrFunction, IrLibFn, IrLocal, IrStmt, IrType, JSVAL, NULL_T, SEARCH_PARAMS_T, SPAWNRES_T, STRING, SrcLoc, UNDEFINED_T, VOID, arrayOf, canBoxFuncIntoDyn, canConvertToDyn, funcOf, isUnitType, typeEquals, typeKey } from "../../ir/ir.js";
@@ -1985,7 +1985,26 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
       }
     }
     const required = fn.params.length - (fn.defaults?.length ?? 0);
-    if (expr.arguments.length < required || expr.arguments.length > fn.params.length) {
+    const hasSpread = expr.arguments.some(ts.isSpreadElement);
+    if (hasSpread && bi.module === "url" && bi.member === "fileURLToPath") {
+      lowerer.noLowering(
+        "fileURLToPath with spread arguments",
+        expr,
+        "call fileURLToPath(value) directly so the URL-or-string overload remains statically visible",
+      );
+    }
+    if (
+      hasSpread &&
+      ((bi.module === "fs" && bi.member === "readFileSync") ||
+        (bi.module === "fs/promises" && bi.member === "readFile"))
+    ) {
+      lowerer.noLowering(
+        `${bi.member} with spread arguments`,
+        expr,
+        `call ${bi.member}(path, "utf8") directly so the required literal encoding remains statically visible`,
+      );
+    }
+    if (!hasSpread && (expr.arguments.length < required || expr.arguments.length > fn.params.length)) {
       lowerer.noLowering(
         `${name} with ${expr.arguments.length} argument${expr.arguments.length === 1 ? "" : "s"}`,
         expr,
@@ -1994,7 +2013,7 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
           : `the supported form takes ${fn.params.length} argument${fn.params.length === 1 ? "" : "s"} (no options objects)`,
       );
     }
-    if (bi.module === "url" && bi.member === "fileURLToPath") {
+    if (!hasSpread && bi.module === "url" && bi.member === "fileURLToPath") {
       // Node accepts a URL value or a URL string — one libFn per receiver
       // form, picked by the argument's static type. Unions (URL |
       // undefined, ...) must narrow first, like everywhere else.
@@ -2012,8 +2031,8 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
         "pass a URL value or a URL string (narrow unions first)",
       );
     }
-    if ((bi.module === "fs" && bi.member === "readFileSync") ||
-        (bi.module === "fs/promises" && bi.member === "readFile")) {
+    if (!hasSpread && ((bi.module === "fs" && bi.member === "readFileSync") ||
+        (bi.module === "fs/promises" && bi.member === "readFile"))) {
       // The runtime reads utf8 unconditionally; any other encoding would
       // silently decode wrong, so the ARGUMENT'S TYPE must be the literal
       // "utf8" — or Node's "utf-8" alias, the same decoder (the fallback
@@ -2028,10 +2047,28 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
         );
       }
     }
-    const args = expr.arguments.map((a, i) => lowerer.lowerExprExpecting(a, fn.params[i]));
-    for (let i = args.length; i < fn.params.length; i++) {
-      const dflt = fn.defaults![i - required]!;
-      args.push({ kind: "strLit", value: dflt, type: STRING, loc });
+    let args: IrExpr[];
+    if (hasSpread) {
+      const shapes = fn.params.map((type, i): ParamShape =>
+        i < required
+          ? { type, mode: "required" }
+          : {
+              type,
+              mode: "omittable",
+              callDefault: {
+                kind: "strLit",
+                value: fn.defaults![i - required]!,
+                type: STRING,
+                loc,
+              },
+            });
+      args = lowerer.completeArgs(expr.arguments, shapes, loc, expr);
+    } else {
+      args = expr.arguments.map((a, i) => lowerer.lowerExprExpecting(a, fn.params[i]));
+      for (let i = args.length; i < fn.params.length; i++) {
+        const dflt = fn.defaults![i - required]!;
+        args.push({ kind: "strLit", value: dflt, type: STRING, loc });
+      }
     }
     return { kind: "libCall", fn: fn.fn, args, type: fn.result, loc };
   }
