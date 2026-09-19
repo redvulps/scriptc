@@ -76,6 +76,12 @@ test("JS inference gaps land where 'any' lands: SC2011 static, island dynamic", 
   );
 });
 
+test("JavaScript builtin aliases keep their deferred value fence", async () => {
+  await expect(report(fixture("js-builtin-callable-alias.js"))).toMatchFileSnapshot(
+    "__snapshots__/coverage-js-builtin-callable-alias.txt",
+  );
+});
+
 test("any-typed checked-dynamic locals honor the --dynamic coverage promise", () => {
   const file = join(repoRoot, "tests/corpus/2856-dynamic-any-local-operators.ts");
   const staticCoverage = analyze(file).coverage;

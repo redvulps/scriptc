@@ -728,8 +728,10 @@ function lowerExprInner(lowerer: Lowerer, expr: ts.Expression): IrExpr {
           );
         }
         if (projection?.kind === "builtin-function") {
-          const callable = lowerer.lowerBuiltinCallableValue(projection, loc);
-          if (callable) return callable;
+          if (!isJsSourceFile(expr.getSourceFile())) {
+            const callable = lowerer.lowerBuiltinCallableValue(projection, loc);
+            if (callable) return callable;
+          }
           lowerer.unsupported(
             "SC1090",
             expr,
