@@ -1,32 +1,24 @@
-// The exact-ABI node:fs functions are ordinary static values. Named,
+// The fixed-signature node:fs functions are ordinary static values. Named,
 // namespace, and CommonJS reads share identity; values flow through
 // parameters, returns, arrays, and records without bypassing the direct
-// calls' filesystem behavior.
+// calls' filesystem behavior. APIs with behavior-bearing trailing options
+// remain call-only (diagnostics/stdlib.ts).
 import {
-  appendFileSync,
   chmodSync,
   chownSync,
   closeSync,
-  copyFileSync,
   existsSync,
-  lstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
-  readdirSync,
-  realpathSync,
   renameSync,
-  rmdirSync,
   rmSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import type { Stats } from "node:fs";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
 const cjsFs = require("node:fs") as typeof import("node:fs");
@@ -45,16 +37,8 @@ function callPathPair(fn: (from: string, to: string) => void, from: string, to: 
   fn(from, to);
 }
 
-function callPathStrings(fn: (path: string) => string[], path: string): string[] {
-  return fn(path);
-}
-
-function callPathString(fn: (path: string) => string, path: string): string {
-  return fn(path);
-}
-
-function callPathStats(fn: (path: string) => Stats, path: string): Stats {
-  return fn(path);
+function callPathIds(fn: (path: string, uid: number, gid: number) => void, path: string): void {
+  fn(path, -1, -1);
 }
 
 function chooseExists(cjs: boolean): (path: string) => boolean {
@@ -69,40 +53,28 @@ console.log(
 );
 console.log(!callPathBool(chooseExists(false), root));
 
-callPathVoid(mkdirSync, root);
+mkdirSync(root);
 const file = join(root, "source.txt");
-const writers: ((path: string, data: string) => void)[] = [writeFileSync, appendFileSync];
-writers[0]!(file, "alpha");
-writers[1]!(file, "-beta");
-console.log(fs.readFileSync(file, "utf8"));
-
-const followed = callPathStats(statSync, file);
-const unfollowed = callPathStats(lstatSync, file);
-console.log(followed.isFile(), unfollowed.isFile(), followed.size);
-const list = callPathStrings(readdirSync, root).sort();
-console.log(list.join(","));
-console.log(basename(callPathString(realpathSync, file)));
-
-const copy = join(root, "copy.txt");
+writeFileSync(file, "alpha", { mode: 0o600 });
 const moved = join(root, "moved.txt");
-callPathPair(copyFileSync, file, copy);
-callPathPair(renameSync, copy, moved);
-console.log(callPathBool(existsSync, moved), !callPathBool(existsSync, copy));
+callPathPair(renameSync, file, moved);
+console.log(callPathBool(existsSync, moved), !callPathBool(existsSync, file));
 
 const modes: ((path: string, mode: number) => void)[] = [chmodSync];
 modes[0]!(moved, 0o600);
-const fd = ((open: (path: string, flags: string) => number): number => open(file, "r"))(openSync);
+callPathIds(chownSync, moved);
+const fd = openSync(moved, "r");
 ((close: (fd: number) => void): void => close(fd))(closeSync);
 
-const made = ((make: (prefix: string) => string): string => make(join(root, "made-")))(mkdtempSync);
-console.log(basename(made).startsWith("made-"), callPathBool(existsSync, made));
-callPathVoid(rmdirSync, made);
-
-const deletions: ((path: string) => void)[] = [unlinkSync, rmSync];
-deletions[0]!(moved);
+const operations: { exists: (path: string) => boolean; unlink: (path: string) => void } = {
+  exists: fs.existsSync,
+  unlink: fs.unlinkSync,
+};
+console.log(operations.exists(moved));
+operations.unlink(moved);
 const disposable = join(root, "disposable.txt");
 writeFileSync(disposable, "gone");
-deletions[1]!(disposable);
+callPathVoid(unlinkSync, disposable);
 console.log(!existsSync(moved), !existsSync(disposable));
 
 rmSync(root, { recursive: true, force: true });

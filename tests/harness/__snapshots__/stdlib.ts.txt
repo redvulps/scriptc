@@ -1,6 +1,6 @@
 stdlib.ts:8:40 - error SC1090: a builtin function alias as an escaping value (call 'read' directly) is not supported yet
 
-  7 | 
+  7 | import { writeFile } from "node:fs/promises";
   8 | const read = readFileSync; console.log(read);
     |                                        ^~~~
   9 | const cwd = process.cwd;
@@ -38,4 +38,32 @@ stdlib.ts:15:12 - error SC1090: library functions as values (call 'parseFloat' d
   14 | const fix = (1.5).toFixed;
   15 | const pf = parseFloat;
      |            ^~~~~~~~~~
-  16 | 
+  16 | // Options-sensitive filesystem APIs remain call-only. TypeScript admits
+
+stdlib.ts:32:16 - error SC1090: library functions as values (call 'writeFileSync' directly) are not supported yet
+
+  31 | }
+  32 | takeSyncWriter(writeFileSync);
+     |                ^~~~~~~~~~~~~
+  33 | takeAsyncWriter(writeFile);
+
+stdlib.ts:33:17 - error SC1090: library functions as values (call 'writeFile' directly) are not supported yet
+
+  32 | takeSyncWriter(writeFileSync);
+  33 | takeAsyncWriter(writeFile);
+     |                 ^~~~~~~~~
+  34 | takeMkdir(mkdirSync);
+
+stdlib.ts:34:11 - error SC1090: library functions as values (call 'mkdirSync' directly) are not supported yet
+
+  33 | takeAsyncWriter(writeFile);
+  34 | takeMkdir(mkdirSync);
+     |           ^~~~~~~~~
+  35 | takeOpen(openSync);
+
+stdlib.ts:35:10 - error SC1090: library functions as values (call 'openSync' directly) are not supported yet
+
+  34 | takeMkdir(mkdirSync);
+  35 | takeOpen(openSync);
+     |          ^~~~~~~~
+  36 | // Reached: every unsafe value use above must retain its compile-time fence.

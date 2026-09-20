@@ -632,18 +632,19 @@ const PATH_WIN32_MODULE_FNS: Record<string, BuiltinModuleFn | undefined> = {
 export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn | undefined> | undefined> = {
   fs: {
     readFileSync: { fn: "fs.readFileSync", params: [STRING, STRING], result: STRING },
-    // The exact-ABI subset is first-class. Rows whose supported behavior
-    // depends on overload/literal/options inspection intentionally remain
-    // call-only until they have an equally strict value adapter.
-    writeFileSync: { fn: "fs.writeFileSync", params: [STRING, STRING], result: VOID, valueParams: exactValueParams(STRING, STRING) },
-    appendFileSync: { fn: "fs.appendFileSync", params: [STRING, STRING], result: VOID, valueParams: exactValueParams(STRING, STRING) },
+    // The exact-API subset is first-class. A fixed native ABI is not enough:
+    // rows whose Node function has behavior-bearing trailing options remain
+    // call-only, or function-width adaptation could silently discard those
+    // options before entering the fixed runtime call.
+    writeFileSync: { fn: "fs.writeFileSync", params: [STRING, STRING], result: VOID },
+    appendFileSync: { fn: "fs.appendFileSync", params: [STRING, STRING], result: VOID },
     existsSync: { fn: "fs.existsSync", params: [STRING], result: BOOL, valueParams: exactValueParams(STRING) },
-    mkdirSync: { fn: "fs.mkdirSync", params: [STRING], result: VOID, valueParams: exactValueParams(STRING) },
-    rmSync: { fn: "fs.rmSync", params: [STRING], result: VOID, valueParams: exactValueParams(STRING) },
-    rmdirSync: { fn: "fs.rmdirSync", params: [STRING], result: VOID, valueParams: exactValueParams(STRING) },
-    readdirSync: { fn: "fs.readdirSync", params: [STRING], result: arrayOf(STRING), valueParams: exactValueParams(STRING) },
-    statSync: { fn: "fs.statSync", params: [STRING], result: STATS_T, valueParams: exactValueParams(STRING) },
-    mkdtempSync: { fn: "fs.mkdtempSync", params: [STRING], result: STRING, valueParams: exactValueParams(STRING) },
+    mkdirSync: { fn: "fs.mkdirSync", params: [STRING], result: VOID },
+    rmSync: { fn: "fs.rmSync", params: [STRING], result: VOID },
+    rmdirSync: { fn: "fs.rmdirSync", params: [STRING], result: VOID },
+    readdirSync: { fn: "fs.readdirSync", params: [STRING], result: arrayOf(STRING) },
+    statSync: { fn: "fs.statSync", params: [STRING], result: STATS_T },
+    mkdtempSync: { fn: "fs.mkdtempSync", params: [STRING], result: STRING },
     // accessSync's omitted mode completes to 0 (F_OK) in the special case
     // in lowerBuiltinModuleCall — string `defaults` can't spell a number.
     accessSync: { fn: "fs.accessSync", params: [STRING, F64], result: VOID },
@@ -652,7 +653,7 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     chownSync: { fn: "fs.chownSync", params: [STRING, F64, F64], result: VOID, valueParams: exactValueParams(STRING, F64, F64) },
     // The 2-argument form only: Node's mode flags (COPYFILE_EXCL, ...)
     // land on the arity fence.
-    copyFileSync: { fn: "fs.copyFileSync", params: [STRING, STRING], result: VOID, valueParams: exactValueParams(STRING, STRING) },
+    copyFileSync: { fn: "fs.copyFileSync", params: [STRING, STRING], result: VOID },
     // The callback form is special-cased in lowerBuiltinModuleCall: its
     // Error | null parameter is program-shaped and needs an emitted
     // adapter. The row still projects the static surface and routes the
@@ -661,16 +662,16 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     renameSync: { fn: "fs.renameSync", params: [STRING, STRING], result: VOID, valueParams: exactValueParams(STRING, STRING) },
     // statSync's no-follow sibling; stats.isSymbolicLink answers what the
     // follow-free snapshot saw.
-    lstatSync: { fn: "fs.lstatSync", params: [STRING], result: STATS_T, valueParams: exactValueParams(STRING) },
+    lstatSync: { fn: "fs.lstatSync", params: [STRING], result: STATS_T },
     // realpath(3) — Node's realpathSync (failures spell syscall "lstat",
     // Node's own message shape).
-    realpathSync: { fn: "fs.realpathSync", params: [STRING], result: STRING, valueParams: exactValueParams(STRING) },
+    realpathSync: { fn: "fs.realpathSync", params: [STRING], result: STRING },
     // The fd pair behind spawn's fd-stdio form (the daemon-log idiom:
     // openSync(logPath, "a") → spawn stdio ["ignore", fd, fd] →
     // closeSync). openSync takes Node's string flags ("r", "w", "a", the
     // +/x variants — unknown flags throw Node's TypeError text); the
     // numeric-mode third argument fences by arity.
-    openSync: { fn: "fs.openSync", params: [STRING, STRING], result: F64, valueParams: exactValueParams(STRING, STRING) },
+    openSync: { fn: "fs.openSync", params: [STRING, STRING], result: F64 },
     // The buffer forms (fd, buffer, offset, length[, position]). The
     // lowering completes an omitted or literal-null position to -1 (the
     // runtime's current-offset sentinel); numeric positions read without
@@ -690,11 +691,11 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     // REJECT (catchable at the await) instead of throwing. readFile is
     // utf8-fenced exactly like readFileSync (same special case below).
     readFile: { fn: "fsp.readFile", params: [STRING, STRING], result: { kind: "promise", inner: STRING } },
-    writeFile: { fn: "fsp.writeFile", params: [STRING, STRING], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING, STRING) },
-    mkdir: { fn: "fsp.mkdir", params: [STRING], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING) },
-    readdir: { fn: "fsp.readdir", params: [STRING], result: { kind: "promise", inner: arrayOf(STRING) }, valueParams: exactValueParams(STRING) },
-    rm: { fn: "fsp.rm", params: [STRING], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING) },
-    stat: { fn: "fsp.stat", params: [STRING], result: { kind: "promise", inner: STATS_T }, valueParams: exactValueParams(STRING) },
+    writeFile: { fn: "fsp.writeFile", params: [STRING, STRING], result: { kind: "promise", inner: VOID } },
+    mkdir: { fn: "fsp.mkdir", params: [STRING], result: { kind: "promise", inner: VOID } },
+    readdir: { fn: "fsp.readdir", params: [STRING], result: { kind: "promise", inner: arrayOf(STRING) } },
+    rm: { fn: "fsp.rm", params: [STRING], result: { kind: "promise", inner: VOID } },
+    stat: { fn: "fsp.stat", params: [STRING], result: { kind: "promise", inner: STATS_T } },
     unlink: { fn: "fsp.unlink", params: [STRING], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING) },
     chmod: { fn: "fsp.chmod", params: [STRING, F64], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING, F64) },
     rename: { fn: "fsp.rename", params: [STRING, STRING], result: { kind: "promise", inner: VOID }, valueParams: exactValueParams(STRING, STRING) },
