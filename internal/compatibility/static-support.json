@@ -44,7 +44,7 @@
     "node-builtin.diagnostics_channel": ["tests/corpus/2214-dc-bind-store.cjs"],
     "node-builtin.dns": ["tests/corpus/2597-dgram-send-ladders.cjs"],
     "node-builtin.events": ["tests/corpus/1677-emitter-listeners.ts", "tests/corpus/2620-ee-override-once-order.ts"],
-    "node-builtin.fs": ["tests/corpus/1403-buffer-fs.ts", "tests/corpus/2595-fs-arg-ladders.cjs"],
+    "node-builtin.fs": ["tests/corpus/1403-buffer-fs.ts", "tests/corpus/2595-fs-arg-ladders.cjs", "tests/corpus/2919-fs-function-values.ts", "tests/corpus/2920-fs-promises-function-values.ts"],
     "node-builtin.http": ["tests/corpus/1780-http-res-surface.ts", "tests/corpus/2672-http-request-response-callback.ts"],
     "node-builtin.http2": ["tests/corpus/2260-http2-constants.cjs"],
     "node-builtin.https": ["tests/corpus/2645-https-client-url-argument.ts", "tests/corpus/2690-https-server-timeout-option.ts"],

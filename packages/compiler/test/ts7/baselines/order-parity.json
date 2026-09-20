@@ -6355,6 +6355,18 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2919-fs-function-values.ts": {
+   "order": [
+    "<repo>/tests/corpus/2919-fs-function-values.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2920-fs-promises-function-values.ts": {
+   "order": [
+    "<repo>/tests/corpus/2920-fs-promises-function-values.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

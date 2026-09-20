@@ -28573,7 +28573,9 @@
         "evidence": "surface-manifest:node-builtin.fs.readSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -32326,7 +32328,9 @@
         "evidence": "surface-manifest:node-builtin.fs.existsSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -50520,7 +50524,9 @@
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
           "tests/corpus/2595-fs-arg-ladders.cjs",
-          "tests/corpus/2844-node-disposable-resources.ts"
+          "tests/corpus/2844-node-disposable-resources.ts",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -51454,7 +51460,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.chmod",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -51737,7 +51745,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.mkdir",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -51828,7 +51838,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.open",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -51886,7 +51898,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.readdir",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -51920,7 +51934,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.readFile",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -52014,7 +52030,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.rename",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -52078,7 +52096,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.rm",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -52112,7 +52132,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.stat",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -52227,7 +52249,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.unlink",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -52315,7 +52339,9 @@
         "evidence": "surface-manifest:node-builtin.fs.promises.writeFile",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -53528,7 +53554,9 @@
         "evidence": "surface-manifest:node-builtin.fs.rename",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -53820,7 +53848,9 @@
         "evidence": "surface-manifest:node-builtin.fs.watch",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54181,7 +54211,9 @@
         "evidence": "surface-manifest:node-builtin.fs.accessSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54215,7 +54247,9 @@
         "evidence": "surface-manifest:node-builtin.fs.appendFileSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54249,7 +54283,9 @@
         "evidence": "surface-manifest:node-builtin.fs.chmodSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54283,7 +54319,9 @@
         "evidence": "surface-manifest:node-builtin.fs.chownSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54314,7 +54352,9 @@
         "evidence": "surface-manifest:node-builtin.fs.closeSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54348,7 +54388,9 @@
         "evidence": "surface-manifest:node-builtin.fs.copyFileSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54409,7 +54451,9 @@
         "evidence": "surface-manifest:node-builtin.fs.existsSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54767,7 +54811,9 @@
         "evidence": "surface-manifest:node-builtin.fs.lstatSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54801,7 +54847,9 @@
         "evidence": "surface-manifest:node-builtin.fs.mkdirSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54835,7 +54883,9 @@
         "evidence": "surface-manifest:node-builtin.fs.mkdtempSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54923,7 +54973,9 @@
         "evidence": "surface-manifest:node-builtin.fs.openSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54954,7 +55006,9 @@
         "evidence": "surface-manifest:node-builtin.fs.readdirSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -54988,7 +55042,9 @@
         "evidence": "surface-manifest:node-builtin.fs.readFileSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55052,7 +55108,9 @@
         "evidence": "surface-manifest:node-builtin.fs.readSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55083,7 +55141,9 @@
         "evidence": "surface-manifest:node-builtin.fs.readSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55141,7 +55201,9 @@
         "evidence": "surface-manifest:node-builtin.fs.realpathSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55202,7 +55264,9 @@
         "evidence": "surface-manifest:node-builtin.fs.renameSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55236,7 +55300,9 @@
         "evidence": "surface-manifest:node-builtin.fs.rmdirSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55270,7 +55336,9 @@
         "evidence": "surface-manifest:node-builtin.fs.rmSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55304,7 +55372,9 @@
         "evidence": "surface-manifest:node-builtin.fs.statSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55419,7 +55489,9 @@
         "evidence": "surface-manifest:node-builtin.fs.unlinkSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55480,7 +55552,9 @@
         "evidence": "surface-manifest:node-builtin.fs.writeFileSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55514,7 +55588,9 @@
         "evidence": "surface-manifest:node-builtin.fs.writeSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55545,7 +55621,9 @@
         "evidence": "surface-manifest:node-builtin.fs.writeSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
@@ -55576,7 +55654,9 @@
         "evidence": "surface-manifest:node-builtin.fs.writeSync",
         "tests": [
           "tests/corpus/1403-buffer-fs.ts",
-          "tests/corpus/2595-fs-arg-ladders.cjs"
+          "tests/corpus/2595-fs-arg-ladders.cjs",
+          "tests/corpus/2919-fs-function-values.ts",
+          "tests/corpus/2920-fs-promises-function-values.ts"
         ]
       },
       "dynamic": {
