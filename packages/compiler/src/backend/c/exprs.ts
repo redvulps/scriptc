@@ -4596,6 +4596,16 @@ function emitFilesystemLibCall(state: LibCallState): Temp {
             return finish(`scr_zlib_deflate(${arg(0)})`);
           case "zlib.inflateSync":
             return finish(`scr_zlib_inflate(${arg(0)})`);
+          case "zlib.deflateRawSync":
+            return finish(`scr_zlib_deflate_mode(${arg(0)}, 1.0, -1.0)`);
+          case "zlib.inflateRawSync":
+            return finish(`scr_zlib_inflate_mode(${arg(0)}, 1.0)`);
+          case "zlib.gzipSync":
+            return finish(`scr_zlib_deflate_mode(${arg(0)}, 2.0, -1.0)`);
+          case "zlib.gunzipSync":
+            return finish(`scr_zlib_inflate_mode(${arg(0)}, 2.0)`);
+          case "zlib.unzipSync":
+            return finish(`scr_zlib_inflate_mode(${arg(0)}, 3.0)`);
           case "fsp.readFile":
             return finish(`scr_fsp_read_file(${arg(0)})`);
           case "fsp.writeFile":

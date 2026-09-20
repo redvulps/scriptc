@@ -132,6 +132,33 @@ export function emitFilesystemLibCall(host: LlvmEmitterContext, e: LibCallExpr):
     if (alwaysThrowSym !== undefined) {
       return emitAlwaysThrowLibCall(host, e, alwaysThrowSym);
     }
+    if (
+      e.fn === "zlib.deflateRawSync" || e.fn === "zlib.inflateRawSync" ||
+      e.fn === "zlib.gzipSync" || e.fn === "zlib.gunzipSync" ||
+      e.fn === "zlib.unzipSync"
+    ) {
+      const input = host.emitExpr(e.args[0]!);
+      const compressing = e.fn === "zlib.deflateRawSync" || e.fn === "zlib.gzipSync";
+      const mode = e.fn === "zlib.deflateRawSync" || e.fn === "zlib.inflateRawSync"
+        ? 1
+        : e.fn === "zlib.unzipSync"
+          ? 3
+          : 2;
+      const sym = compressing ? "scr_zlib_deflate_mode" : "scr_zlib_inflate_mode";
+      host.declare(
+        compressing
+          ? `declare ptr @${sym}(ptr, double, double)`
+          : `declare ptr @${sym}(ptr, double)`,
+      );
+      const raw = B.tmp();
+      const args = compressing
+        ? `ptr ${input.name}, double ${f64Lit(mode)}, double ${f64Lit(-1)}`
+        : `ptr ${input.name}, double ${f64Lit(mode)}`;
+      B.line(`${raw} = call ptr @${sym}(${args})`);
+      const out = host.own({ name: raw, type: e.type });
+      if (!compressing) host.emitPendingCheck();
+      return out;
+    }
     if (e.fn === "fs.renameCb") {
       // The callback MOVES into the next-turn operation. Its emitted
       // adapter materializes the callback's Error | null union (or the

@@ -756,11 +756,18 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     pbkdf2: { fn: "crypto.pbkdf2Cb", params: [], result: VOID },
   },
   zlib: {
-    // Buffer in, Buffer out, Node's default options; string inputs fence
-    // per site (see the zlib special case in lowerBuiltinModuleCall).
-    // native-toolchain.ts links libz only when these appear on the IR.
+    // Buffer in, Buffer out, Node's default options; string inputs and
+    // explicit options fence per site (see the zlib special case in
+    // lowerBuiltinModuleCall). native-toolchain.ts links libz only when
+    // these appear on the IR. The format-specific rows lower to the
+    // existing mode runtime (raw=1, gzip=2, auto-detect=3).
     deflateSync: { fn: "zlib.deflateSync", params: [BYTES_U8], result: BYTES_U8 },
     inflateSync: { fn: "zlib.inflateSync", params: [BYTES_U8], result: BYTES_U8 },
+    deflateRawSync: { fn: "zlib.deflateRawSync", params: [BYTES_U8], result: BYTES_U8 },
+    inflateRawSync: { fn: "zlib.inflateRawSync", params: [BYTES_U8], result: BYTES_U8 },
+    gzipSync: { fn: "zlib.gzipSync", params: [BYTES_U8], result: BYTES_U8 },
+    gunzipSync: { fn: "zlib.gunzipSync", params: [BYTES_U8], result: BYTES_U8 },
+    unzipSync: { fn: "zlib.unzipSync", params: [BYTES_U8], result: BYTES_U8 },
   },
   url: {
     // fileURLToPath accepts a URL value OR a string — the call lowering
@@ -1282,10 +1289,10 @@ export function builtinModulesArrayLit(loc: { file: string; start: number; end: 
 }
 
 /** Member-specific hints for RECOGNIZED builtin modules whose member has
- * no lowering. deflateSync/inflateSync lower now (Buffers are real);
- * the rest of the zlib surface points at the lowered pair. */
+ * no lowering. The one-shot zlib/deflate-raw/gzip codecs lower now
+ * (Buffers are real); the remaining zlib surface points at that family. */
 const ZLIB_HINT =
-  "deflateSync and inflateSync are the lowered zlib surface";
+  "deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface";
 
 /** The loose-equality quartet's shared hint: == coercion has no lowering
  * anywhere in this compiler, and Node itself points at the strict forms. */
@@ -1392,9 +1399,6 @@ export const BUILTIN_MODULE_FENCE_HINTS: Record<string, Record<string, string | 
       "randomBytes, and the createHash chain",
   },
   zlib: {
-    gzipSync: ZLIB_HINT,
-    gunzipSync: ZLIB_HINT,
-    unzipSync: ZLIB_HINT,
     brotliCompressSync: ZLIB_HINT,
     brotliDecompressSync: ZLIB_HINT,
   },

@@ -1,9 +1,9 @@
-/* node:zlib, the lowered slice: deflateSync/inflateSync over u8 bytes with
- * Node's DEFAULT options (zlib format, Z_DEFAULT_COMPRESSION, windowBits
- * 15). Compiled ONLY when the program uses zlib (native-toolchain.ts gates it exactly
- * like scr_regex.c/libregexp), so zlib-free binaries keep their
- * historical link line. Host builds link the system -lz; cross targets
- * link the vendored zlib built per target (ensureZlibObjects in native-toolchain.ts).
+/* node:zlib, the lowered slice: the one-shot zlib/raw-DEFLATE/gzip codecs
+ * over u8 bytes with Node's DEFAULT options. Compiled ONLY when the program
+ * uses zlib (native-toolchain.ts gates it exactly like scr_regex.c/libregexp),
+ * so zlib-free binaries keep their historical link line. Host builds link
+ * the system -lz; cross targets link the vendored zlib built per target
+ * (ensureZlibObjects in native-toolchain.ts).
  *
  * Compressed OUTPUT bytes are zlib-version-dependent — the differential
  * corpus tests round-trips and fixed-blob inflation, never raw deflate
@@ -83,8 +83,9 @@ ScrBytes *scr_zlib_inflate(const ScrBytes *data) {
   return out;
 }
 
-/* ── the island's mode variants (scr_zlib_island.c bridges these into
- * the embedded engine's node:zlib shim) ───────────────────────────────
+/* ── format-mode variants (static raw/gzip/unzip calls use these directly;
+ * scr_zlib_island.c also bridges them into the embedded engine's node:zlib
+ * shim) ───────────────────────────────────────────────────────────────
  * mode: 0 zlib (windowBits 15), 1 raw (-15), 2 gzip (15+16); inflate
  * additionally takes 3 = auto-detect zlib/gzip (15+32, Node's unzip). */
 

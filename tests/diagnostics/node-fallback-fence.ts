@@ -28,8 +28,10 @@ accessSync("/bin/sh", constants.X_OK);
 const tmp = mkdtempSync("/tmp/scr-");
 const raw = readFileSync("/etc/hosts").toString(tty ? "hex" : "latin1"); // runtime BufferEncoding selection lowers too
 const intervalWithSignal = promiseInterval(1, "tick", {}); // AbortSignal options stay fenced
-// The computed encoding is now part of the static Buffer surface.
-import { deflateSync, gzipSync } from "node:zlib";
+// The computed encoding is now part of the static Buffer surface. The
+// one-shot zlib/raw/gzip codecs lower; string data keeps the wrap-it-first
+// hint, while Brotli remains an explicit member fence.
+import { brotliCompressSync, deflateSync } from "node:zlib";
 const packed = deflateSync("data"); // string data: the wrap-it-first hint
-const zipped = gzipSync("data"); // beyond the lowered pair: fenced
+const brotli = brotliCompressSync(Buffer.from("data")); // outside the lowered family: fenced
 // The remaining imports continue the declared-but-not-lowered surface.

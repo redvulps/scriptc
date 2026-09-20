@@ -88,128 +88,128 @@ fenced.ts:47:13 - error SC2020: 'URL.hash' is typed by @types/node but has no sc
 
   hint: protocol, pathname, href, host, hostname, search, searchParams, and toString() are the supported URL members
 
-fenced.ts:54:13 - error SC2020: 'deflateSync of 'string' data' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:53:13 - error SC2020: 'deflateSync of 'string' data' is part of the standard library types but has no scriptc lowering yet
 
-  53 | import { deflateSync, gzipSync } from "zlib";
-  54 | deflateSync("data");
+  52 | import { brotliCompressSync, deflateSync } from "zlib";
+  53 | deflateSync("data");
      |             ^~~~~~
-  55 | gzipSync("data");
+  54 | brotliCompressSync(Buffer.from("data"));
 
   hint: zlib works on Buffers: deflateSync(Buffer.from(s, "utf8"))
 
-fenced.ts:55:1 - error SC2020: 'zlib.gzipSync' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:54:1 - error SC2020: 'zlib.brotliCompressSync' is typed by @types/node but has no scriptc lowering yet
 
-  54 | deflateSync("data");
-  55 | gzipSync("data");
-     | ^~~~~~~~~~~~~~~~
-  56 | /* The http2 compatibility slice's @types/node-world fences (divergence
+  53 | deflateSync("data");
+  54 | brotliCompressSync(Buffer.from("data"));
+     | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  55 | /* The http2 compatibility slice's @types/node-world fences (divergence
 
-  hint: deflateSync and inflateSync are the lowered zlib surface
+  hint: deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface
 
-fenced.ts:64:71 - error SC2020: 'a createSecureServer SNICallback of 'undefined' values' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:63:71 - error SC2020: 'a createSecureServer SNICallback of 'undefined' values' is part of the standard library types but has no scriptc lowering yet
 
-  63 | import * as http2 from "node:http2";
-  64 | http2.createSecureServer({ allowHTTP1: true, cert: "pem", key: "pem", SNICallback: undefined });
+  62 | import * as http2 from "node:http2";
+  63 | http2.createSecureServer({ allowHTTP1: true, cert: "pem", key: "pem", SNICallback: undefined });
      |                                                                       ^~~~~~~~~~~~~~~~~~~~~~
-  65 | http2.createSecureServer({
+  64 | http2.createSecureServer({
 
   hint: SNICallback lowers as a direct option or the conditional spread ...(x ? { SNICallback: x } : {}) — the callback is (servername, cb) => void with cb: (err: Error | null, ctx?: tls.SecureContext) => void
 
-fenced.ts:69:3 - error SC2020: 'createSecureServer options with a conditional spread' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:68:3 - error SC2020: 'createSecureServer options with a conditional spread' is part of the standard library types but has no scriptc lowering yet
 
-  68 |   key: "pem",
-  69 |   ...(1 ? { SNICallback: undefined } : {}),
+  67 |   key: "pem",
+  68 |   ...(1 ? { SNICallback: undefined } : {}),
      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  70 | });
+  69 | });
 
   hint: the lowered conditional spread is exactly ...(x ? { SNICallback: x } : {}) — the included value must BE the condition
 
-fenced.ts:71:71 - error SC2020: 'createSecureServer option 'streamResetBurst' with a non-literal value' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:70:71 - error SC2020: 'createSecureServer option 'streamResetBurst' with a non-literal value' is part of the standard library types but has no scriptc lowering yet
 
-  70 | });
-  71 | http2.createSecureServer({ allowHTTP1: true, cert: "pem", key: "pem", streamResetBurst: 1 + 0 });
+  69 | });
+  70 | http2.createSecureServer({ allowHTTP1: true, cert: "pem", key: "pem", streamResetBurst: 1 + 0 });
      |                                                                       ^~~~~~~~~~~~~~~~~~~~~~~
-  72 | http2.connect("https://localhost");
+  71 | http2.connect("https://localhost");
 
   hint: h2 session-tuning options are accepted with literal values but are not applied yet
 
-fenced.ts:78:1 - error SC2020: 'crypto.generateKeyPair' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:77:1 - error SC2020: 'crypto.generateKeyPair' is typed by @types/node but has no scriptc lowering yet
 
-  77 | import { createCipheriv, generateKeyPair, pbkdf2Sync, setFips } from "node:crypto";
-  78 | generateKeyPair("rsa", { modulusLength: 2048 }, () => {});
+  76 | import { createCipheriv, generateKeyPair, pbkdf2Sync, setFips } from "node:crypto";
+  77 | generateKeyPair("rsa", { modulusLength: 2048 }, () => {});
      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  79 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
+  78 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
 
   hint: asymmetric-key operations need a public-key stack (bignum, RSA/EC/EdDSA math) and a KeyObject value model — neither exists in the static runtime, so no faithful lowering can be small; the lowered crypto surface is hashing, randomness, and the introspection statics
 
-fenced.ts:79:1 - error SC2020: 'crypto.createCipheriv' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:78:1 - error SC2020: 'crypto.createCipheriv' is typed by @types/node but has no scriptc lowering yet
 
-  78 | generateKeyPair("rsa", { modulusLength: 2048 }, () => {});
-  79 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
+  77 | generateKeyPair("rsa", { modulusLength: 2048 }, () => {});
+  78 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  80 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
+  79 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
 
   hint: symmetric ciphers need a cipher stack the static runtime does not vendor — the lowered crypto surface is hashing, randomness, and the introspection statics
 
-fenced.ts:80:38 - error SC2020: 'crypto.pbkdf2Sync with algorithm 'sha512'' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:79:38 - error SC2020: 'crypto.pbkdf2Sync with algorithm 'sha512'' is part of the standard library types but has no scriptc lowering yet
 
-  79 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
-  80 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
+  78 | createCipheriv("aes-128-cbc", Buffer.alloc(16), Buffer.alloc(16));
+  79 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
      |                                      ^~~~~~~~
-  81 | setFips(false);
+  80 | setFips(false);
 
   hint: md5, sha1, and sha256 are the lowered digest algorithms
 
-fenced.ts:81:1 - error SC2020: 'crypto.setFips' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:80:1 - error SC2020: 'crypto.setFips' is typed by @types/node but has no scriptc lowering yet
 
-  80 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
-  81 | setFips(false);
+  79 | pbkdf2Sync("pw", "salt", 100000, 64, "sha512");
+  80 | setFips(false);
      | ^~~~~~~~~~~~~~
-  82 | fetch("https://example.invalid/", {
+  81 | fetch("https://example.invalid/", {
 
   hint: a compiled binary has no FIPS provider to enable, and Node itself throws on setFips(true) in a non-FIPS build — getFips() answers 0 here
 
-fenced.ts:83:3 - error SC2020: 'RequestInit option 'integrity' in a static build' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:82:3 - error SC2020: 'RequestInit option 'integrity' in a static build' is typed by @types/node but has no scriptc lowering yet
 
-  82 | fetch("https://example.invalid/", {
-  83 |   integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  81 | fetch("https://example.invalid/", {
+  82 |   integrity: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  84 | });
+  83 | });
 
   hint: neither compiler tier preserves this RequestInit member's conversion or transport behavior
 
-fenced.ts:87:3 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:86:3 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
 
-  86 |   const body = (await fetch(url)).body!;
-  87 |   body.tee();
+  85 |   const body = (await fetch(url)).body!;
+  86 |   body.tee();
      |   ^~~~~~~~
-  88 |   const tee = body.tee;
+  87 |   const tee = body.tee;
 
   hint: the dynamic Web Streams bridge exposes only an explicit unsupported stub for this operation
 
-fenced.ts:88:15 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:87:15 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
 
-  87 |   body.tee();
-  88 |   const tee = body.tee;
+  86 |   body.tee();
+  87 |   const tee = body.tee;
      |               ^~~~~~~~
-  89 |   body["tee"]();
+  88 |   body["tee"]();
 
   hint: the dynamic Web Streams bridge exposes only an explicit unsupported stub for this operation
 
-fenced.ts:89:3 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:88:3 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
 
-  88 |   const tee = body.tee;
-  89 |   body["tee"]();
+  87 |   const tee = body.tee;
+  88 |   body["tee"]();
      |   ^~~~~~~~~~~
-  90 |   const bracketTee = body["tee"];
+  89 |   const bracketTee = body["tee"];
 
   hint: the dynamic Web Streams bridge exposes only an explicit unsupported stub for this operation
 
-fenced.ts:90:22 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
+fenced.ts:89:22 - error SC2020: 'ReadableStream.tee' is typed by @types/node but has no scriptc lowering yet
 
-  89 |   body["tee"]();
-  90 |   const bracketTee = body["tee"];
+  88 |   body["tee"]();
+  89 |   const bracketTee = body["tee"];
      |                      ^~~~~~~~~~~
-  91 | }
+  90 | }
 
   hint: the dynamic Web Streams bridge exposes only an explicit unsupported stub for this operation

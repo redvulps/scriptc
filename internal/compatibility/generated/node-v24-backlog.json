@@ -7,9 +7,9 @@
     "tierItemCount": 6663,
     "tiers": {
       "static": {
-        "replace-refusal": 57,
-        "verify-gap": 2734,
-        "audit-partial": 421,
+        "replace-refusal": 51,
+        "verify-gap": 2730,
+        "audit-partial": 431,
         "classify": 2,
         "implement": 81
       },
@@ -108956,12 +108956,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:zlib",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "surface-manifest:node-builtin.zlib.deflateRawSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109026,12 +109028,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.gunzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.gunzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109096,12 +109100,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.gzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.gzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109238,12 +109244,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:zlib",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "surface-manifest:node-builtin.zlib.inflateRawSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109308,12 +109316,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.unzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.unzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109852,12 +109862,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:zlib",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "surface-manifest:node-builtin.zlib.deflateRawSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109922,12 +109934,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.gunzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.gunzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -109992,12 +110006,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.gzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.gzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -110134,12 +110150,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "not-implemented",
-          "action": "verify-gap",
-          "verification": "registry-gap",
-          "confidence": "low",
-          "source": "compiler-unmatched:zlib",
-          "tests": []
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
+          "confidence": "high",
+          "source": "surface-manifest:node-builtin.zlib.inflateRawSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",
@@ -110204,12 +110222,14 @@
       "priority": "high",
       "tiers": {
         "static": {
-          "status": "refused",
-          "action": "replace-refusal",
-          "verification": "explicit-refusal",
+          "status": "partial",
+          "action": "audit-partial",
+          "verification": "test-backed",
           "confidence": "high",
-          "source": "surface-manifest:unsupported:node-builtin.zlib.unzipSync",
-          "tests": []
+          "source": "surface-manifest:node-builtin.zlib.unzipSync",
+          "tests": [
+            "tests/corpus/1404-zlib-crypto-bytes.ts"
+          ]
         },
         "dynamic": {
           "status": "partial",

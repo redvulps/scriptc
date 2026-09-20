@@ -3237,12 +3237,17 @@ export type IrLibFn =
   | "fs.writeFileSyncBytes"
   | "fsp.readFileBytes"
   /** node:zlib (scr_zlib.c — native-toolchain.ts compiles/links it ONLY when these
-   * appear on the IR, the regex/libcurl gating precedent): deflateSync/
-   * inflateSync over u8 bytes with Node's default options. deflate never
-   * throws (OOM aborts); inflate of corrupt input THROWS Node's error
-   * catchably. */
+   * appear on the IR, the regex/libcurl gating precedent): one-shot zlib,
+   * raw-DEFLATE, gzip, and auto-detect codecs over u8 bytes with Node's
+   * default options. Compression never throws (OOM aborts); decompression
+   * of corrupt input THROWS Node's error catchably. */
   | "zlib.deflateSync"
   | "zlib.inflateSync"
+  | "zlib.deflateRawSync"
+  | "zlib.inflateRawSync"
+  | "zlib.gzipSync"
+  | "zlib.gunzipSync"
+  | "zlib.unzipSync"
   /** The Buffer overloads of the raw stream writes — same promptly
    * submitted streams as process.stdoutWrite/stderrWrite, constantly true.
    * The encoding arg is evaluated but ignored for bytes, like Node. The Cb
@@ -7518,6 +7523,9 @@ export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
   "fs.readFileSyncBytes",
   "fs.writeFileSyncBytes",
   "zlib.inflateSync",
+  "zlib.inflateRawSync",
+  "zlib.gunzipSync",
+  "zlib.unzipSync",
   "date.toISOString",
   "date.toISOStringValue",
   "fs.mkdirRecursiveSync",

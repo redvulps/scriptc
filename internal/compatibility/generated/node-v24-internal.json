@@ -1491,9 +1491,9 @@
       "apiEntries": 78,
       "static": {
         "supported": 0,
-        "partial": 5,
-        "refused": 10,
-        "not-implemented": 63,
+        "partial": 15,
+        "refused": 4,
+        "not-implemented": 59,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -126329,8 +126329,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflateRawSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126389,8 +126392,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.gunzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gunzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126449,8 +126455,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.gzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126572,8 +126581,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflateRawSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126632,8 +126644,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.unzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.unzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127547,8 +127562,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflateRawSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127607,8 +127625,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.gunzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gunzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127667,8 +127688,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.gzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127790,8 +127814,11 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflateRawSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127850,8 +127877,11 @@
         "inherited": true
       },
       "static": {
-        "status": "refused",
-        "evidence": "surface-manifest:unsupported:node-builtin.zlib.unzipSync"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.unzipSync",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",

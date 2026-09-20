@@ -2037,14 +2037,21 @@ declare module "node:readline" {
   export * from "readline";
 }
 
-/* node:zlib — deflateSync/inflateSync lower (Buffer in, Buffer out,
- * Node's default options; libz links only into zlib-using binaries);
- * gzip and friends typecheck and fence at their use sites. */
+/* node:zlib — the one-shot zlib/raw/gzip codecs lower (Buffer in, Buffer
+ * out, Node's default options; libz links only into zlib-using binaries).
+ * The one-shot Brotli pair stays declared so reached calls receive the
+ * compiler's named SC2020 refusal; streaming, callback, Zstd, and explicit-
+ * options forms remain outside the fallback surface. */
 declare module "zlib" {
   export function deflateSync(data: string | Uint8Array): Buffer;
   export function inflateSync(data: Uint8Array): Buffer;
+  export function deflateRawSync(data: string | Uint8Array): Buffer;
+  export function inflateRawSync(data: Uint8Array): Buffer;
   export function gzipSync(data: string | Uint8Array): Buffer;
   export function gunzipSync(data: Uint8Array): Buffer;
+  export function unzipSync(data: Uint8Array): Buffer;
+  export function brotliCompressSync(data: string | Uint8Array): Buffer;
+  export function brotliDecompressSync(data: Uint8Array): Buffer;
 }
 declare module "node:zlib" {
   export * from "zlib";

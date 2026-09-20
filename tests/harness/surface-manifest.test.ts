@@ -217,8 +217,8 @@ const PROBES: Probe[] = [
   { id: "diagnostic.sc1031", source: "class C {\n  f = 1;\n  m(): number {\n    return this.f;\n  }\n}\nconst { m } = new C();\nconsole.log(m());\n" },
   { id: "diagnostic.sc1121", source: 'console.log(/ab/g.test("abab"));\n' },
   {
-    id: "node-builtin.zlib.gzipSync",
-    source: 'import { gzipSync } from "node:zlib";\ngzipSync("data");\nconsole.log(0);\n',
+    id: "node-builtin.zlib.brotliCompressSync",
+    source: 'import { brotliCompressSync } from "node:zlib";\nbrotliCompressSync(Buffer.from("data"));\nconsole.log(0);\n',
   },
 ];
 
