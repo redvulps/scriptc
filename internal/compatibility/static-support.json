@@ -65,7 +65,7 @@
     "node-builtin.url": ["tests/corpus/1794-searchparams-url-live.ts"],
     "node-builtin.util": ["tests/corpus/2440-console-inspect-args.ts", "tests/corpus/2912-promisify-fs-readfile.ts"],
     "node-builtin.worker_threads": ["tests/corpus/957-builtins-namespace.ts"],
-    "node-builtin.zlib": ["tests/corpus/1404-zlib-crypto-bytes.ts"],
+    "node-builtin.zlib": ["tests/corpus/1404-zlib-crypto-bytes.ts", "tests/corpus/2921-zlib-callbacks.ts"],
     "stdlib.fetch": ["tests/harness/fetch-conformance.test.ts"],
     "stdlib.headers": ["tests/harness/fetch-conformance.test.ts"],
     "stdlib.request": ["tests/harness/fetch-conformance.test.ts"],

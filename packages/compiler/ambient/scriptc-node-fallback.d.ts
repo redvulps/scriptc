@@ -2037,19 +2037,36 @@ declare module "node:readline" {
   export * from "readline";
 }
 
-/* node:zlib — the one-shot zlib/raw/gzip codecs lower (Buffer in, Buffer
- * out, Node's default options; libz links only into zlib-using binaries).
- * The one-shot Brotli pair stays declared so reached calls receive the
- * compiler's named SC2020 refusal; streaming, callback, Zstd, and explicit-
- * options forms remain outside the fallback surface. */
+/* node:zlib — the one-shot zlib/raw/gzip codecs lower for string/Buffer
+ * inputs with Node's default options; libz links only into zlib-using
+ * binaries. Callback forms use the executable worker pool. Options stay
+ * declared so reached uses receive a named SC2020 refusal; Brotli,
+ * streaming, and Zstd remain outside the lowered surface. */
 declare module "zlib" {
-  export function deflateSync(data: string | Uint8Array): Buffer;
-  export function inflateSync(data: Uint8Array): Buffer;
-  export function deflateRawSync(data: string | Uint8Array): Buffer;
-  export function inflateRawSync(data: Uint8Array): Buffer;
-  export function gzipSync(data: string | Uint8Array): Buffer;
-  export function gunzipSync(data: Uint8Array): Buffer;
-  export function unzipSync(data: Uint8Array): Buffer;
+  export interface ZlibOptions { [option: string]: unknown }
+  export type ZlibCallback = (error: NodeJS.ErrnoException | null, result: Buffer) => void;
+  export function deflate(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function deflate(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function deflateSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function inflate(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function inflate(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function inflateSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function deflateRaw(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function deflateRaw(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function deflateRawSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function inflateRaw(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function inflateRaw(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function inflateRawSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function gzip(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function gzip(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function gzipSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function gunzip(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function gunzip(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function gunzipSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function unzip(data: string | Uint8Array, callback: ZlibCallback): void;
+  export function unzip(data: string | Uint8Array, options: ZlibOptions, callback: ZlibCallback): void;
+  export function unzipSync(data: string | Uint8Array, options?: ZlibOptions): Buffer;
+  export function crc32(data: string | Uint8Array, value?: number): number;
   export function brotliCompressSync(data: string | Uint8Array): Buffer;
   export function brotliDecompressSync(data: Uint8Array): Buffer;
 }

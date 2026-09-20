@@ -133,6 +133,29 @@ export function emitFilesystemLibCall(host: LlvmEmitterContext, e: LibCallExpr):
       return emitAlwaysThrowLibCall(host, e, alwaysThrowSym);
     }
     if (
+      e.fn === "zlib.deflateCb" || e.fn === "zlib.inflateCb" ||
+      e.fn === "zlib.deflateRawCb" || e.fn === "zlib.inflateRawCb" ||
+      e.fn === "zlib.gzipCb" || e.fn === "zlib.gunzipCb" || e.fn === "zlib.unzipCb"
+    ) {
+      host.usesTimers = true;
+      const args = e.args.map((a) => host.emitExpr(a));
+      const cbT = e.args[1]!.type;
+      if (cbT.kind !== "func") throw new InternalCompilerError("llvm emitter bug: zlib callback not a func");
+      host.moveTemp(args[1]!);
+      const adapter = host.zlibBytesThunkFor(cbT);
+      const compressing = e.fn === "zlib.deflateCb" || e.fn === "zlib.deflateRawCb" || e.fn === "zlib.gzipCb";
+      const mode = e.fn === "zlib.deflateRawCb" || e.fn === "zlib.inflateRawCb"
+        ? 1
+        : e.fn === "zlib.gzipCb" || e.fn === "zlib.gunzipCb"
+          ? 2
+          : e.fn === "zlib.unzipCb"
+            ? 3
+            : 0;
+      host.declare(`declare void @scr_zlib_codec_async(ptr, double, i1 zeroext, ptr, ptr)`);
+      B.line(`call void @scr_zlib_codec_async(ptr ${args[0]!.name}, double ${f64Lit(mode)}, i1 ${compressing}, ptr ${args[1]!.name}, ptr @${adapter})`);
+      return { name: "", type: e.type };
+    }
+    if (
       e.fn === "zlib.deflateRawSync" || e.fn === "zlib.inflateRawSync" ||
       e.fn === "zlib.gzipSync" || e.fn === "zlib.gunzipSync" ||
       e.fn === "zlib.unzipSync"

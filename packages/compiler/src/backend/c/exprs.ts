@@ -4606,6 +4606,32 @@ function emitFilesystemLibCall(state: LibCallState): Temp {
             return finish(`scr_zlib_inflate_mode(${arg(0)}, 2.0)`);
           case "zlib.unzipSync":
             return finish(`scr_zlib_inflate_mode(${arg(0)}, 3.0)`);
+          case "zlib.crc32":
+            return finish(`scr_zlib_crc32(${arg(0)}, ${arg(1)})`);
+          case "zlib.deflateCb":
+          case "zlib.inflateCb":
+          case "zlib.deflateRawCb":
+          case "zlib.inflateRawCb":
+          case "zlib.gzipCb":
+          case "zlib.gunzipCb":
+          case "zlib.unzipCb": {
+            emitter.usesTimers = true;
+            const cbT = e.args[1]!.type;
+            if (cbT.kind !== "func") throw new InternalCompilerError("emitter bug: zlib callback not a func");
+            const callback = args[1]!;
+            emitter.moveTemp(callback);
+            const adapter = emitter.zlibBytesThunkFor(cbT);
+            const compressing = fn === "zlib.deflateCb" || fn === "zlib.deflateRawCb" || fn === "zlib.gzipCb";
+            const mode = fn === "zlib.deflateRawCb" || fn === "zlib.inflateRawCb"
+              ? 1
+              : fn === "zlib.gzipCb" || fn === "zlib.gunzipCb"
+                ? 2
+                : fn === "zlib.unzipCb"
+                  ? 3
+                  : 0;
+            emitter.line(`scr_zlib_codec_async(${arg(0)}, ${mode}.0, ${compressing ? "true" : "false"}, ${callback.name}, &${adapter});${emitter.srcComment(e.loc)}`);
+            return { name: "", type: e.type };
+          }
           case "fsp.readFile":
             return finish(`scr_fsp_read_file(${arg(0)})`);
           case "fsp.writeFile":

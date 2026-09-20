@@ -60,7 +60,7 @@ import { cCommentText, cFnPtrCast, cType, releaseCallC, cStringLiteral, cDecl } 
 import { computeMayThrow } from "./may-throw.js";
 import { unionTruthyHelper, unionEqHelper, unionToStrHelper, unionJoinHelper, jsonWriteHelper, jsonIndentHelper, dynMatchHelper, dynCheckHelper, dynFuncBoxHelper, dynToStrHelper, caughtToDynHelper, toDynHelper, recordKeyGetHelper, recordKeySetHelper } from "./walkers.js";
 import { VtSlot, ClassMeta, emitStructDefs, vtEntriesFor, vtSlotParams, emitVtableDecls, emitVtableInstances, emitVtAdapterDefs, emitHierarchyClassHelpers, emitClassObjs, emitCtorThunkDefs, errorVtStampLines, emitterVtStampLines, streamVtStampLines, traceAdapterC, traceArgC, boxNewC, arrNewC } from "./shapes.js";
-import { emitAsyncScaffolding, childDataThunkFor, childExitThunkFor, childExitSignalThunkFor, execFileThunkFor, closeBindThunkFor, connectResThunkFor, connectSockThunkFor, closeOverrideWrapFor, cryptoBytesThunkFor, dgramMsgThunkFor, dnsLookupThunkFor, fsRenameThunkFor, genResultThunkFor, netLookupAnswerThunkFor, emitterInvokeThunkFor, streamCbThunkFor, streamDataThunkFor, raceAdapterFor, resolveThunkFor, sniAnswerThunkFor } from "./async.js";
+import { emitAsyncScaffolding, childDataThunkFor, childExitThunkFor, childExitSignalThunkFor, execFileThunkFor, closeBindThunkFor, connectResThunkFor, connectSockThunkFor, closeOverrideWrapFor, cryptoBytesThunkFor, dgramMsgThunkFor, dnsLookupThunkFor, fsRenameThunkFor, genResultThunkFor, netLookupAnswerThunkFor, emitterInvokeThunkFor, streamCbThunkFor, streamDataThunkFor, raceAdapterFor, resolveThunkFor, sniAnswerThunkFor, zlibBytesThunkFor } from "./async.js";
 import { emitNpmEmbedding, islandAdapter, islandTypedAdapter } from "./island.js";
 import { emitFunction, emitBlock, emitStmts, emitStmt, emitTryCatch, emitSwitch, mergeBrace, emitBranchInto, emitCondition } from "./stmts.js";
 import { emitExpr, liveDynRefAdapter as buildLiveDynRefAdapter, type StreamTypedRefAdapter } from "./exprs.js";
@@ -2157,6 +2157,10 @@ export class CEmitter {
 
   cryptoBytesThunkFor(cbT: IrType): string {
     return cryptoBytesThunkFor(this, cbT);
+  }
+
+  zlibBytesThunkFor(cbT: IrType): string {
+    return zlibBytesThunkFor(this, cbT);
   }
 
   sniAnswerThunkFor(cbT: IrType): string {

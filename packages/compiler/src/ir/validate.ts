@@ -843,6 +843,14 @@ export const LIB_FN_SIGS: Record<IrLibFn, { argTypes: (IrType | null)[]; result:
   "zlib.gzipSync": { argTypes: [BYTES_U8], result: BYTES_U8 },
   "zlib.gunzipSync": { argTypes: [BYTES_U8], result: BYTES_U8 },
   "zlib.unzipSync": { argTypes: [BYTES_U8], result: BYTES_U8 },
+  "zlib.deflateCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.inflateCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.deflateRawCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.inflateRawCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.gzipCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.gunzipCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.unzipCb": { argTypes: [BYTES_U8, null], result: VOID },
+  "zlib.crc32": { argTypes: [BYTES_U8, F64], result: F64 },
   "process.stdoutWriteBytes": { argTypes: [BYTES_U8, STRING], result: BOOL },
   "process.stderrWriteBytes": { argTypes: [BYTES_U8, STRING], result: BOOL },
   // Completion callback is program-dependent: zero params, checked-dynamic,
@@ -4243,6 +4251,32 @@ function validateFunction(
           if (!ok) {
             err(`libCall dns.lookup callback shape (frontend must fence)`, e.loc);
           }
+          break;
+        }
+        if (
+          e.fn === "zlib.deflateCb" || e.fn === "zlib.inflateCb" ||
+          e.fn === "zlib.deflateRawCb" || e.fn === "zlib.inflateRawCb" ||
+          e.fn === "zlib.gzipCb" || e.fn === "zlib.gunzipCb" || e.fn === "zlib.unzipCb"
+        ) {
+          const cbT = e.args[1]?.type;
+          let ok = cbT?.kind === "func" && cbT.ret.kind === "void" && cbT.params.length <= 2;
+          if (ok && cbT?.kind === "func" && cbT.params.length >= 1) {
+            const error = cbT.params[0]!;
+            if (error.kind !== "dyn") {
+              const def = error.kind === "union" ? unions.get(error.unionId) : undefined;
+              ok = def !== undefined &&
+                def.arms.some((arm) => arm.kind === "nullT") &&
+                def.arms.some((arm) => arm.kind === "object" && arm.className === "%Error") &&
+                def.arms.every((arm) =>
+                  arm.kind === "nullT" || arm.kind === "undefinedT" ||
+                  (arm.kind === "object" && arm.className === "%Error"));
+            }
+          }
+          if (ok && cbT?.kind === "func" && cbT.params.length === 2) {
+            const value = cbT.params[1]!;
+            ok = value.kind === "dyn" || (value.kind === "bytes" && value.elem === "u8");
+          }
+          if (!ok) err(`libCall ${e.fn} callback shape (frontend must fence)`, e.loc);
           break;
         }
         if (

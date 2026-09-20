@@ -6367,6 +6367,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2921-zlib-callbacks.ts": {
+   "order": [
+    "<repo>/tests/corpus/2921-zlib-callbacks.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

@@ -88,23 +88,23 @@ fenced.ts:47:13 - error SC2020: 'URL.hash' is typed by @types/node but has no sc
 
   hint: protocol, pathname, href, host, hostname, search, searchParams, and toString() are the supported URL members
 
-fenced.ts:53:13 - error SC2020: 'deflateSync of 'string' data' is part of the standard library types but has no scriptc lowering yet
+fenced.ts:53:21 - error SC2020: 'deflateSync with explicit options' is part of the standard library types but has no scriptc lowering yet
 
   52 | import { brotliCompressSync, deflateSync } from "zlib";
-  53 | deflateSync("data");
-     |             ^~~~~~
+  53 | deflateSync("data", { level: 9 });
+     |                     ^~~~~~~~~~~~
   54 | brotliCompressSync(Buffer.from("data"));
 
-  hint: zlib works on Buffers: deflateSync(Buffer.from(s, "utf8"))
+  hint: deflateSync(data) with Node's default options is supported
 
 fenced.ts:54:1 - error SC2020: 'zlib.brotliCompressSync' is typed by @types/node but has no scriptc lowering yet
 
-  53 | deflateSync("data");
+  53 | deflateSync("data", { level: 9 });
   54 | brotliCompressSync(Buffer.from("data"));
      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   55 | /* The http2 compatibility slice's @types/node-world fences (divergence
 
-  hint: deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface
+  hint: the default-options deflate/inflate, raw, gzip/gunzip, and unzip sync/callback forms plus crc32 are the lowered zlib surface
 
 fenced.ts:63:71 - error SC2020: 'a createSecureServer SNICallback of 'undefined' values' is part of the standard library types but has no scriptc lowering yet
 

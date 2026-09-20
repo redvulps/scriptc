@@ -613,6 +613,67 @@ function emitArgPackAndTrampolinePrologue(
     return sym;
   }
 
+/** Error-first Buffer callback adapter for worker-backed zlib operations.
+ * The runtime transfers the success Buffer and borrows the failure Error;
+ * exactly one is non-NULL. */
+  export function zlibBytesThunkFor(emitter: CEmitter, cbT: IrType): string {
+    if (cbT.kind !== "func" || cbT.params.length > 2) {
+      throw new InternalCompilerError("emitter bug: zlib bytes callback shape");
+    }
+    const key = `zlib:${typeKey(cbT)}`;
+    let sym = emitter.fsRenameThunks.get(key);
+    if (sym) return sym;
+    sym = `sc_zlibbytes_${emitter.fsRenameThunks.size}`;
+    emitter.fsRenameThunks.set(key, sym);
+    emitter.walkerProtos.push(`static void ${sym}(ScrClosure *sc_cb, ScrError *sc_err, ScrBytes *sc_value);`);
+    const lines = [`static void ${sym}(ScrClosure *sc_cb, ScrError *sc_err, ScrBytes *sc_value) {`];
+    const callTypes = ["ScrClosure *"];
+    const callArgs = ["sc_cb"];
+    const error = cbT.params[0];
+    if (error !== undefined) {
+      if (error.kind === "dyn") {
+        lines.push(`  ScrDyn *sc_error = sc_err ? scr_dyn_from_error(sc_err) : scr_dyn_new_null();`);
+        callTypes.push("ScrDyn *");
+      } else if (error.kind === "union") {
+        const def = emitter.unionsById.get(error.unionId);
+        const errTag = def ? def.arms.findIndex((arm) => arm.kind === "object" && arm.className === "%Error") : -1;
+        const nullTag = def ? def.arms.findIndex((arm) => arm.kind === "nullT") : -1;
+        if (errTag < 0 || nullTag < 0) throw new InternalCompilerError("emitter bug: zlib callback error union lacks arms");
+        lines.push(
+          `  ScrUnion *sc_error = sc_err`,
+          `      ? scr_union_new_ref(${errTag}, scr_error_retain(sc_err), &scr_error_retain_v, &scr_error_release_v, NULL)`,
+          `      : ${emitter.unitInstanceRef(error.unionId, nullTag)};`,
+        );
+        callTypes.push("ScrUnion *");
+      } else {
+        throw new InternalCompilerError("emitter bug: zlib callback error param");
+      }
+      callArgs.push("sc_error");
+    }
+    const value = cbT.params[1];
+    if (value === undefined) {
+      lines.push(`  scr_bytes_release(sc_value);`);
+    } else if (value.kind === "dyn") {
+      lines.push(
+        `  ScrDyn *sc_result = sc_value ? scr_dyn_new_bytes_copy(sc_value) : scr_dyn_undefined();`,
+        `  scr_bytes_release(sc_value);`,
+      );
+      callTypes.push("ScrDyn *");
+      callArgs.push("sc_result");
+    } else if (value.kind === "bytes" && value.elem === "u8") {
+      callTypes.push("ScrBytes *");
+      callArgs.push("sc_value");
+    } else {
+      throw new InternalCompilerError("emitter bug: zlib callback value param");
+    }
+    lines.push(
+      `  ((void (*)(${callTypes.join(", ")}))sc_cb->fn)(${callArgs.join(", ")});`,
+      `}`,
+    );
+    emitter.walkerDefs.push(...lines);
+    return sym;
+  }
+
 /** Interned CONNECT-listener adapter for a UNION socket slot — the h2
    * compat listener (`(req, resOrSocket: Http2ServerResponse | net.Socket)
    * => void`): the runtime fires (cb, req, sock, head) like an upgrade;

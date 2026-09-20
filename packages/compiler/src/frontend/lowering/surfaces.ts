@@ -756,18 +756,25 @@ export const BUILTIN_MODULE_FNS: Record<string, Record<string, BuiltinModuleFn |
     pbkdf2: { fn: "crypto.pbkdf2Cb", params: [], result: VOID },
   },
   zlib: {
-    // Buffer in, Buffer out, Node's default options; string inputs and
-    // explicit options fence per site (see the zlib special case in
-    // lowerBuiltinModuleCall). native-toolchain.ts links libz only when
-    // these appear on the IR. The format-specific rows lower to the
-    // existing mode runtime (raw=1, gzip=2, auto-detect=3).
+    // The default-options convenience family is special-cased in
+    // lowerBuiltinModuleCall: string inputs UTF-8 encode, callback forms
+    // carry program-shaped closures, and explicit options fence per site.
+    // native-toolchain.ts links libz only when these appear on the IR.
+    deflate: { fn: "zlib.deflateCb", params: [], result: VOID },
     deflateSync: { fn: "zlib.deflateSync", params: [BYTES_U8], result: BYTES_U8 },
+    inflate: { fn: "zlib.inflateCb", params: [], result: VOID },
     inflateSync: { fn: "zlib.inflateSync", params: [BYTES_U8], result: BYTES_U8 },
+    deflateRaw: { fn: "zlib.deflateRawCb", params: [], result: VOID },
     deflateRawSync: { fn: "zlib.deflateRawSync", params: [BYTES_U8], result: BYTES_U8 },
+    inflateRaw: { fn: "zlib.inflateRawCb", params: [], result: VOID },
     inflateRawSync: { fn: "zlib.inflateRawSync", params: [BYTES_U8], result: BYTES_U8 },
+    gzip: { fn: "zlib.gzipCb", params: [], result: VOID },
     gzipSync: { fn: "zlib.gzipSync", params: [BYTES_U8], result: BYTES_U8 },
+    gunzip: { fn: "zlib.gunzipCb", params: [], result: VOID },
     gunzipSync: { fn: "zlib.gunzipSync", params: [BYTES_U8], result: BYTES_U8 },
+    unzip: { fn: "zlib.unzipCb", params: [], result: VOID },
     unzipSync: { fn: "zlib.unzipSync", params: [BYTES_U8], result: BYTES_U8 },
+    crc32: { fn: "zlib.crc32", params: [], result: F64 },
   },
   url: {
     // fileURLToPath accepts a URL value OR a string — the call lowering
@@ -1289,10 +1296,10 @@ export function builtinModulesArrayLit(loc: { file: string; start: number; end: 
 }
 
 /** Member-specific hints for RECOGNIZED builtin modules whose member has
- * no lowering. The one-shot zlib/deflate-raw/gzip codecs lower now
- * (Buffers are real); the remaining zlib surface points at that family. */
+ * no lowering. The default-options one-shot zlib/deflate-raw/gzip codecs
+ * lower for strings and Buffers; the remaining surface points at them. */
 const ZLIB_HINT =
-  "deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface";
+  "the default-options deflate/inflate, raw, gzip/gunzip, and unzip sync/callback forms plus crc32 are the lowered zlib surface";
 
 /** The loose-equality quartet's shared hint: == coercion has no lowering
  * anywhere in this compiler, and Node itself points at the strict forms. */

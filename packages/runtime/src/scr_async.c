@@ -1662,20 +1662,25 @@ ScrPromise *scr_fsp_rename(ScrStr *oldpath, ScrStr *newpath) {
   return scr_promise_settled_void();
 }
 
-/* fs.rename(old, new, cb): the static callback surface. The OS operation
- * starts immediately on a native worker, matching libuv's key contract:
- * while JS/main is synchronously occupied, the filesystem request can still
- * make progress. Only immutable path bytes cross onto the worker. Error
- * construction, callback invocation, and every RC mutation stay on the main
- * runtime thread when a later loop turn observes completion.
+/* Shared native work queue, initially introduced by fs.rename and also used
+ * by node:zlib's callback codecs. Work starts immediately on a native worker,
+ * matching libuv's key contract while JS/main is synchronously occupied.
+ * Error/Buffer construction, callback invocation, and every RC mutation stay
+ * on the main runtime thread when a later loop turn observes completion.
  *
  * A compact operation queue is also the liveness handle: an outstanding
  * callback-style request keeps the loop alive. Four persistent workers mirror
- * libuv's default filesystem concurrency without creating one OS thread per
- * request. A platform mutex publishes each result and the syscall's filesystem
- * effects before the loop removes it from the completion queue. */
+ * libuv's default pool size without creating one OS thread per request. A
+ * platform mutex publishes each result before the loop removes it from the
+ * completion queue. */
 #if !defined(SCR_LIB) && !defined(__wasi__)
 typedef struct ScrFsRenameOp {
+  bool generic;
+  bool ran;
+  void *payload;
+  ScrWorkFn work;
+  ScrWorkFn after;
+  ScrWorkFn destroy;
   ScrStr *oldpath;
   ScrStr *newpath;
   ScrClosure *cb;
@@ -1718,6 +1723,11 @@ static void scr_fs_rename_broadcast(void) { (void)pthread_cond_broadcast(&scr_fs
 #endif
 
 static void scr_fs_rename_op_release(ScrFsRenameOp *op) {
+  if (op->generic) {
+    op->destroy(op->payload);
+    free(op);
+    return;
+  }
   scr_str_release(op->oldpath);
   scr_str_release(op->newpath);
   scr_closure_release(op->cb);
@@ -1737,7 +1747,9 @@ static void scr_fs_rename_worker_loop(void) {
     if (scr_fs_rename_work == NULL) scr_fs_rename_work_tail = &scr_fs_rename_work;
     scr_fs_rename_lock_leave();
 
-    op->error = scr_fs_rename_raw(op->oldpath, op->newpath);
+    if (op->generic) op->work(op->payload);
+    else op->error = scr_fs_rename_raw(op->oldpath, op->newpath);
+    op->ran = true;
 
     scr_fs_rename_lock_enter();
     op->next = NULL;
@@ -1814,6 +1826,12 @@ static bool scr_fs_renames_dispatch(void) {
   scr_fs_rename_lock_leave();
   if (op == NULL) return false;
   scr_fs_rename_pending_count--;
+  if (op->generic) {
+    if (!op->ran) op->work(op->payload);
+    op->after(op->payload);
+    scr_fs_rename_op_release(op);
+    return true;
+  }
   ScrCaught *caught = NULL;
   ScrError *err = NULL;
   if (op->error != 0) {
@@ -1828,11 +1846,65 @@ static bool scr_fs_renames_dispatch(void) {
   scr_fs_rename_op_release(op);
   return true;
 }
+
+static void scr_work_submit_op(ScrFsRenameOp *op) {
+  if (!scr_fs_rename_shutdown_registered) {
+    if (atexit(scr_fs_renames_shutdown) != 0) {
+      scr_trap("scriptc: could not register worker cleanup\n");
+    }
+    scr_fs_rename_shutdown_registered = true;
+  }
+  scr_fs_rename_pending_count++;
+  scr_fs_rename_lock_enter();
+  *scr_fs_rename_work_tail = op;
+  scr_fs_rename_work_tail = &op->next;
+  int create_error = 0;
+  if (scr_fs_rename_worker_count < 4) {
+#ifdef _WIN32
+    HANDLE worker = CreateThread(NULL, 0, scr_fs_rename_worker, NULL, 0, NULL);
+    if (worker != NULL) {
+      scr_fs_rename_workers[scr_fs_rename_worker_count] = worker;
+      scr_fs_rename_worker_count++;
+    } else {
+      create_error = EAGAIN;
+    }
+#else
+    pthread_t worker;
+    create_error = pthread_create(&worker, NULL, scr_fs_rename_worker, NULL);
+    if (create_error == 0) {
+      scr_fs_rename_workers[scr_fs_rename_worker_count] = worker;
+      scr_fs_rename_worker_count++;
+    }
+#endif
+  }
+  if (create_error != 0 && scr_fs_rename_worker_count == 0) {
+    /* Submission failure remains asynchronous. Rename preserves its
+     * resource error; generic work falls back to the main loop turn. */
+    while (scr_fs_rename_work != NULL) {
+      ScrFsRenameOp *failed = scr_fs_rename_work;
+      scr_fs_rename_work = failed->next;
+      failed->error = create_error;
+      failed->ran = !failed->generic;
+      failed->next = NULL;
+      *scr_fs_rename_done_tail = failed;
+      scr_fs_rename_done_tail = &failed->next;
+    }
+    scr_fs_rename_work_tail = &scr_fs_rename_work;
+  } else {
+    scr_fs_rename_signal();
+  }
+  scr_fs_rename_lock_leave();
+}
 #elif defined(__wasi__)
 /* WASI Preview 1 has no threads, but rename itself is available. Queue the
  * request and perform it on the next loop turn so callback timing remains
  * asynchronous and the request remains a liveness handle. */
 typedef struct ScrFsRenameOp {
+  bool generic;
+  void *payload;
+  ScrWorkFn work;
+  ScrWorkFn after;
+  ScrWorkFn destroy;
   ScrStr *oldpath;
   ScrStr *newpath;
   ScrClosure *cb;
@@ -1852,6 +1924,14 @@ static bool scr_fs_renames_dispatch(void) {
   scr_fs_rename_done = op->next;
   if (scr_fs_rename_done == NULL) scr_fs_rename_done_tail = &scr_fs_rename_done;
   scr_fs_rename_pending_count--;
+
+  if (op->generic) {
+    op->work(op->payload);
+    op->after(op->payload);
+    op->destroy(op->payload);
+    free(op);
+    return true;
+  }
 
   int error = scr_fs_rename_raw(op->oldpath, op->newpath);
   ScrCaught *caught = NULL;
@@ -1893,57 +1973,42 @@ void scr_fs_rename_async(ScrStr *oldpath, ScrStr *newpath,
   scr_fs_rename_done_tail = &op->next;
   scr_fs_rename_pending_count++;
 #else
-  if (!scr_fs_rename_shutdown_registered) {
-    if (atexit(scr_fs_renames_shutdown) != 0) {
-      scr_trap("scriptc: could not register fs.rename worker cleanup\n");
-    }
-    scr_fs_rename_shutdown_registered = true;
-  }
   ScrFsRenameOp *op = calloc(1, sizeof *op);
   if (!op) scr_trap("scriptc: out of memory\n");
   op->oldpath = scr_str_retain(oldpath);
   op->newpath = scr_str_retain(newpath);
   op->cb = cb;
   op->fn = fn;
-  scr_fs_rename_pending_count++;
-  scr_fs_rename_lock_enter();
-  *scr_fs_rename_work_tail = op;
-  scr_fs_rename_work_tail = &op->next;
-  int create_error = 0;
-  if (scr_fs_rename_worker_count < 4) {
-#ifdef _WIN32
-    HANDLE worker = CreateThread(NULL, 0, scr_fs_rename_worker, NULL, 0, NULL);
-    if (worker != NULL) {
-      scr_fs_rename_workers[scr_fs_rename_worker_count] = worker;
-      scr_fs_rename_worker_count++;
-    } else {
-      create_error = EAGAIN;
-    }
-#else
-    pthread_t worker;
-    create_error = pthread_create(&worker, NULL, scr_fs_rename_worker, NULL);
-    if (create_error == 0) {
-      scr_fs_rename_workers[scr_fs_rename_worker_count] = worker;
-      scr_fs_rename_worker_count++;
-    }
+  scr_work_submit_op(op);
 #endif
-  }
-  if (create_error != 0 && scr_fs_rename_worker_count == 0) {
-    /* Submission failure is still callback-asynchronous. No worker exists,
-     * so publish every queued request as the same resource error. */
-    while (scr_fs_rename_work != NULL) {
-      ScrFsRenameOp *failed = scr_fs_rename_work;
-      scr_fs_rename_work = failed->next;
-      failed->error = create_error;
-      failed->next = NULL;
-      *scr_fs_rename_done_tail = failed;
-      scr_fs_rename_done_tail = &failed->next;
-    }
-    scr_fs_rename_work_tail = &scr_fs_rename_work;
-  } else {
-    scr_fs_rename_signal();
-  }
-  scr_fs_rename_lock_leave();
+}
+
+void scr_work_submit(void *payload, ScrWorkFn work, ScrWorkFn after,
+                     ScrWorkFn destroy) {
+#if defined(SCR_LIB)
+  (void)work; (void)after;
+  destroy(payload);
+  scr_trap("scriptc: native worker jobs are not supported by this target\n");
+#elif defined(__wasi__)
+  ScrFsRenameOp *op = calloc(1, sizeof *op);
+  if (!op) scr_trap("scriptc: out of memory\n");
+  op->generic = true;
+  op->payload = payload;
+  op->work = work;
+  op->after = after;
+  op->destroy = destroy;
+  *scr_fs_rename_done_tail = op;
+  scr_fs_rename_done_tail = &op->next;
+  scr_fs_rename_pending_count++;
+#else
+  ScrFsRenameOp *op = calloc(1, sizeof *op);
+  if (!op) scr_trap("scriptc: out of memory\n");
+  op->generic = true;
+  op->payload = payload;
+  op->work = work;
+  op->after = after;
+  op->destroy = destroy;
+  scr_work_submit_op(op);
 #endif
 }
 
@@ -2388,7 +2453,7 @@ bool scr_loop_run(ScrPromise *top_level) {
      * here would walk the whole live heap every turn, which is precisely
      * what the generations exist to avoid. No-op on an empty buffer. */
     scr_cyc_collect_scheduled();
-    /* Completed callback-style filesystem work is delivered on the main
+    /* Completed callback-style worker jobs are delivered on the main
      * runtime thread. A worker may have finished while synchronous user code
      * occupied that thread. Deliver exactly one completion per checkpoint:
      * Node drains nextTicks and microtasks after each native callback before
@@ -2527,7 +2592,7 @@ bool scr_loop_run(ScrPromise *top_level) {
      * - timers only: plain nanosleep to the deadline. */
     double now = scr_now_ms();
     double due = scr_ntimers > 0 ? scr_timers[0].deadline_ms : now + SCR_IO_POLL_MS;
-    /* The rename worker has no platform poll handle yet. Bound the idle
+    /* The worker pool has no platform poll handle yet. Bound the idle
      * wait exactly like the portable child fallback so completion is noticed
      * promptly even when another poller owns the sleep. */
     if (renames && due > now + SCR_CHILD_POLL_MS) due = now + SCR_CHILD_POLL_MS;

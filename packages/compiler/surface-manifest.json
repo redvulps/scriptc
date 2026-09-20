@@ -1865,7 +1865,7 @@
       "name": "zlib.brotliCompressSync",
       "status": "unsupported",
       "code": "SC2020",
-      "note": "deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface"
+      "note": "the default-options deflate/inflate, raw, gzip/gunzip, and unzip sync/callback forms plus crc32 are the lowered zlib surface"
     },
     {
       "id": "node-builtin.zlib.brotliDecompressSync",
@@ -1873,7 +1873,25 @@
       "name": "zlib.brotliDecompressSync",
       "status": "unsupported",
       "code": "SC2020",
-      "note": "deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface"
+      "note": "the default-options deflate/inflate, raw, gzip/gunzip, and unzip sync/callback forms plus crc32 are the lowered zlib surface"
+    },
+    {
+      "id": "node-builtin.zlib.crc32",
+      "kind": "node-builtin",
+      "name": "zlib.crc32",
+      "status": "static"
+    },
+    {
+      "id": "node-builtin.zlib.deflate",
+      "kind": "node-builtin",
+      "name": "zlib.deflate",
+      "status": "static"
+    },
+    {
+      "id": "node-builtin.zlib.deflateRaw",
+      "kind": "node-builtin",
+      "name": "zlib.deflateRaw",
+      "status": "static"
     },
     {
       "id": "node-builtin.zlib.deflateRawSync",
@@ -1888,15 +1906,39 @@
       "status": "static"
     },
     {
+      "id": "node-builtin.zlib.gunzip",
+      "kind": "node-builtin",
+      "name": "zlib.gunzip",
+      "status": "static"
+    },
+    {
       "id": "node-builtin.zlib.gunzipSync",
       "kind": "node-builtin",
       "name": "zlib.gunzipSync",
       "status": "static"
     },
     {
+      "id": "node-builtin.zlib.gzip",
+      "kind": "node-builtin",
+      "name": "zlib.gzip",
+      "status": "static"
+    },
+    {
       "id": "node-builtin.zlib.gzipSync",
       "kind": "node-builtin",
       "name": "zlib.gzipSync",
+      "status": "static"
+    },
+    {
+      "id": "node-builtin.zlib.inflate",
+      "kind": "node-builtin",
+      "name": "zlib.inflate",
+      "status": "static"
+    },
+    {
+      "id": "node-builtin.zlib.inflateRaw",
+      "kind": "node-builtin",
+      "name": "zlib.inflateRaw",
       "status": "static"
     },
     {
@@ -1909,6 +1951,12 @@
       "id": "node-builtin.zlib.inflateSync",
       "kind": "node-builtin",
       "name": "zlib.inflateSync",
+      "status": "static"
+    },
+    {
+      "id": "node-builtin.zlib.unzip",
+      "kind": "node-builtin",
+      "name": "zlib.unzip",
       "status": "static"
     },
     {

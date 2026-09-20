@@ -1491,9 +1491,9 @@
       "apiEntries": 78,
       "static": {
         "supported": 0,
-        "partial": 15,
+        "partial": 30,
         "refused": 4,
-        "not-implemented": 59,
+        "not-implemented": 44,
         "by-design": 0,
         "unreviewed": 0,
         "not-applicable": 0
@@ -125165,7 +125165,8 @@
         "status": "partial",
         "evidence": "derived:descendants",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -125771,8 +125772,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.crc32",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "not-implemented",
@@ -126236,8 +126241,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflate",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126269,7 +126278,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.deflateSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126299,8 +126309,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflateRaw",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126332,7 +126346,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.deflateRawSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126362,8 +126377,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gunzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126395,7 +126414,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.gunzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126425,8 +126445,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126458,7 +126482,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.gzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126488,8 +126513,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflate",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126521,7 +126550,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.inflateSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126551,8 +126581,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflateRaw",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126584,7 +126618,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.inflateRawSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -126614,8 +126649,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.unzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -126647,7 +126686,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.unzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127469,8 +127509,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflate",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127502,7 +127546,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.deflateSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127532,8 +127577,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.deflateRaw",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127565,7 +127614,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.deflateRawSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127595,8 +127645,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gunzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127628,7 +127682,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.gunzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127658,8 +127713,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.gzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127691,7 +127750,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.gzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127721,8 +127781,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflate",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127754,7 +127818,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.inflateSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127784,8 +127849,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.inflateRaw",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127817,7 +127886,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.inflateRawSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {
@@ -127847,8 +127917,12 @@
         "inherited": true
       },
       "static": {
-        "status": "not-implemented",
-        "evidence": "compiler-unmatched:zlib"
+        "status": "partial",
+        "evidence": "surface-manifest:node-builtin.zlib.unzip",
+        "tests": [
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
+        ]
       },
       "dynamic": {
         "status": "partial",
@@ -127880,7 +127954,8 @@
         "status": "partial",
         "evidence": "surface-manifest:node-builtin.zlib.unzipSync",
         "tests": [
-          "tests/corpus/1404-zlib-crypto-bytes.ts"
+          "tests/corpus/1404-zlib-crypto-bytes.ts",
+          "tests/corpus/2921-zlib-callbacks.ts"
         ]
       },
       "dynamic": {

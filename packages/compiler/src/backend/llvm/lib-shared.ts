@@ -261,6 +261,7 @@ export const LIB_FN_SYMS: Record<string, string> = {
   "text.decodeLegacy": "scr_text_decode_legacy",
   "zlib.deflateSync": "scr_zlib_deflate",
   "zlib.inflateSync": "scr_zlib_inflate",
+  "zlib.crc32": "scr_zlib_crc32",
   // The CA-store unit. get/set throw (an unknown type name, a
   // certificate-free set) and take the generic path's pending check.
   "tlsca.root": "scr_tls_ca_root",

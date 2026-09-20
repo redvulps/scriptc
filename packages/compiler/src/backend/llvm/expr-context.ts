@@ -121,6 +121,7 @@ export interface LlvmEmitterContext extends ShapeHost {
   frames: LlValue[][];
   fsRenameThunkFor(cbT: IrType & { kind: "func" }): string;
   cryptoBytesThunkFor(cbT: IrType & { kind: "func" }): string;
+  zlibBytesThunkFor(cbT: IrType & { kind: "func" }): string;
   genResultThunkFor(genT: IrType & { kind: "generator" }, recT: IrType & { kind: "record" }): string;
   indirectMayThrow: boolean;
   integerLoopBindings: Map<string, string>;

@@ -2437,6 +2437,14 @@ ScrPromise *scr_file_handle_write_file_promise(ScrFileHandle *h, ScrStr *data, S
 ScrPromise *scr_file_handle_write_file_bytes_promise(ScrFileHandle *h, ScrBytes *data, ScrStr *encoding);
 ScrPromise *scr_file_handle_stat_promise(ScrFileHandle *h);
 
+/* Shared executable worker pool. `work` runs on one of four native worker
+ * threads and must not touch runtime RC/exception state; `after` and
+ * `destroy` run on the main runtime thread. WASI runs `work` on a later
+ * loop turn. The payload is owned by the submission until destroy. */
+typedef void (*ScrWorkFn)(void *payload);
+void scr_work_submit(void *payload, ScrWorkFn work, ScrWorkFn after,
+                     ScrWorkFn destroy);
+
 /* fs.rename: the syscall is submitted to a native worker immediately and
  * its error-first callback fires on a later event-loop turn through an
  * emitted, program-shaped adapter. Both paths and the callback are borrowed
@@ -5443,6 +5451,11 @@ ScrBytes *scr_zlib_inflate(const ScrBytes *data);
  * scr_zlib_island.c bridges them into the embedded engine's node:zlib shim. */
 ScrBytes *scr_zlib_deflate_mode(const ScrBytes *data, double mode, double level);
 ScrBytes *scr_zlib_inflate_mode(const ScrBytes *data, double mode);
+double scr_zlib_crc32(const ScrBytes *data, double value);
+typedef void (*ScrZlibBytesFn)(ScrClosure *cb, ScrError *err,
+                              ScrBytes *value /* moves, NULL on error */);
+void scr_zlib_codec_async(const ScrBytes *data, double mode, bool compressing,
+                          ScrClosure *cb /* moves */, ScrZlibBytesFn fn);
 void scr_zlib_island_install(void);
 
 /* ── node:net (scr_net.c — compiled and linked ONLY when the program

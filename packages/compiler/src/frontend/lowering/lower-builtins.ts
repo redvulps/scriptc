@@ -1145,11 +1145,119 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
     }
   }
 
+  const ZLIB_SYNC_FNS: Readonly<Record<string, IrLibFn | undefined>> = {
+    deflateSync: "zlib.deflateSync",
+    inflateSync: "zlib.inflateSync",
+    deflateRawSync: "zlib.deflateRawSync",
+    inflateRawSync: "zlib.inflateRawSync",
+    gzipSync: "zlib.gzipSync",
+    gunzipSync: "zlib.gunzipSync",
+    unzipSync: "zlib.unzipSync",
+  };
+
+  const ZLIB_CALLBACK_FNS: Readonly<Record<string, IrLibFn | undefined>> = {
+    deflate: "zlib.deflateCb",
+    inflate: "zlib.inflateCb",
+    deflateRaw: "zlib.deflateRawCb",
+    inflateRaw: "zlib.inflateRawCb",
+    gzip: "zlib.gzipCb",
+    gunzip: "zlib.gunzipCb",
+    unzip: "zlib.unzipCb",
+  };
+
+  function zlibInputBytes(lowerer: Lowerer, node: ts.Expression, loc: SrcLoc): IrExpr {
+    const value = lowerer.lowerExpr(node);
+    if (value.type.kind === "bytes" && value.type.elem === "u8") return value;
+    if (value.type.kind === "string") {
+      return {
+        kind: "libCall",
+        fn: "buffer.fromStr",
+        args: [value, { kind: "strLit", value: "utf8", type: STRING, loc }],
+        type: BYTES_U8,
+        loc,
+      };
+    }
+    lowerer.noLowering(
+      `zlib byte input of '${lowerer.fmt(value.type)}' values`,
+      node,
+      "string and Buffer/Uint8Array values are supported",
+    );
+  }
+
+  function lowerZlibModuleCall(lowerer: Lowerer, expr: ts.CallExpression,
+    bi: { module: string; member: string }, loc: SrcLoc,): IrExpr {
+    if (expr.arguments.some(ts.isSpreadElement)) {
+      lowerer.noLowering(`zlib.${bi.member} with spread arguments`, expr);
+    }
+    const syncFn = ZLIB_SYNC_FNS[bi.member];
+    if (syncFn !== undefined) {
+      if (expr.arguments.length !== 1) {
+        const site = expr.arguments[1] ?? expr;
+        lowerer.noLowering(
+          `${bi.member} with explicit options`,
+          site,
+          `${bi.member}(data) with Node's default options is supported`,
+        );
+      }
+      return {
+        kind: "libCall",
+        fn: syncFn,
+        args: [zlibInputBytes(lowerer, expr.arguments[0]!, loc)],
+        type: BYTES_U8,
+        loc,
+      };
+    }
+    const callbackFn = ZLIB_CALLBACK_FNS[bi.member];
+    if (callbackFn !== undefined) {
+      if (expr.arguments.length !== 2) {
+        const site = expr.arguments.length >= 3 ? expr.arguments[1]! : expr;
+        lowerer.noLowering(
+          `${bi.member} with ${expr.arguments.length} arguments`,
+          site,
+          `${bi.member}(data, callback) with Node's default options is supported; explicit options are not yet lowered`,
+        );
+      }
+      return {
+        kind: "libCall",
+        fn: callbackFn,
+        args: [
+          zlibInputBytes(lowerer, expr.arguments[0]!, loc),
+          errorFirstBytesCallback(lowerer, expr.arguments[1]!, "zlib"),
+        ],
+        type: VOID,
+        loc,
+      };
+    }
+    if (bi.member === "crc32") {
+      if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+        lowerer.noLowering(
+          `zlib.crc32 with ${expr.arguments.length} arguments`,
+          expr,
+          "crc32(data[, initialValue]) is supported",
+        );
+      }
+      return {
+        kind: "libCall",
+        fn: "zlib.crc32",
+        args: [
+          zlibInputBytes(lowerer, expr.arguments[0]!, loc),
+          expr.arguments[1]
+            ? lowerer.lowerExprExpecting(expr.arguments[1]!, F64)
+            : { kind: "numLit", value: 0, type: F64, loc },
+        ],
+        type: F64,
+        loc,
+      };
+    }
+    throw new InternalCompilerError(`unhandled lowered zlib member ${bi.member}`);
+  }
+
   export function lowerBuiltinModuleCall(lowerer: Lowerer, expr: ts.CallExpression,
     bi: { module: string; member: string },
     fn: BuiltinModuleFn,
     loc: SrcLoc,): IrExpr {
     const name = expr.expression.getText();
+    if (bi.module === "zlib") return lowerZlibModuleCall(lowerer, expr, bi, loc);
     if (bi.module === "child_process" && bi.member === "spawnSync") {
       return lowerer.lowerSpawnSyncCall(expr, loc);
     }
@@ -1912,18 +2020,6 @@ function optionMember(p: ts.ObjectLiteralElementLike): { name: string; value: ts
         );
       }
       return finishWrite(optionValues);
-    }
-    // zlib takes Buffers; a string argument (the lib admits it) gets the
-    // wrap-it-first hint instead of a generic type mismatch.
-    if (bi.module === "zlib" && expr.arguments.length >= 1) {
-      const dataIr = lowerer.mapTypeOf(lowerer.typeOf(expr.arguments[0]!));
-      if (!(dataIr?.kind === "bytes" && dataIr.elem === "u8")) {
-        lowerer.noLowering(
-          `${bi.member} of '${dataIr ? lowerer.fmt(dataIr) : lowerer.checker.typeToString(lowerer.typeOf(expr.arguments[0]!))}' data`,
-          expr.arguments[0]!,
-          `zlib works on Buffers: ${bi.member}(Buffer.from(s, "utf8"))`,
-        );
-      }
     }
     if (fn.variadicPack) {
       // join(...parts) forwards the array itself; mixing spread and plain
@@ -4469,29 +4565,29 @@ function cryptoInputBytes(lowerer: Lowerer, node: ts.Expression, loc: SrcLoc): I
   );
 }
 
-function cryptoBytesCallback(lowerer: Lowerer, node: ts.Expression): IrExpr {
+function errorFirstBytesCallback(lowerer: Lowerer, node: ts.Expression, api: string): IrExpr {
   let callback = lowerer.lowerExpr(node);
   if (callback.type.kind === "dyn") {
     callback = { kind: "dynCheck", value: callback, type: funcOf([DYN, DYN], VOID), loc: locOf(node) };
   }
   if (callback.type.kind !== "func" || callback.type.params.length > 2) {
-    lowerer.unsupported("SC1090", node, "crypto callbacks must accept at most (error, buffer)");
+    lowerer.unsupported("SC1090", node, `${api} callbacks must accept at most (error, buffer)`);
   }
   const error = callback.type.params[0];
   if (error !== undefined && error.kind !== "dyn") {
     if (error.kind !== "union") {
-      lowerer.unsupported("SC1090", node, "crypto callback error parameters must be Error | null");
+      lowerer.unsupported("SC1090", node, `${api} callback error parameters must be Error | null`);
     }
     const def = lowerer.unions.get(error.unionId);
     const valid = !!def &&
       def.arms.some((arm) => arm.kind === "nullT") &&
       def.arms.some((arm) => arm.kind === "object" && arm.className === "%Error") &&
       def.arms.every((arm) => arm.kind === "nullT" || arm.kind === "undefinedT" || (arm.kind === "object" && arm.className === "%Error"));
-    if (!valid) lowerer.unsupported("SC1090", node, "crypto callback error parameters must be Error | null");
+    if (!valid) lowerer.unsupported("SC1090", node, `${api} callback error parameters must be Error | null`);
   }
   const value = callback.type.params[1];
   if (value !== undefined && value.kind !== "dyn" && !(value.kind === "bytes" && value.elem === "u8")) {
-    lowerer.unsupported("SC1090", node, "crypto callback result parameters must be Buffer/Uint8Array values");
+    lowerer.unsupported("SC1090", node, `${api} callback result parameters must be Buffer/Uint8Array values`);
   }
   return voidizedCallback(lowerer, callback, locOf(node));
 }
@@ -4516,7 +4612,7 @@ function cryptoBytesCallback(lowerer: Lowerer, node: ts.Expression): IrExpr {
       return {
         kind: "libCall",
         fn: "crypto.randomBytesCb",
-        args: [lowerer.lowerExprExpecting(args[0]!, F64), cryptoBytesCallback(lowerer, args[1]!)],
+        args: [lowerer.lowerExprExpecting(args[0]!, F64), errorFirstBytesCallback(lowerer, args[1]!, "crypto")],
         type: VOID,
         loc,
       };
@@ -4534,7 +4630,7 @@ function cryptoBytesCallback(lowerer: Lowerer, node: ts.Expression): IrExpr {
           lowerer.lowerExprExpecting(args[2]!, F64),
           lowerer.lowerExprExpecting(args[3]!, F64),
           cryptoAlgorithm(lowerer, args[4]!, "crypto.pbkdf2"),
-          cryptoBytesCallback(lowerer, args[5]!),
+          errorFirstBytesCallback(lowerer, args[5]!, "crypto"),
         ],
         type: VOID,
         loc,

@@ -95,7 +95,7 @@ import { emitIntrinsicExpr, emitSerializationExpr, emitAsyncExpr } from "./expr-
 import { emitJsInteropExpr, emitExpr } from "./expr-dispatch.js";
 import { emitJsMarshal, emitJsOp, emitJsExit, islandAdapter, islandTypedAdapter } from "./expr-island.js";
 import { dynKind, raceAdapterFor, genResultThunkFor, childExitThunkFor, childExitSignalThunkFor, childDataThunkFor, execFileThunkFor, emitterFixedAdapter, wrapEmitterListener, unwrapNullableClosure, closeBindThunkFor, closeOverrideWrapFor } from "./expr-callbacks.js";
-import { streamDataAdapter, streamDoneFnFor, cryptoBytesThunkFor, fsRenameThunkFor, streamCbThunkFor } from "./expr-stream-callbacks.js";
+import { streamDataAdapter, streamDoneFnFor, cryptoBytesThunkFor, fsRenameThunkFor, streamCbThunkFor, zlibBytesThunkFor } from "./expr-stream-callbacks.js";
 import { resolveThunkFor, tagInSet, arrPush, emitArrayCopyLoop, emitStrIntrinsic, emitArrIntrinsic, wrapNullable, emitMapNew, mapSet, emitMapLikeIntrinsic, emitSetNew } from "./expr-containers.js";
 import { emitBytesReceiver, emitIntegerLoopIndex, emitBytesIndex, emitBytesData, emitBytesLength, emitBytesGet, emitBytesU32, emitBytesSet, emitBytesIntrinsic } from "./expr-bytes.js";
 import { emitRegexIntrinsic, emitRecordKeyGet, keyedRecordReadInto } from "./expr-records.js";
@@ -4233,6 +4233,10 @@ class LlEmitter {
 
   private cryptoBytesThunkFor(cbT: IrType & { kind: "func" }): string {
     return cryptoBytesThunkFor(this.expressionContext(), cbT);
+  }
+
+  private zlibBytesThunkFor(cbT: IrType & { kind: "func" }): string {
+    return zlibBytesThunkFor(this.expressionContext(), cbT);
   }
 
   private streamCbThunkFor(kind: "r" | "w" | "f" | "d" | "t" | "l" | "e", cbT: IrType): string {

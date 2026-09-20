@@ -25,20 +25,20 @@ node-fallback-fence.ts:30:28 - error SC2020: 'timers/promises.setInterval with 3
 
   hint: the lowered form is setInterval(delay, value) with an explicit yielded value; AbortSignal options are not supported yet
 
-node-fallback-fence.ts:35:28 - error SC2020: 'deflateSync of 'string' data' is part of the standard library types but has no scriptc lowering yet
+node-fallback-fence.ts:35:36 - error SC2020: 'deflateSync with explicit options' is part of the standard library types but has no scriptc lowering yet
 
   34 | import { brotliCompressSync, deflateSync } from "node:zlib";
-  35 | const packed = deflateSync("data"); // string data: the wrap-it-first hint
-     |                            ^~~~~~
+  35 | const packed = deflateSync("data", { level: 9 }); // options remain fenced
+     |                                    ^~~~~~~~~~~~
   36 | const brotli = brotliCompressSync(Buffer.from("data")); // outside the lowered family: fenced
 
-  hint: zlib works on Buffers: deflateSync(Buffer.from(s, "utf8"))
+  hint: deflateSync(data) with Node's default options is supported
 
 node-fallback-fence.ts:36:16 - error SC2020: 'zlib.brotliCompressSync' is part of the standard library types but has no scriptc lowering yet
 
-  35 | const packed = deflateSync("data"); // string data: the wrap-it-first hint
+  35 | const packed = deflateSync("data", { level: 9 }); // options remain fenced
   36 | const brotli = brotliCompressSync(Buffer.from("data")); // outside the lowered family: fenced
      |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   37 | // The remaining imports continue the declared-but-not-lowered surface.
 
-  hint: deflateSync, inflateSync, deflateRawSync, inflateRawSync, gzipSync, gunzipSync, and unzipSync are the lowered zlib surface
+  hint: the default-options deflate/inflate, raw, gzip/gunzip, and unzip sync/callback forms plus crc32 are the lowered zlib surface

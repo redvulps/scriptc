@@ -3248,6 +3248,17 @@ export type IrLibFn =
   | "zlib.gzipSync"
   | "zlib.gunzipSync"
   | "zlib.unzipSync"
+  /** The default-options callback twins run on the executable's shared
+   * native work pool and deliver (Error | null, Buffer) on a later loop
+   * turn. crc32 validates its optional uint32 seed synchronously. */
+  | "zlib.deflateCb"
+  | "zlib.inflateCb"
+  | "zlib.deflateRawCb"
+  | "zlib.inflateRawCb"
+  | "zlib.gzipCb"
+  | "zlib.gunzipCb"
+  | "zlib.unzipCb"
+  | "zlib.crc32"
   /** The Buffer overloads of the raw stream writes — same promptly
    * submitted streams as process.stdoutWrite/stderrWrite, constantly true.
    * The encoding arg is evaluated but ignored for bytes, like Node. The Cb
@@ -6961,6 +6972,13 @@ const LIB_MODE_REFUSED_PREFIXES: readonly [string, string][] = [
   // exclude — refuse the surface like the rest of the event-loop family.
   ["fs.existsChk", "the async fs callback surface (fs.exists)"],
   ["fs.renameCb", "the async fs callback surface (fs.rename)"],
+  ["zlib.deflateCb", "the async node:zlib callback surface"],
+  ["zlib.inflateCb", "the async node:zlib callback surface"],
+  ["zlib.deflateRawCb", "the async node:zlib callback surface"],
+  ["zlib.inflateRawCb", "the async node:zlib callback surface"],
+  ["zlib.gzipCb", "the async node:zlib callback surface"],
+  ["zlib.gunzipCb", "the async node:zlib callback surface"],
+  ["zlib.unzipCb", "the async node:zlib callback surface"],
   ["process.stdoutWriteBytesCb", "process.stdout.write completion callbacks"],
   ["process.stderrWriteBytesCb", "process.stderr.write completion callbacks"],
   ["timers.", "the timers surface (setTimeout family)"],
@@ -7526,6 +7544,7 @@ export const MAY_THROW_LIB_FNS: ReadonlySet<IrLibFn> = new Set([
   "zlib.inflateRawSync",
   "zlib.gunzipSync",
   "zlib.unzipSync",
+  "zlib.crc32",
   "date.toISOString",
   "date.toISOStringValue",
   "fs.mkdirRecursiveSync",

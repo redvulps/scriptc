@@ -46,11 +46,11 @@ console.log(win32.sep);
 const u = new URL("https://example.com/x?a=1");
 console.log(u.hash);
 u.searchParams.get("a");
-/* The one-shot zlib/raw/gzip codecs lower; string input still gets the
- * wrap-it-first hint, while Brotli remains a member-qualified fence with
- * the lowered family named. */
+/* The one-shot zlib/raw/gzip codecs lower for strings and Buffers;
+ * explicit options remain fenced, while Brotli remains a member-qualified
+ * fence with the lowered family named. */
 import { brotliCompressSync, deflateSync } from "zlib";
-deflateSync("data");
+deflateSync("data", { level: 9 });
 brotliCompressSync(Buffer.from("data"));
 /* The http2 compatibility slice's @types/node-world fences (divergence
  * 56): the SNICallback option fences by name with the serve-one-pair
