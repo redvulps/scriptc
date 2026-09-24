@@ -300,8 +300,21 @@ typedef unsigned char ScrCtx;
 typedef ucontext_t ScrCtx;
 #endif
 
+/* A fiber's saved-context slot. A POSIX ucontext_t is large, so it lives in
+ * the fiber's stack block (scr_fiber_stack_new) rather than in every
+ * ScrFiber: stackless coroutines and microtask envelopes never switch. */
+#if defined(_WIN32) || defined(__wasi__)
+#define SCR_FIBER_CTX(f) (&(f)->ctx)
+#else
+#define SCR_FIBER_CTX(f) ((f)->ctx)
+#endif
+
 struct ScrFiber {
+#if defined(_WIN32) || defined(__wasi__)
   ScrCtx ctx;
+#else
+  ScrCtx *ctx; /* NULL until scr_fiber_stack_new */
+#endif
   /* LLVM-compiled async bodies (and wasm32 generators) run as stackless
    * switched coroutines instead of on a saved native stack: `coro` is the
    * frame handle, resumed and destroyed through the adapters the owning
@@ -1229,9 +1242,24 @@ static void scr_trampoline(void) {
   self->entry(self, self->argpack);
   scr_fiber_finish(self);
   /* Dead fiber: hop back to whoever resumed us. The loop frees us. */
-  scr_switch(&self->ctx, self->return_to, NULL);
+  scr_switch(SCR_FIBER_CTX(self), self->return_to, NULL);
   /* unreachable */
 }
+
+#if !defined(_WIN32) && !defined(__wasi__)
+/* One block per stack-switching fiber: the stack, then its saved context
+ * (SCR_FIBER_STACK keeps the context 16-byte aligned). */
+static void scr_fiber_stack_new(ScrFiber *f) {
+  f->stack = malloc(SCR_FIBER_STACK + sizeof(ucontext_t));
+  if (!f->stack) scr_oom();
+  f->ctx = (ucontext_t *)(f->stack + SCR_FIBER_STACK);
+  getcontext(f->ctx);
+  f->ctx->uc_stack.ss_sp = f->stack;
+  f->ctx->uc_stack.ss_size = SCR_FIBER_STACK;
+  f->ctx->uc_link = NULL;
+  makecontext(f->ctx, scr_trampoline, 0);
+}
+#endif
 
 /* Frees a finished fiber's execution resources (the promise release and
  * bookkeeping stay at the call sites). Windows: DeleteFiber tears down the
@@ -1311,19 +1339,13 @@ ScrPromise *scr_async_spawn(void (*entry)(ScrFiber *, void *), void *argpack) {
   f->ctx = CreateFiber(SCR_FIBER_STACK, scr_trampoline, NULL);
   if (f->ctx == NULL) scr_oom();
 #else
-  f->stack = malloc(SCR_FIBER_STACK);
-  if (!f->stack) scr_oom();
-  getcontext(&f->ctx);
-  f->ctx.uc_stack.ss_sp = f->stack;
-  f->ctx.uc_stack.ss_size = SCR_FIBER_STACK;
-  f->ctx.uc_link = NULL;
-  makecontext(&f->ctx, scr_trampoline, 0);
+  scr_fiber_stack_new(f);
 
   ucontext_t here;
 #endif
   f->return_to = &here;
   ScrFiber *spawner = scr_current;
-  scr_switch(&here, &f->ctx, f);
+  scr_switch(&here, SCR_FIBER_CTX(f), f);
   /* back: the fiber suspended or finished. The switch back targeted NULL
    * (the child doesn't know who spawned it), which pointed both the current
    * fiber AND the exception machinery at main — restore the spawner's cell
@@ -1376,7 +1398,7 @@ static ScrFiber *scr_stack_switch_self(void) {
 static void scr_await_park(ScrPromise *p) {
   ScrFiber *self = scr_stack_switch_self();
   scr_promise_add_waiter(p, self);
-  scr_switch(&self->ctx, self->return_to, NULL);
+  scr_switch(SCR_FIBER_CTX(self), self->return_to, NULL);
   /* Resumed by the loop: return_to must now point at the loop's context. */
 }
 
@@ -1416,7 +1438,7 @@ void scr_wasi_gen_finish(ScrFiber *self) {
 static void scr_await_yield(void) {
   ScrFiber *self = scr_stack_switch_self();
   scr_ready_push(self);
-  scr_switch(&self->ctx, self->return_to, NULL);
+  scr_switch(SCR_FIBER_CTX(self), self->return_to, NULL);
 }
 
 /* The emitted promise-or-absent await's unit arm (`await u` where u holds
@@ -2289,7 +2311,7 @@ static void scr_resume_fiber(ScrFiber *f) {
     (void)scr_win_self();
 #endif
     f->return_to = &scr_loop_ctx;
-    scr_switch(&scr_loop_ctx, &f->ctx, f);
+    scr_switch(&scr_loop_ctx, SCR_FIBER_CTX(f), f);
   } else
 #endif
   {
@@ -3252,13 +3274,7 @@ static ScrGen *scr_gen_new_common(void (*entry)(ScrFiber *, void *), void *argpa
 #elif defined(__wasi__)
   f->ctx = 0;
 #else
-  f->stack = malloc(SCR_FIBER_STACK);
-  if (!f->stack) scr_oom();
-  getcontext(&f->ctx);
-  f->ctx.uc_stack.ss_sp = f->stack;
-  f->ctx.uc_stack.ss_size = SCR_FIBER_STACK;
-  f->ctx.uc_link = NULL;
-  makecontext(&f->ctx, scr_trampoline, 0);
+  scr_fiber_stack_new(f);
 #endif
   g->fiber = f;
   return g;
@@ -3396,7 +3412,7 @@ void *scr_gen_take_in_ref(void) { return scr_gen_slot_take_ref(&scr_gen_self()->
  * payload or the GENRET sentinel pending (the emitted check handles it). */
 static void scr_gen_yield_switch(void) {
   ScrFiber *self = scr_current;
-  scr_switch(&self->ctx, self->return_to, NULL);
+  scr_switch(SCR_FIBER_CTX(self), self->return_to, NULL);
 }
 void scr_gen_yield_f64(double v) {
   scr_gen_slot_f64(&scr_gen_self()->out, v);
@@ -3460,7 +3476,7 @@ static void scr_gen_switch_in(ScrGen *g) {
   scr_exc_swap_cell(me != NULL ? &me->exc : NULL);
   scr_als_active = me != NULL ? &me->als : &scr_als_main_slot;
 #else
-  scr_switch(&here, &f->ctx, f);
+  scr_switch(&here, SCR_FIBER_CTX(f), f);
   /* Back on the consumer: restore identity + the consumer's cell (the
    * yield/finish switch targeted NULL — main's cell). */
   scr_current = me;

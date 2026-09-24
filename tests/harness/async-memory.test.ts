@@ -17,7 +17,7 @@ const fixture = join(import.meta.dirname, "../fixtures/async-memory/parked.ts");
 const sanitize = process.env["SCRIPTC_SAN"] === "1";
 
 describe.skipIf(process.platform !== "linux" || sanitize)("suspended async memory", () => {
-  test("20k calls parked on one promise stay under 4 KiB each", async () => {
+  test("20k calls parked on one promise stay under 1 KiB each", async () => {
     const outDir = await mkdtemp("/tmp/scriptc-async-memory-");
     const result = await compile(fixture, { outPath: join(outDir, "parked"), outDir, backend: "llvm" });
     if (!result.ok) {
@@ -28,6 +28,6 @@ describe.skipIf(process.platform !== "linux" || sanitize)("suspended async memor
     const [count, total, grownKiB] = stdout.trim().split(" ").map(Number) as [number, number, number];
     expect(count).toBe(calls);
     expect(total).toBe(188890);
-    expect(grownKiB / calls).toBeLessThan(4);
+    expect(grownKiB / calls).toBeLessThan(1);
   }, 120_000);
 });
