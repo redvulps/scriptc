@@ -180,6 +180,15 @@ export interface LlvmTargetOptions {
   /** Program objects carry a strong reference to the matching runtime ABI
    * marker so manual links against an incompatible runtime fail loudly. */
   runtimeAbiMarker?: boolean;
+  /** The .ll goes to an LLVM older than 22, whose verifier still expects
+   * llvm.coro.end to return i1 (see externalCompilerLegacyCoroEnd). */
+  legacyCoroEnd?: boolean;
+}
+
+/** wasm32 lowers async functions and generators to LLVM switched
+ * coroutines: it has no resumable native stack. */
+export function isCoroutineFunction(fn: IrFunction, wasi: boolean): boolean {
+  return wasi && (fn.async === true || fn.generator !== undefined);
 }
 
 export function emitLlvmModule(mod: IrModule, options: LlvmTargetOptions = {}): string {
@@ -209,6 +218,7 @@ class LlEmitter {
   private readonly wasi: boolean;
   private readonly emitLibraryIdentity: boolean;
   private readonly runtimeAbiMarker: boolean;
+  private readonly legacyCoroEnd: boolean;
   /** Interned string literals: UTF-8 text → { symbol, byte length } —
    * first-use order, the C emitter's determinism discipline. */
   private readonly literals = new Map<string, { sym: string; len: number }>();
@@ -382,6 +392,7 @@ class LlEmitter {
     this.wasi = options.wasi === true;
     this.emitLibraryIdentity = options.emitLibraryIdentity !== false;
     this.runtimeAbiMarker = options.runtimeAbiMarker === true;
+    this.legacyCoroEnd = options.legacyCoroEnd === true;
     // ScrCycHdr is { ptr trace; ptr free; i32 color; i16 buffered;
     // i16 gen; size_t buf_index }. The object follows it, so color is 12
     // bytes behind a wasm32 object and 16 bytes behind a 64-bit object.
@@ -2990,7 +3001,7 @@ class LlEmitter {
       this.declare(`declare token @llvm.coro.save(ptr)`);
       this.declare(`declare i8 @llvm.coro.suspend(token, i1)`);
       this.declare(`declare ptr @llvm.coro.free(token, ptr)`);
-      this.declare(`declare i1 @llvm.coro.end(ptr, i1, token)`);
+      this.declare(`declare ${this.legacyCoroEnd ? "i1" : "void"} @llvm.coro.end(ptr, i1, token)`);
       this.declare(`declare ptr @malloc(${this.sizeType})`);
       this.declare(`declare void @free(ptr)`);
       this.declare(`declare void @scr_wasi_coro_started(ptr)`);
@@ -3105,8 +3116,9 @@ class LlEmitter {
       B.line(`call void @free(ptr ${frame})`);
       B.br(coro.suspendLabel);
       B.startBlock(coro.suspendLabel);
-      const ended = B.tmp();
-      B.line(`${ended} = call i1 @llvm.coro.end(ptr ${coro.handle}, i1 false, token none)`);
+      const endArgs = `ptr ${coro.handle}, i1 false, token none`;
+      if (this.legacyCoroEnd) B.line(`${B.tmp()} = call i1 @llvm.coro.end(${endArgs})`);
+      else B.line(`call void @llvm.coro.end(${endArgs})`);
       const ret = this.llType(fn.returnType);
       if (ret === "void") B.terminate(`ret void`);
       else if (ret === "double") B.terminate(`ret double ${f64Lit(0)}`);
