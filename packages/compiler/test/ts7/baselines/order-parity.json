@@ -6697,6 +6697,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2974-async-frame-state.ts": {
+   "order": [
+    "<repo>/tests/corpus/2974-async-frame-state.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"

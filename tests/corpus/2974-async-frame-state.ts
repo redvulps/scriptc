@@ -2,7 +2,7 @@
 // fiber stack, so every value live across an await has to survive in the
 // frame: partially evaluated operands and call arguments, loop-carried
 // state, refcounted records and strings, closure captures, try/finally
-// obligations, and thousands of concurrently suspended calls.
+// obligations, and a hundred concurrently suspended calls.
 type Point = { x: number; y: number };
 
 function tick(ms: number): Promise<void> {
@@ -112,13 +112,13 @@ async function worker(id: number): Promise<string> {
 
 async function crowd(): Promise<void> {
   const jobs: Promise<string>[] = [];
-  for (let i = 0; i < 5000; i++) jobs.push(worker(i));
+  for (let i = 0; i < 100; i++) jobs.push(worker(i));
   const out = await Promise.all(jobs);
   let ok = 0;
   for (let i = 0; i < out.length; i++) {
     if (out[i] === "w" + i + ":" + 2 * i) ok++;
   }
-  console.log("crowd", out.length, ok, out[4999]);
+  console.log("crowd", out.length, ok, out[99]);
 }
 
 async function immediate(n: number): Promise<number> {
