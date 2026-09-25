@@ -6697,15 +6697,15 @@
    ],
    "diags": []
   },
-  "<repo>/tests/corpus/2974-async-frame-state.ts": {
-   "order": [
-    "<repo>/tests/corpus/2974-async-frame-state.ts"
-   ],
-   "diags": []
-  },
   "<repo>/tests/corpus/2974-numeric-remainder.ts": {
    "order": [
     "<repo>/tests/corpus/2974-numeric-remainder.ts"
+   ],
+   "diags": []
+  },
+  "<repo>/tests/corpus/2975-async-frame-state.ts": {
+   "order": [
+    "<repo>/tests/corpus/2975-async-frame-state.ts"
    ],
    "diags": []
   },
