@@ -79,9 +79,11 @@ export function emitOperatorExpr(host: LlvmEmitterContext, e: ExprOf<"bin" | "un
         const l = host.emitExpr(e.left);
         const r = host.emitExpr(e.right);
         const t = B.tmp();
-        const arith: Record<string, string> = { "+": "fadd", "-": "fsub", "*": "fmul", "/": "fdiv" };
+        // Strict frem has JS's truncating remainder semantics, including
+        // signed zero, while exposing constant divisors to LLVM.
+        const arith: Record<string, string> = { "+": "fadd", "-": "fsub", "*": "fmul", "/": "fdiv", "%": "frem" };
         const cmp: Record<string, string> = { "<": "olt", "<=": "ole", ">": "ogt", ">=": "oge", "===": "oeq", "!==": "une" };
-        const libm: Record<string, string> = { "%": "fmod", "**": "pow" };
+        const libm: Record<string, string> = { "**": "pow" };
         const bit: Record<string, "and" | "or" | "xor" | "shl" | "ashr" | "lshr"> = {
           "&": "and",
           "|": "or",

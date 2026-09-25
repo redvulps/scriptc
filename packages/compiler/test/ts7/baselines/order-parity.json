@@ -6703,6 +6703,12 @@
    ],
    "diags": []
   },
+  "<repo>/tests/corpus/2974-numeric-remainder.ts": {
+   "order": [
+    "<repo>/tests/corpus/2974-numeric-remainder.ts"
+   ],
+   "diags": []
+  },
   "<repo>/tests/corpus/300-if-else.ts": {
    "order": [
     "<repo>/tests/corpus/300-if-else.ts"
